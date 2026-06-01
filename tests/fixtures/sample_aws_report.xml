@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AuditReport>
+  <Metadata><AWSAccountID>123456789012</AWSAccountID></Metadata>
+  <CheckList>
+    <CheckResult>
+      <CheckID>pism_001</CheckID>
+      <CheckName>통신구간 암호화</CheckName>
+      <Results>
+        <Item status="bad"><ResourceID>bucket-A</ResourceID><Detail>버킷 정책 미존재</Detail><Evidence><![CDATA[no policy]]></Evidence></Item>
+        <Item status="good"><ResourceID>bucket-B</ResourceID><Detail>HTTPS 강제</Detail><Evidence><![CDATA[Deny SecureTransport false]]></Evidence></Item>
+      </Results>
+    </CheckResult>
+    <CheckResult>
+      <CheckID>pism_037_1</CheckID>
+      <CheckName>비밀번호 복잡도</CheckName>
+      <Results>
+        <Item status="bad"><ResourceID>account-policy</ResourceID><Detail>복잡도 미흡</Detail><Evidence><![CDATA[MinLength 6]]></Evidence></Item>
+      </Results>
+    </CheckResult>
+    <CheckResult>
+      <CheckID>pism_037_2</CheckID>
+      <CheckName>비밀번호 재사용</CheckName>
+      <Results>
+        <Item status="good"><ResourceID>account-policy</ResourceID><Detail>재사용 방지 설정</Detail><Evidence><![CDATA[ReusePrevention 24]]></Evidence></Item>
+      </Results>
+    </CheckResult>
+    <CheckResult>
+      <CheckID>pism_007</CheckID>
+      <CheckName>네트워크 접근제어</CheckName>
+      <Results>
+        <Item status="review"><ResourceID>sg-01/Cisco Catalyst 8000V SD-WAN & Router</ResourceID><Detail>수동 확인 필요</Detail><Evidence><![CDATA[0.0.0.0/0 1433 open]]></Evidence></Item>
+        <Item status="Error"><ResourceID>sg-02</ResourceID><Detail>권한 부족</Detail><Evidence><![CDATA[AccessDenied]]></Evidence></Item>
+      </Results>
+    </CheckResult>
+  </CheckList>
+</AuditReport>
