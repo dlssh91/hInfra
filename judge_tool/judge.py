@@ -107,3 +107,94 @@ def parse_json_lenient(text: str) -> Dict:
     # 2단계: 백틱 → 따옴표 치환까지 적용한 마지막 재시도
     t2 = t1.replace("`", '"')
     return json.loads(t2)
+
+
+_VALID_VERDICTS = {"양호", "취약", "판단보류"}
+# 스크립트 status → 기대 verdict (비교 가능한 것만)
+_STATUS_TO_VERDICT = {"good": "양호", "bad": "취약"}
+_LOW_CONFIDENCE = 0.6
+
+
+class OllamaClient:
+    def __init__(self, url: str = "http://localhost:11434",
+                 model: str = "qwen2.5:14b", temperature: float = 0.0,
+                 timeout: int = 120):
+        self.url = url.rstrip("/")
+        self.model = model
+        self.temperature = temperature
+        self.timeout = timeout
+
+    def chat(self, system: str, user: str) -> str:
+        resp = requests.post(
+            f"{self.url}/api/chat",
+            json={
+                "model": self.model,
+                "stream": False,
+                "format": "json",
+                "options": {"temperature": self.temperature},
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            },
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+        return resp.json()["message"]["content"]
+
+
+def judge_item(criterion: Criterion, item: EvidenceItem, client,
+               max_chars: int = 8000, retries: int = 2) -> Dict:
+    """LLM 호출 후 검증된 판정 dict 반환. JSON 실패 시 재시도."""
+    prompt = build_prompt(criterion, item, max_chars)
+    last_err = None
+    for _ in range(retries + 1):
+        raw = client.chat(SYSTEM_PROMPT, prompt)
+        try:
+            data = parse_json_lenient(raw)
+        except json.JSONDecodeError as e:
+            last_err = e
+            continue
+        if data.get("verdict") in _VALID_VERDICTS:
+            data.setdefault("confidence", 0.0)
+            data.setdefault("rationale", "")
+            data.setdefault("cited_evidence", [])
+            return data
+        last_err = ValueError(f"잘못된 verdict: {data.get('verdict')}")
+    # 모든 시도 실패 → 판단보류로 안전 처리
+    return {"verdict": "판단보류", "confidence": 0.0,
+            "rationale": f"LLM 응답 파싱 실패: {last_err}", "cited_evidence": []}
+
+
+def reconcile(llm: Dict, criterion: Criterion, item: EvidenceItem) -> Judgment:
+    script_status = item.overall_status
+    expected = _STATUS_TO_VERDICT.get(script_status)
+    verdict = llm["verdict"]
+    confidence = float(llm.get("confidence", 0.0))
+
+    if expected is None:
+        agreement = "N/A"
+    else:
+        agreement = "일치" if verdict == expected else "불일치"
+
+    needs_review = (
+        agreement == "불일치"
+        or confidence < _LOW_CONFIDENCE
+        or criterion.is_mixed
+        or verdict == "판단보류"
+    )
+    return Judgment(
+        item_id=criterion.item_id,
+        item_name=criterion.item_name,
+        variant=criterion.variant,
+        risk=criterion.risk,
+        verdict=verdict,
+        confidence=confidence,
+        rationale=llm.get("rationale", ""),
+        cited_evidence=list(llm.get("cited_evidence", [])),
+        scope="스크립트 부분만" if criterion.is_mixed else "스크립트 전체",
+        management_review_needed=criterion.is_mixed,
+        script_status=script_status,
+        agreement=agreement,
+        needs_review=needs_review,
+    )

@@ -69,3 +69,65 @@ def test_parse_json_lenient_preserves_backtick_evidence():
 def test_parse_json_lenient_raises_on_non_json():
     with pytest.raises(json.JSONDecodeError):
         parse_json_lenient("그냥 텍스트")
+
+
+from judge_tool.judge import judge_item, reconcile
+
+
+class FakeClient:
+    """OllamaClient 대역. 고정 JSON 응답."""
+    def __init__(self, payload):
+        self.payload = payload
+        self.calls = []
+
+    def chat(self, system, user):
+        self.calls.append((system, user))
+        return self.payload
+
+
+def _crit(eval_type="스크립트"):
+    return Criterion("PISM-001", "통신구간 암호화", 5.0, "AWS",
+                     eval_type, "양호-...취약-...", "방법")
+
+
+def test_judge_item_returns_validated_dict():
+    client = FakeClient('{"verdict":"취약","confidence":0.9,'
+                        '"rationale":"정책 없음","cited_evidence":["b1"]}')
+    out = judge_item(_crit(), _item("bad"), client)
+    assert out["verdict"] == "취약"
+    assert client.calls  # 호출됨
+
+
+def test_reconcile_agreement_high_confidence():
+    llm = {"verdict": "취약", "confidence": 0.9,
+           "rationale": "x", "cited_evidence": ["b1"]}
+    j = reconcile(llm, _crit(), _item("bad"))   # script overall=bad → 취약
+    assert j.script_status == "bad"
+    assert j.agreement == "일치"
+    assert j.needs_review is False
+    assert j.scope == "스크립트 전체"
+    assert j.management_review_needed is False
+
+
+def test_reconcile_disagreement_flags_review():
+    llm = {"verdict": "양호", "confidence": 0.95,
+           "rationale": "x", "cited_evidence": []}
+    j = reconcile(llm, _crit(), _item("bad"))   # script=취약, llm=양호 → 불일치
+    assert j.agreement == "불일치"
+    assert j.needs_review is True
+
+
+def test_reconcile_mixed_item_sets_partial_scope():
+    llm = {"verdict": "취약", "confidence": 0.9,
+           "rationale": "x", "cited_evidence": []}
+    j = reconcile(llm, _crit("관리체계, 스크립트"), _item("bad"))
+    assert j.scope == "스크립트 부분만"
+    assert j.management_review_needed is True
+    assert j.needs_review is True   # 혼합 항목은 항상 검토 필요
+
+
+def test_reconcile_review_status_is_na():
+    llm = {"verdict": "취약", "confidence": 0.9,
+           "rationale": "x", "cited_evidence": []}
+    j = reconcile(llm, _crit(), _item("review"))  # script가 review → 비교 N/A
+    assert j.agreement == "N/A"
