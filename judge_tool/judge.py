@@ -168,10 +168,9 @@ def judge_item(criterion: Criterion, item: EvidenceItem, client,
             last_err = e
             continue
         if data.get("verdict") in _VALID_VERDICTS:
-            data.setdefault("confidence", 0.0)
+            data["confidence"] = _to_float(data.get("confidence", 0.0))
             data.setdefault("rationale", "")
             data.setdefault("cited_evidence", [])
-            data["confidence"] = _to_float(data.get("confidence", 0.0))
             return data
         last_err = ValueError(f"잘못된 verdict: {data.get('verdict')}")
     # 모든 시도 실패 → 판단보류로 안전 처리
