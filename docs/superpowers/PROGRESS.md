@@ -12,8 +12,8 @@
 
 ## Git 상태
 - 브랜치: `feature/cloud-aws-llm-judgment`
-- 마지막 커밋: `0638b1b` (Task 8 완료 — writer.py JSON/Excel/커버리지 + 품질수정/simplify)
-- 테스트: `python3 -m pytest -q` → **48 passed** (openpyxl UserWarning 3건은 무해)
+- 마지막 커밋: `5eb8017` (Task 9 완료 — main.py CLI + 골든 E2E + 부분실패격리/simplify)
+- 테스트: `python3 -m pytest -q` → **54 passed** (openpyxl UserWarning 5건은 무해)
 - 패키지(openpyxl/requests/pytest)는 시스템에 이미 설치됨. **PEP668로 pip install 차단됨 → venv 불필요, 그대로 시스템 python3 사용.**
 
 ## 진행 현황 (10개 태스크 중)
@@ -28,12 +28,12 @@
 | 6 | judge.py 1부 (SYSTEM_PROMPT/build_evidence_text/build_prompt/parse_json_lenient) | ✅ 완료·리뷰 (스펙✅+품질✅, I-1 백틱복구 수정 `ad3f63c`) |
 | 7 | judge.py 2부 (OllamaClient/judge_item/reconcile) | ✅ 완료·리뷰 (스펙✅+품질✅, confidence안전캐스팅 등 `64f77e1`) |
 | 8 | writer.py (JSON/Excel/커버리지) | ✅ 완료·리뷰 (스펙✅+품질✅, None방어/auto-mkdir `08faf49`) |
-| 9 | main.py (CLI run() + 골든 E2E, LLM 모킹) | ⏳ **진행 중** |
-| 10 | 실제 Ollama 스모크(수동, 선택) | ⬜ 미착수 |
+| 9 | main.py (CLI run() + 골든 E2E, LLM 모킹) | ✅ 완료·리뷰 (스펙✅+품질✅, 부분실패격리/CLI·결정성테스트 `07952cd`) |
+| 10 | 실제 Ollama 스모크(수동, 선택) | ⬜ 미착수 (사용자 수동 실행) |
 
 ## 다음에 할 일 (정확한 재개 지점)
-1. **Task 9 진행 중** — main.py(CLI run() + 골든 E2E, LLM 모킹). plan 1176~1342행. 구현→스펙리뷰→품질리뷰→simplify→커밋.
-2. Task 9 완료 후: 전체 코드 최종 리뷰 → `superpowers:finishing-a-development-branch`. (Task 10 실제 Ollama 스모크는 수동·선택)
+1. **Task 6~9 전부 완료·리뷰.** 전체 코드 최종 리뷰 진행 중 → 이후 `superpowers:finishing-a-development-branch`.
+2. Task 10(실제 Ollama 스모크)은 수동·선택 — 사용자가 직접 실행: `python3 -m judge_tool.main --report "results/Public Cloud/aws_report_20251223_hinno.xml" --criteria "ref/...xlsx" --out-dir results` (단 results/ 출력은 사용자 판단).
 3. 모든 태스크 후 전체 코드 최종 리뷰 → `superpowers:finishing-a-development-branch`.
 
 ## ▶ 개발 재개 루틴 (트리거: 사용자가 "개발해줘" 라고 하면)
