@@ -12,8 +12,9 @@
 
 ## Git 상태
 - 브랜치: `feature/cloud-aws-llm-judgment`
-- 마지막 커밋: `5eb8017` (Task 9 완료 — main.py CLI + 골든 E2E + 부분실패격리/simplify)
-- 테스트: `python3 -m pytest -q` → **54 passed** (openpyxl UserWarning 5건은 무해)
+- 마지막 커밋: `978a5b6` (전체 최종 리뷰 보강 — criteria id 정규화/빈기준 스킵/is_judgeable 추출)
+- 테스트: `python3 -m pytest -q` → **58 passed** (openpyxl UserWarning 5건은 무해)
+- **Task 0~9 전부 완료·리뷰·최종통합리뷰 ✅ Ready.** 남은 것: Task 10(실제 Ollama 스모크, 수동·선택) + 브랜치 마무리.
 - 패키지(openpyxl/requests/pytest)는 시스템에 이미 설치됨. **PEP668로 pip install 차단됨 → venv 불필요, 그대로 시스템 python3 사용.**
 
 ## 진행 현황 (10개 태스크 중)
