@@ -12,8 +12,8 @@
 
 ## Git 상태
 - 브랜치: `feature/cloud-aws-llm-judgment`
-- 마지막 커밋: `ad3f63c` (Task 6 리뷰 수정 — lenient JSON 단계적 복구 + 엣지 테스트)
-- 테스트: `python3 -m pytest -q` → **26 passed** (openpyxl UserWarning 3건은 무해)
+- 마지막 커밋: `80e4621` (Task 7 완료 — Ollama/judge_item/reconcile + 품질수정/simplify)
+- 테스트: `python3 -m pytest -q` → **37 passed** (openpyxl UserWarning 3건은 무해)
 - 패키지(openpyxl/requests/pytest)는 시스템에 이미 설치됨. **PEP668로 pip install 차단됨 → venv 불필요, 그대로 시스템 python3 사용.**
 
 ## 진행 현황 (10개 태스크 중)
@@ -26,14 +26,14 @@
 | 4 | parsers/cloud_xml.py (정제+파싱, CDATA-aware) | ✅ 완료·리뷰 |
 | 5 | mapper.py (분할항목 집계) | ✅ 완료(인라인확인) |
 | 6 | judge.py 1부 (SYSTEM_PROMPT/build_evidence_text/build_prompt/parse_json_lenient) | ✅ 완료·리뷰 (스펙✅+품질✅, I-1 백틱복구 수정 `ad3f63c`) |
-| 7 | judge.py 2부 (OllamaClient/judge_item/reconcile) | ⏳ **진행 중** |
-| 8 | writer.py (JSON/Excel/커버리지) | ⬜ 미착수 |
+| 7 | judge.py 2부 (OllamaClient/judge_item/reconcile) | ✅ 완료·리뷰 (스펙✅+품질✅, confidence안전캐스팅 등 `64f77e1`) |
+| 8 | writer.py (JSON/Excel/커버리지) | ⏳ **진행 중** |
 | 9 | main.py (CLI run() + 골든 E2E, LLM 모킹) | ⬜ 미착수 |
 | 10 | 실제 Ollama 스모크(수동, 선택) | ⬜ 미착수 |
 
 ## 다음에 할 일 (정확한 재개 지점)
-1. **Task 7 진행 중** — judge.py 2부(OllamaClient/judge_item/reconcile). plan 819~1003행. 구현→스펙리뷰→품질리뷰→simplify→커밋.
-2. 이어서 Task 8 → 9 순서로 plan의 태스크 텍스트/코드를 그대로 구현 서브에이전트에 전달. 각 태스크 후 두 단계 리뷰.
+1. **Task 8 진행 중** — writer.py(JSON/Excel/커버리지). plan 1004~1175행. 구현→스펙리뷰→품질리뷰→simplify→커밋.
+2. 이어서 Task 9. 각 태스크 후 두 단계 리뷰.
 3. 모든 태스크 후 전체 코드 최종 리뷰 → `superpowers:finishing-a-development-branch`.
 
 ## ▶ 개발 재개 루틴 (트리거: 사용자가 "개발해줘" 라고 하면)
