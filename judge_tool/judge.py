@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Dict, List
+from typing import Dict
 
 import requests
 

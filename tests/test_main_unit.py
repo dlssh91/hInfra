@@ -42,6 +42,13 @@ class BoomClient:
                 '"rationale":"정상","cited_evidence":["x"]}')
 
 
+class AllFailClient:
+    """모든 chat 호출이 예외를 던지는 대역(전건 LLM 실패 검증용)."""
+
+    def chat(self, system, user):
+        raise RuntimeError("전건 네트워크 폭발")
+
+
 def _write_synthetic_criteria(path):
     """CLOUD 프로파일 포맷에 맞는 합성 평가기준 xlsx 생성.
 
@@ -205,3 +212,102 @@ def test_run_isolates_per_item_failure(tmp_path):
     assert len(held) == 1
     assert held[0]["needs_review"] is True
     assert cov["judged"] == 3
+
+
+# --------------------------------------------------------------------------
+# I-2 (spec 6.4): 빈 판단기준(standard="") 항목 스킵
+# --------------------------------------------------------------------------
+
+def _write_empty_standard_criteria(path):
+    """PISM-001 의 standard 를 비워 둔 합성 평가기준 xlsx.
+
+    빈 판단기준은 LLM 호출 없이 스킵되어야 한다(spec 6.4).
+    PISM-007 은 정상 기준을 둬 대조군으로 사용.
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = CLOUD.sheet_name
+    rows = [
+        # (item_id, name, risk, eval_type, method, standard)
+        ("PISM-001", "통신구간 암호화", 5, "스크립트", "방법1", ""),     # 빈 기준 → 스킵
+        ("PISM-007", "네트워크 접근제어", 4, "스크립트", "방법7", "양호 기준"),
+    ]
+    for i, (iid, name, risk, etype, method, standard) in enumerate(rows):
+        r = CLOUD.data_start_row + i
+        ws.cell(r, CLOUD.id_col, iid)
+        ws.cell(r, CLOUD.name_col, name)
+        ws.cell(r, CLOUD.risk_col, risk)
+        for vname in ("AWS", "Azure"):
+            v = CLOUD.variants[vname]
+            ws.cell(r, v.eval_type_col, etype)
+            ws.cell(r, v.method_col, method)
+            ws.cell(r, v.standard_col, standard)
+    wb.save(path)
+
+
+def test_run_skips_empty_standard_item(tmp_path):
+    """standard 가 비어 있는 스크립트 항목은 judged 에서 제외(스킵)된다."""
+    report = _copy_fixture_xml(tmp_path)
+    criteria = os.path.join(str(tmp_path), "criteria.xlsx")
+    _write_empty_standard_criteria(criteria)
+    json_out = os.path.join(str(tmp_path), "result.json")
+    xlsx_out = os.path.join(str(tmp_path), "result.xlsx")
+
+    cov = run(report_path=report, criteria_path=criteria, profile_key="cloud",
+              client=StubClient(verdict="취약"), json_out=json_out,
+              xlsx_out=xlsx_out, model_name="stub")
+
+    data = json.load(open(json_out, encoding="utf-8"))
+    by_id = {j["item_id"]: j for j in data["judgments"]}
+    # 빈 기준 PISM-001 은 스킵, PISM-007 만 판정
+    assert "PISM-001" not in by_id
+    assert "PISM-007" in by_id
+    assert cov["judged"] == 1
+
+
+# --------------------------------------------------------------------------
+# 견고성: 전건 LLM 실패 / 빈 입력
+# --------------------------------------------------------------------------
+
+def test_run_all_llm_failures_isolated(tmp_path):
+    """모든 chat 호출이 예외여도 run 은 예외 없이 완료되고, 모든 판정이
+    판단보류 & needs_review 로 격리된다(부분 실패 격리가 전건에도 동작)."""
+    report = _copy_fixture_xml(tmp_path)
+    criteria = os.path.join(str(tmp_path), "criteria.xlsx")
+    _write_synthetic_criteria(criteria)
+    json_out = os.path.join(str(tmp_path), "result.json")
+    xlsx_out = os.path.join(str(tmp_path), "result.xlsx")
+
+    cov = run(report_path=report, criteria_path=criteria, profile_key="cloud",
+              client=AllFailClient(), json_out=json_out, xlsx_out=xlsx_out,
+              model_name="stub")
+
+    assert os.path.exists(json_out) and os.path.exists(xlsx_out)
+    data = json.load(open(json_out, encoding="utf-8"))
+    judgments = data["judgments"]
+    assert len(judgments) == 3
+    assert cov["judged"] == 3
+    for j in judgments:
+        assert j["verdict"] == "판단보류"
+        assert j["needs_review"] is True
+
+
+def test_run_empty_input(tmp_path):
+    """스크립트 대상이 0건인 입력 → judged==0, 출력 정상 생성, 예외 없음."""
+    report = os.path.join(str(tmp_path), "aws_report_empty.xml")
+    with open(report, "w", encoding="utf-8") as fh:
+        fh.write('<?xml version="1.0" encoding="UTF-8"?>\n'
+                 "<AuditReport><CheckList></CheckList></AuditReport>")
+    criteria = os.path.join(str(tmp_path), "criteria.xlsx")
+    _write_synthetic_criteria(criteria)
+    json_out = os.path.join(str(tmp_path), "result.json")
+    xlsx_out = os.path.join(str(tmp_path), "result.xlsx")
+
+    cov = run(report_path=report, criteria_path=criteria, profile_key="cloud",
+              client=StubClient(), json_out=json_out, xlsx_out=xlsx_out,
+              model_name="stub")
+
+    assert os.path.exists(json_out) and os.path.exists(xlsx_out)
+    assert cov["judged"] == 0
+    data = json.load(open(json_out, encoding="utf-8"))
+    assert data["judgments"] == []

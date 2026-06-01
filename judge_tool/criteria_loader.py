@@ -23,6 +23,9 @@ def load_criteria(xlsx_path: str,
             item_id = _cell(ws, row, profile.id_col)
             if not item_id:
                 continue
+            # mapper.aggregate 가 증거 측 CheckID 를 normalize_id 로 정규화하므로
+            # 기준 키도 동일 정규형으로 맞춰 join 비대칭을 제거한다.
+            item_id = profile.normalize_id(item_id)
             name = _cell(ws, row, profile.name_col)
             # risk는 숫자 원본이 필요하므로 _cell(str 변환) 대신 .value를 직접 사용
             risk_raw = ws.cell(row=row, column=profile.risk_col).value
