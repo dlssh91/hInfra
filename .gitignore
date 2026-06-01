@@ -3,3 +3,7 @@ __pycache__/
 .pytest_cache/
 result_*.json
 result_*.xlsx
+.DS_Store
+**/.DS_Store
+results/
+scripts/*.zip
