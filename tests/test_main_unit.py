@@ -1,0 +1,207 @@
+import json
+import os
+
+import openpyxl
+import pytest
+
+import judge_tool.main as main_mod
+from judge_tool.main import main, run
+from judge_tool.profile import CLOUD
+
+FIXTURE_XML = os.path.join(
+    os.path.dirname(__file__), "fixtures", "sample_aws_report.xml")
+
+
+class StubClient:
+    """전건 고정 JSON 반환 대역 (Ollama 불필요)."""
+
+    def __init__(self, verdict="양호", confidence=0.9):
+        self._verdict = verdict
+        self._confidence = confidence
+
+    def chat(self, system, user):
+        return (f'{{"verdict":"{self._verdict}","confidence":{self._confidence},'
+                f'"rationale":"테스트 판정","cited_evidence":["x"]}}')
+
+
+class BoomClient:
+    """첫 호출만 예외를 던지고 이후는 정상 JSON을 반환하는 대역.
+
+    부분 실패 격리(I-1) 검증용. 항목 단위 예외가 전체 run을 중단시키지
+    않고 판단보류+needs_review로 격리되는지 확인한다.
+    """
+
+    def __init__(self):
+        self.calls = 0
+
+    def chat(self, system, user):
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("네트워크 폭발")
+        return ('{"verdict":"양호","confidence":0.9,'
+                '"rationale":"정상","cited_evidence":["x"]}')
+
+
+def _write_synthetic_criteria(path):
+    """CLOUD 프로파일 포맷에 맞는 합성 평가기준 xlsx 생성.
+
+    컬럼 레이아웃(CLOUD): id_col=2, name_col=6, risk_col=7,
+    AWS variant: eval_type_col=11, standard_col=17, method_col=13.
+    데이터 시작행=5. 시트명='클라우드 관리체계'.
+
+    sample_aws_report.xml 의 항목과 매칭되도록 base id 를 직접 기입한다:
+      - PISM-001 : 스크립트 (script status=bad)
+      - PISM-037 : 스크립트 (split 037_1/037_2 병합)
+      - PISM-007 : 스크립트 (script status=review)
+      - PISM-099 : N/A      (스킵 대상)
+      - PISM-098 : 관리체계 only (비스크립트 → 스킵 대상)
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = CLOUD.sheet_name
+
+    rows = [
+        # (item_id, name, risk, eval_type, method, standard)
+        ("PISM-001", "통신구간 암호화", 5, "스크립트", "방법1", "양호 기준 텍스트"),
+        ("PISM-037", "비밀번호 정책", 3, "스크립트", "방법37", "양호 기준 텍스트"),
+        ("PISM-007", "네트워크 접근제어", 4, "스크립트", "방법7", "양호 기준 텍스트"),
+        ("PISM-099", "관리체계 항목", 2, "N/A", "방법99", "기준99"),
+        ("PISM-098", "관리체계만", 2, "관리체계", "방법98", "기준98"),
+    ]
+    for i, (iid, name, risk, etype, method, standard) in enumerate(rows):
+        r = CLOUD.data_start_row + i
+        ws.cell(r, CLOUD.id_col, iid)
+        ws.cell(r, CLOUD.name_col, name)
+        ws.cell(r, CLOUD.risk_col, risk)
+        aws = CLOUD.variants["AWS"]
+        ws.cell(r, aws.eval_type_col, etype)
+        ws.cell(r, aws.method_col, method)
+        ws.cell(r, aws.standard_col, standard)
+        # Azure variant 도 채워 둠(로더가 양 variant 로드)
+        az = CLOUD.variants["Azure"]
+        ws.cell(r, az.eval_type_col, etype)
+        ws.cell(r, az.method_col, method)
+        ws.cell(r, az.standard_col, standard)
+    wb.save(path)
+
+
+def _copy_fixture_xml(tmp_path, name="aws_report_synth.xml"):
+    """fixture XML 을 variant 식별 가능한 파일명으로 tmp_path 에 복사."""
+    dest = os.path.join(str(tmp_path), name)
+    with open(FIXTURE_XML, encoding="utf-8") as src:
+        content = src.read()
+    with open(dest, "w", encoding="utf-8") as fh:
+        fh.write(content)
+    return dest
+
+
+# --------------------------------------------------------------------------
+# I-2: main() CLI 경로
+# --------------------------------------------------------------------------
+
+def test_main_cli_writes_outputs(tmp_path, monkeypatch, capsys,
+                                 aws_report_path, criteria_xlsx_path):
+    if not (os.path.exists(aws_report_path)
+            and os.path.exists(criteria_xlsx_path)):
+        pytest.skip("실제 보고서/평가기준 파일이 없어 CLI E2E 스킵")
+
+    monkeypatch.setattr(main_mod, "OllamaClient",
+                        lambda *a, **k: StubClient(verdict="취약"))
+
+    main(["--report", aws_report_path,
+          "--criteria", criteria_xlsx_path,
+          "--out-dir", str(tmp_path),
+          "--model", "stub"])
+
+    base = os.path.splitext(os.path.basename(aws_report_path))[0]
+    json_out = os.path.join(str(tmp_path), f"result_{base}.json")
+    xlsx_out = os.path.join(str(tmp_path), f"result_{base}.xlsx")
+    assert os.path.exists(json_out)
+    assert os.path.exists(xlsx_out)
+
+    out = capsys.readouterr().out
+    assert "판정" in out
+
+
+def test_main_cli_missing_required_arg():
+    with pytest.raises(SystemExit):
+        main(["--report", "x"])  # --criteria 누락 → argparse SystemExit
+
+
+# --------------------------------------------------------------------------
+# I-3: CI 독립 결정적 run() (합성 입력)
+# --------------------------------------------------------------------------
+
+def test_run_synthetic_disagreement_needs_review(tmp_path):
+    """StubClient 가 전건 '양호' → script status=bad/review 와 불일치 →
+    needs_review True. N/A·관리체계 항목은 judged 에서 제외(스킵)."""
+    report = _copy_fixture_xml(tmp_path)
+    criteria = os.path.join(str(tmp_path), "criteria.xlsx")
+    _write_synthetic_criteria(criteria)
+    json_out = os.path.join(str(tmp_path), "result.json")
+    xlsx_out = os.path.join(str(tmp_path), "result.xlsx")
+
+    cov = run(report_path=report, criteria_path=criteria, profile_key="cloud",
+              client=StubClient(verdict="양호", confidence=0.9),
+              json_out=json_out, xlsx_out=xlsx_out, model_name="stub")
+
+    data = json.load(open(json_out, encoding="utf-8"))
+    by_id = {j["item_id"]: j for j in data["judgments"]}
+
+    # 스크립트 항목만 판정됨
+    assert set(by_id) == {"PISM-001", "PISM-037", "PISM-007"}
+    # N/A / 관리체계 only 는 스킵
+    assert "PISM-099" not in by_id
+    assert "PISM-098" not in by_id
+
+    # PISM-001: script bad vs llm 양호 → 불일치 → needs_review
+    assert by_id["PISM-001"]["agreement"] == "불일치"
+    assert by_id["PISM-001"]["needs_review"] is True
+
+    # 분할항목 PISM-037: 037_1(bad)+037_2(good) overall=bad → 불일치
+    assert by_id["PISM-037"]["agreement"] == "불일치"
+    assert by_id["PISM-037"]["needs_review"] is True
+
+    # coverage: expected=3(스크립트만), judged=3
+    assert cov["expected"] == 3
+    assert cov["judged"] == 3
+
+
+def test_run_variant_identification_failure(tmp_path):
+    """파일명에서 variant 를 식별 못 하면 ValueError."""
+    bad_name = os.path.join(str(tmp_path), "unknown.xml")
+    with open(bad_name, "w", encoding="utf-8") as fh:
+        fh.write("<AuditReport/>")
+    criteria = os.path.join(str(tmp_path), "criteria.xlsx")
+    _write_synthetic_criteria(criteria)
+
+    with pytest.raises(ValueError):
+        run(report_path=bad_name, criteria_path=criteria, profile_key="cloud",
+            client=StubClient(), json_out=os.path.join(str(tmp_path), "j.json"),
+            xlsx_out=os.path.join(str(tmp_path), "x.xlsx"), model_name="stub")
+
+
+def test_run_isolates_per_item_failure(tmp_path):
+    """한 항목 judge 예외가 전체 run 을 중단시키지 않고, 실패 항목은
+    판단보류+needs_review 로 격리된 채 출력이 생성된다(I-1)."""
+    report = _copy_fixture_xml(tmp_path)
+    criteria = os.path.join(str(tmp_path), "criteria.xlsx")
+    _write_synthetic_criteria(criteria)
+    json_out = os.path.join(str(tmp_path), "result.json")
+    xlsx_out = os.path.join(str(tmp_path), "result.xlsx")
+
+    cov = run(report_path=report, criteria_path=criteria, profile_key="cloud",
+              client=BoomClient(), json_out=json_out, xlsx_out=xlsx_out,
+              model_name="stub")
+
+    assert os.path.exists(json_out) and os.path.exists(xlsx_out)
+    data = json.load(open(json_out, encoding="utf-8"))
+    by_id = {j["item_id"]: j for j in data["judgments"]}
+
+    # 3개 스크립트 항목 모두 결과에 존재(실패 항목도 격리되어 포함)
+    assert set(by_id) == {"PISM-001", "PISM-037", "PISM-007"}
+    # 정확히 한 항목이 예외로 판단보류 격리됨
+    held = [j for j in data["judgments"] if j["verdict"] == "판단보류"]
+    assert len(held) == 1
+    assert held[0]["needs_review"] is True
+    assert cov["judged"] == 3
