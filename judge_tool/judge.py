@@ -22,7 +22,13 @@ _GOOD = {"good", "info"}
 
 
 def build_evidence_text(item: EvidenceItem, max_chars: int = 8000) -> str:
-    """증거를 텍스트로 직렬화. 취약 후보(good/info 외)는 전량 보존, good/info만 축약."""
+    """증거를 텍스트로 직렬화.
+
+    증거가드 핵심계약: primary(취약 후보 = status가 good/info가 아닌 리소스)는
+    max_chars를 **의도적으로 무시하고 전량 보존**한다. 상한(max_chars)은
+    good/info(보조 증거)에만 적용되어 상한 내에서만 추가되고 나머지는 축약·생략된다.
+    리소스가 하나도 없으면 "(증거 없음)"을 반환한다.
+    """
     def fmt(r):
         return (f"- [{r.status}] {r.resource_id} :: {r.detail}\n"
                 f"  evidence: {r.evidence}")
@@ -70,7 +76,18 @@ def build_prompt(criterion: Criterion, item: EvidenceItem,
 
 
 def parse_json_lenient(text: str) -> Dict:
-    """코드펜스/후행콤마/백틱을 허용하는 관대한 JSON 파서."""
+    """코드펜스/후행콤마/백틱을 허용하는 관대한 JSON 파서.
+
+    복구는 단계적으로 시도한다:
+      0) 원문 그대로 파싱.
+      1) 후행 콤마만 제거하고 재시도(백틱은 그대로 보존 — 흔한 경우인
+         '백틱 인용 + 후행콤마'를 evidence 손상 없이 복구).
+      2) 그래도 실패하면 백틱→따옴표 치환까지 적용해 마지막 재시도
+         (백틱이 키 구분자로 잘못 쓰인 비정상 출력 대비).
+
+    모든 복구 시도가 실패하면 마지막 단계의 ``json.JSONDecodeError``를
+    그대로 raise 한다. 호출부(Task 7)가 이를 잡아 처리할 책임을 진다.
+    """
     t = text.strip()
     t = re.sub(r"^```(?:json)?", "", t).strip()
     t = re.sub(r"```$", "", t).strip()
@@ -80,6 +97,13 @@ def parse_json_lenient(text: str) -> Dict:
     try:
         return json.loads(t)
     except json.JSONDecodeError:
-        t2 = re.sub(r",\s*([}\]])", r"\1", t)  # 후행 콤마 제거
-        t2 = t2.replace("`", '"')              # 백틱 → 따옴표
-        return json.loads(t2)
+        pass
+    # 1단계: 후행 콤마만 제거 (백틱 보존)
+    t1 = re.sub(r",\s*([}\]])", r"\1", t)
+    try:
+        return json.loads(t1)
+    except json.JSONDecodeError:
+        pass
+    # 2단계: 백틱 → 따옴표 치환까지 적용한 마지막 재시도
+    t2 = t1.replace("`", '"')
+    return json.loads(t2)

@@ -1,3 +1,7 @@
+import json
+
+import pytest
+
 from judge_tool.judge import (
     build_evidence_text, parse_json_lenient, build_prompt, SYSTEM_PROMPT)
 from judge_tool.models import Criterion, EvidenceItem, ResourceEvidence
@@ -36,3 +40,32 @@ def test_build_prompt_mixed_item_mentions_script_scope():
 def test_system_prompt_demands_json_keys():
     for key in ["verdict", "confidence", "rationale", "cited_evidence"]:
         assert key in SYSTEM_PROMPT
+
+
+# I-4.1: 증거 없음
+def test_evidence_text_no_resources():
+    assert build_evidence_text(EvidenceItem("PISM-001", "AWS", [])) == "(증거 없음)"
+
+
+# I-4.2: 비-혼합 항목은 혼합 scope_note 미포함
+def test_build_prompt_non_mixed_no_scope_note():
+    c = Criterion("PISM-010", "암호화설정", 3.0, "AWS",
+                  "스크립트", "S3 버킷 암호화 옵션 확인", "describe 호출 결과 대조")
+    prompt = build_prompt(c, _item("bad"))
+    assert "혼합" not in prompt
+    assert "관리체계" not in prompt
+
+
+# I-4.3: 백틱+후행콤마 입력에서 백틱 인용 내용 보존
+def test_parse_json_lenient_preserves_backtick_evidence():
+    raw = ('{"verdict":"취약","confidence":0.8,'
+           '"rationale":"명령 `aws s3 ls` 실행됨",}')
+    data = parse_json_lenient(raw)
+    assert data["verdict"] == "취약"
+    assert "aws s3 ls" in data["rationale"]
+
+
+# I-4.4: 완전 비-JSON 입력은 JSONDecodeError raise
+def test_parse_json_lenient_raises_on_non_json():
+    with pytest.raises(json.JSONDecodeError):
+        parse_json_lenient("그냥 텍스트")
