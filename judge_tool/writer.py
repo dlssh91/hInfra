@@ -22,6 +22,12 @@ def build_coverage(criteria: Dict[Tuple[str, str], Criterion],
             "missing": missing}
 
 
+def _ensure_parent_dir(path: str) -> None:
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+
 def write_json(judgments: List[Judgment], meta: Dict, coverage: Dict,
                path: str) -> None:
     payload = {
@@ -29,9 +35,7 @@ def write_json(judgments: List[Judgment], meta: Dict, coverage: Dict,
         "coverage": coverage,
         "judgments": [asdict(j) for j in judgments],
     }
-    d = os.path.dirname(path)
-    if d:
-        os.makedirs(d, exist_ok=True)
+    _ensure_parent_dir(path)
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=2)
 
@@ -44,9 +48,7 @@ _REVIEW_FILL = PatternFill("solid", fgColor="FFF2CC")  # 연노랑
 
 def write_excel(judgments: List[Judgment], meta: Dict, coverage: Dict,
                 path: str) -> None:
-    d = os.path.dirname(path)
-    if d:
-        os.makedirs(d, exist_ok=True)
+    _ensure_parent_dir(path)
 
     wb = openpyxl.Workbook()
 
