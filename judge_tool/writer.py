@@ -1,4 +1,5 @@
 import json
+import os
 from dataclasses import asdict
 from typing import Dict, List, Tuple
 
@@ -28,6 +29,9 @@ def write_json(judgments: List[Judgment], meta: Dict, coverage: Dict,
         "coverage": coverage,
         "judgments": [asdict(j) for j in judgments],
     }
+    d = os.path.dirname(path)
+    if d:
+        os.makedirs(d, exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=2)
 
@@ -40,6 +44,10 @@ _REVIEW_FILL = PatternFill("solid", fgColor="FFF2CC")  # 연노랑
 
 def write_excel(judgments: List[Judgment], meta: Dict, coverage: Dict,
                 path: str) -> None:
+    d = os.path.dirname(path)
+    if d:
+        os.makedirs(d, exist_ok=True)
+
     wb = openpyxl.Workbook()
 
     # 요약 시트
@@ -52,8 +60,8 @@ def write_excel(judgments: List[Judgment], meta: Dict, coverage: Dict,
         ("생성 시각", meta.get("generated_at", "")),
         ("입력 파일", meta.get("source_file", "")),
         ("입력 SHA256", meta.get("source_sha256", "")),
-        ("대상 항목수", coverage.get("expected", "")),
-        ("판정 항목수", coverage.get("judged", "")),
+        ("대상 항목수", coverage.get("expected", 0)),
+        ("판정 항목수", coverage.get("judged", 0)),
         ("미판정 항목", ", ".join(coverage.get("missing", []))),
         ("재검토 필요수", sum(1 for j in judgments if j.needs_review)),
     ]
@@ -67,12 +75,13 @@ def write_excel(judgments: List[Judgment], meta: Dict, coverage: Dict,
     for c in ws[1]:
         c.font = Font(bold=True)
     for j in judgments:
+        conf = j.confidence if isinstance(j.confidence, (int, float)) else 0.0
         ws.append([
             j.item_id, j.item_name, j.risk, j.variant, j.verdict,
-            round(j.confidence, 2), j.script_status, j.agreement,
+            round(conf, 2), j.script_status, j.agreement,
             "예" if j.needs_review else "", j.scope,
             "예" if j.management_review_needed else "",
-            j.rationale, " | ".join(j.cited_evidence),
+            j.rationale, " | ".join(map(str, j.cited_evidence or [])),
         ])
         if j.needs_review:
             for c in ws[ws.max_row]:
