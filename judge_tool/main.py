@@ -9,6 +9,7 @@ from judge_tool import __version__
 from judge_tool.criteria_loader import load_criteria
 from judge_tool.judge import OllamaClient, judge_item, reconcile
 from judge_tool.mapper import aggregate
+from judge_tool.models import Judgment
 from judge_tool.parsers import cloud_xml
 from judge_tool.profile import get_profile
 from judge_tool.writer import build_coverage, write_excel, write_json
@@ -24,6 +25,31 @@ def _sha256(path: str) -> str:
         for chunk in iter(lambda: fh.read(8192), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _judge_one(crit, item, item_id: str, variant: str,
+               client) -> Optional[Judgment]:
+    """단일 항목을 판정한다. 부분 실패를 격리하는 견고성 로직:
+
+    - judge 실패 → 판단보류 폴백으로 reconcile (격리, 결과 포함)
+    - 폴백 reconcile 마저 실패 → 해당 항목만 스킵(None 반환)
+    """
+    try:
+        llm = judge_item(crit, item, client)
+        return reconcile(llm, crit, item)
+    except Exception as e:  # noqa: BLE001 - 부분 실패 격리(네트워크/HTTP/KeyError 등)
+        log.warning("항목 %s(%s) 판정 실패, 판단보류로 격리: %s",
+                    item_id, variant, e)
+        fallback_llm = {"verdict": "판단보류", "confidence": 0.0,
+                        "rationale": f"판정 중 오류: {e}",
+                        "cited_evidence": []}
+
+    try:
+        return reconcile(fallback_llm, crit, item)
+    except Exception as e2:  # noqa: BLE001 - reconcile 자체 실패 시 해당 항목만 스킵
+        log.warning("항목 %s(%s) 폴백 reconcile 실패, 스킵: %s",
+                    item_id, variant, e2)
+        return None
 
 
 def run(report_path: str, criteria_path: str, profile_key: str, client,
@@ -46,20 +72,9 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
         crit = criteria.get((item_id, variant))
         if crit is None or not crit.is_script_based or crit.eval_type == "N/A":
             continue  # 기준에 없거나 스크립트 대상 아님 → 스킵
-        try:
-            llm = judge_item(crit, item, client)
-            judgments.append(reconcile(llm, crit, item))
-        except Exception as e:  # noqa: BLE001 - 부분 실패 격리(네트워크/HTTP/KeyError 등)
-            log.warning("항목 %s(%s) 판정 실패, 판단보류로 격리: %s",
-                        item_id, variant, e)
-            fallback_llm = {"verdict": "판단보류", "confidence": 0.0,
-                            "rationale": f"판정 중 오류: {e}",
-                            "cited_evidence": []}
-            try:
-                judgments.append(reconcile(fallback_llm, crit, item))
-            except Exception as e2:  # noqa: BLE001 - reconcile 자체 실패 시 해당 항목만 스킵
-                log.warning("항목 %s(%s) 폴백 reconcile 실패, 스킵: %s",
-                            item_id, variant, e2)
+        judgment = _judge_one(crit, item, item_id, variant, client)
+        if judgment is not None:
+            judgments.append(judgment)
 
     judgments.sort(key=lambda j: j.item_id)
     coverage = build_coverage(criteria, judgments, variant)
