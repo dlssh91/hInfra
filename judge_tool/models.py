@@ -23,6 +23,17 @@ class Criterion:
     def is_script_based(self) -> bool:
         return "스크립트" in self.eval_type
 
+    @property
+    def is_judgeable(self) -> bool:
+        """LLM 판정 대상 여부: 스크립트 기반이며 eval_type 이 N/A 가 아니고
+        판단기준(standard)이 비어 있지 않아야 한다.
+
+        main.run 의 스킵 조건과 writer.build_coverage 의 expected 조건이
+        공유하는 술어. 두 곳의 일관성을 보장하기 위해 한 곳에 둔다.
+        """
+        return (self.is_script_based and self.eval_type != "N/A"
+                and bool((self.standard or "").strip()))
+
 
 @dataclass
 class ResourceEvidence:

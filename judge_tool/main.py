@@ -70,9 +70,7 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
     judgments = []
     for item_id, item in items.items():
         crit = criteria.get((item_id, variant))
-        if (crit is None or not crit.is_script_based
-                or crit.eval_type == "N/A"
-                or not (crit.standard or "").strip()):
+        if crit is None or not crit.is_judgeable:
             continue  # 기준에 없거나 스크립트 대상 아님/빈 판단기준 → 스킵
         judgment = _judge_one(crit, item, item_id, variant, client)
         if judgment is not None:

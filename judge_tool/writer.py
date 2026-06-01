@@ -14,8 +14,7 @@ def build_coverage(criteria: Dict[Tuple[str, str], Criterion],
     """스크립트 기반·해당 variant 항목 중 미판정 목록 산출."""
     expected_ids = {
         c.item_id for (iid, v), c in criteria.items()
-        if v == variant and c.is_script_based and c.eval_type != "N/A"
-        and (c.standard or "").strip()
+        if v == variant and c.is_judgeable
     }
     judged_ids = {j.item_id for j in judgments}
     missing = sorted(expected_ids - judged_ids)
