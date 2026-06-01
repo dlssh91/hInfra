@@ -1,3 +1,5 @@
+import pytest
+
 from judge_tool.profile import CLOUD, get_profile
 
 
@@ -21,3 +23,14 @@ def test_profile_columns():
 
 def test_get_profile():
     assert get_profile("cloud") is CLOUD
+
+
+def test_get_profile_unknown_raises():
+    with pytest.raises(KeyError):
+        get_profile("nope")
+
+
+def test_azure_columns():
+    az = CLOUD.variants["Azure"]
+    assert (az.eval_type_col, az.standard_col, az.method_col) == (12, 18, 14)
+    assert az.filename_markers == ("azure_report",)
