@@ -1,9 +1,11 @@
 import json
+from unittest import mock
 
 import pytest
 
 from judge_tool.judge import (
-    build_evidence_text, parse_json_lenient, build_prompt, SYSTEM_PROMPT)
+    build_evidence_text, parse_json_lenient, build_prompt, SYSTEM_PROMPT,
+    judge_item, reconcile, OllamaClient)
 from judge_tool.models import Criterion, EvidenceItem, ResourceEvidence
 
 
@@ -71,9 +73,6 @@ def test_parse_json_lenient_raises_on_non_json():
         parse_json_lenient("그냥 텍스트")
 
 
-from judge_tool.judge import judge_item, reconcile
-
-
 class FakeClient:
     """OllamaClient 대역. 고정 JSON 응답."""
     def __init__(self, payload):
@@ -131,3 +130,74 @@ def test_reconcile_review_status_is_na():
            "rationale": "x", "cited_evidence": []}
     j = reconcile(llm, _crit(), _item("review"))  # script가 review → 비교 N/A
     assert j.agreement == "N/A"
+
+
+# I-4 신규 테스트 -------------------------------------------------------------
+
+def test_judge_item_non_json_falls_back_after_retries():
+    # 비-JSON 고정응답 → 매 시도 파싱 실패 → 판단보류 폴백, retries+1회 호출
+    client = FakeClient("이건 JSON이 아니다")
+    out = judge_item(_crit(), _item("bad"), client)  # retries 기본=2
+    assert out["verdict"] == "판단보류"
+    assert out["confidence"] == 0.0
+    assert len(client.calls) == 3  # retries(2) + 1
+
+
+def test_judge_item_invalid_verdict_falls_back_after_retries():
+    # 파싱은 되지만 verdict가 유효하지 않음 → 재시도 후 판단보류 폴백
+    client = FakeClient('{"verdict":"maybe","confidence":0.9}')
+    out = judge_item(_crit(), _item("bad"), client)
+    assert out["verdict"] == "판단보류"
+    assert len(client.calls) == 3
+
+
+def test_reconcile_low_confidence_alone_triggers_review():
+    # 일치 + 비혼합 + verdict≠판단보류 인데 confidence<0.6 → needs_review True
+    llm = {"verdict": "양호", "confidence": 0.5,
+           "rationale": "x", "cited_evidence": []}
+    j = reconcile(llm, _crit(), _item("good"))  # script=양호, llm=양호 → 일치
+    assert j.agreement == "일치"
+    assert j.needs_review is True
+
+
+def test_reconcile_pending_verdict_alone_triggers_review():
+    # verdict=="판단보류" 단독 트리거
+    llm = {"verdict": "판단보류", "confidence": 0.9,
+           "rationale": "x", "cited_evidence": []}
+    j = reconcile(llm, _crit(), _item("review"))  # script review → agreement N/A
+    assert j.agreement == "N/A"
+    assert j.needs_review is True
+
+
+def test_reconcile_non_numeric_confidence_no_error():
+    # I-1 회귀: confidence가 비숫자여도 ValueError 없이 0.0으로 처리
+    llm = {"verdict": "취약", "confidence": "high",
+           "rationale": "x", "cited_evidence": []}
+    j = reconcile(llm, _crit(), _item("bad"))
+    assert j.confidence == 0.0
+
+
+def test_ollama_client_chat_payload():
+    fake_resp = mock.Mock()
+    fake_resp.json.return_value = {"message": {"content": '{"verdict":"양호"}'}}
+    with mock.patch("judge_tool.judge.requests.post",
+                    return_value=fake_resp) as post:
+        client = OllamaClient(url="http://x:11434", model="m", temperature=0.0)
+        content = client.chat("sys", "usr")
+
+    assert content == '{"verdict":"양호"}'
+    fake_resp.raise_for_status.assert_called_once()
+    post.assert_called_once()
+    _, kwargs = post.call_args
+    # url 위치 인자 확인
+    url_arg = post.call_args.args[0]
+    assert url_arg.endswith("/api/chat")
+    payload = kwargs["json"]
+    assert payload["model"] == "m"
+    assert payload["stream"] is False
+    assert payload["format"] == "json"
+    assert payload["options"]["temperature"] == 0.0
+    roles = [m["role"] for m in payload["messages"]]
+    assert roles == ["system", "user"]
+    assert payload["messages"][0]["content"] == "sys"
+    assert payload["messages"][1]["content"] == "usr"

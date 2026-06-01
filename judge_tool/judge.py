@@ -109,6 +109,14 @@ def parse_json_lenient(text: str) -> Dict:
     return json.loads(t2)
 
 
+def _to_float(v, default: float = 0.0) -> float:
+    """안전 float 캐스팅. 변환 불가 시 default 반환."""
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
 _VALID_VERDICTS = {"양호", "취약", "판단보류"}
 # 스크립트 status → 기대 verdict (비교 가능한 것만)
 _STATUS_TO_VERDICT = {"good": "양호", "bad": "취약"}
@@ -145,7 +153,11 @@ class OllamaClient:
 
 def judge_item(criterion: Criterion, item: EvidenceItem, client,
                max_chars: int = 8000, retries: int = 2) -> Dict:
-    """LLM 호출 후 검증된 판정 dict 반환. JSON 실패 시 재시도."""
+    """LLM 호출 후 검증된 판정 dict 반환. JSON 실패 시 재시도.
+
+    JSON 파싱 실패만 재시도하며, 네트워크/HTTP 예외(requests 예외) 및
+    응답 구조 오류는 호출부(Task 9) 책임으로 전파한다.
+    """
     prompt = build_prompt(criterion, item, max_chars)
     last_err = None
     for _ in range(retries + 1):
@@ -159,6 +171,7 @@ def judge_item(criterion: Criterion, item: EvidenceItem, client,
             data.setdefault("confidence", 0.0)
             data.setdefault("rationale", "")
             data.setdefault("cited_evidence", [])
+            data["confidence"] = _to_float(data.get("confidence", 0.0))
             return data
         last_err = ValueError(f"잘못된 verdict: {data.get('verdict')}")
     # 모든 시도 실패 → 판단보류로 안전 처리
@@ -169,8 +182,8 @@ def judge_item(criterion: Criterion, item: EvidenceItem, client,
 def reconcile(llm: Dict, criterion: Criterion, item: EvidenceItem) -> Judgment:
     script_status = item.overall_status
     expected = _STATUS_TO_VERDICT.get(script_status)
-    verdict = llm["verdict"]
-    confidence = float(llm.get("confidence", 0.0))
+    verdict = llm.get("verdict", "판단보류")
+    confidence = _to_float(llm.get("confidence", 0.0))
 
     if expected is None:
         agreement = "N/A"
