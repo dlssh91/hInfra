@@ -6,11 +6,21 @@ from judge_tool.models import ResourceEvidence
 
 # 유효한 엔티티(&amp; &lt; &#39; 등)가 아닌 단독 '&'를 escape
 _BARE_AMP = re.compile(r"&(?!(amp|lt|gt|quot|apos|#\d+|#x[0-9A-Fa-f]+);)")
+# CDATA 구간 (내부 '&'는 이미 유효한 리터럴이므로 건드리지 않음)
+_CDATA = re.compile(r"<!\[CDATA\[.*?\]\]>", re.DOTALL)
 
 
 def sanitize(raw: str) -> str:
-    """스크립트가 이스케이프하지 않은 '&'로 인해 well-formed가 아닌 XML을 보정."""
-    return _BARE_AMP.sub("&amp;", raw)
+    """스크립트가 이스케이프하지 않은 '&'로 인해 well-formed가 아닌 XML을 보정.
+    단, CDATA 내부의 '&'는 이미 유효하므로 그대로 둔다."""
+    parts = []
+    last = 0
+    for m in _CDATA.finditer(raw):
+        parts.append(_BARE_AMP.sub("&amp;", raw[last:m.start()]))
+        parts.append(m.group(0))            # CDATA 구간은 원본 유지
+        last = m.end()
+    parts.append(_BARE_AMP.sub("&amp;", raw[last:]))
+    return "".join(parts)
 
 
 def _text(el, tag) -> str:

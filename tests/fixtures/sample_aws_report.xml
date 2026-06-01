@@ -6,7 +6,7 @@
       <CheckID>pism_001</CheckID>
       <CheckName>통신구간 암호화</CheckName>
       <Results>
-        <Item status="bad"><ResourceID>bucket-A</ResourceID><Detail>버킷 정책 미존재</Detail><Evidence><![CDATA[no policy]]></Evidence></Item>
+        <Item status="bad"><ResourceID>bucket-A</ResourceID><Detail>버킷 정책 미존재</Detail><Evidence><![CDATA[no policy; raw A & B]]></Evidence></Item>
         <Item status="good"><ResourceID>bucket-B</ResourceID><Detail>HTTPS 강제</Detail><Evidence><![CDATA[Deny SecureTransport false]]></Evidence></Item>
       </Results>
     </CheckResult>
