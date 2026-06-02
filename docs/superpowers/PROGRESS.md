@@ -12,8 +12,8 @@
 
 ## Git 상태
 - 브랜치: `main` (feature/cloud-aws-llm-judgment에서 이름변경)
-- 마지막 커밋: `3c2bf5e` (2차 전체 리뷰 보강 — 정확성/보안/확장성 미듐+ 이슈 수정)
-- 테스트: `python3 -m pytest -q` → **75 passed** (openpyxl UserWarning 5건은 무해)
+- 마지막 커밋: `ef2728f` (연기항목 2·3 — 손상XML 견고성/ReportError, criteria_version 파일명추출)
+- 테스트: `python3 -m pytest -q` → **84 passed** (openpyxl UserWarning 5건은 무해)
 - **Task 0~9 전부 완료·리뷰·2차 전체코드리뷰(정확성/보안/설계) ✅.** 남은 것: Task 10(실제 Ollama 스모크, 수동·선택).
 - 2차 리뷰 보강(커밋 f5155ed/fc8eb4d/3c2bf5e): non-dict JSON 가드, status 분류 일원화(GOOD_STATUSES 단일출처), **error/증거없음→판단보류 강제**(spec 6.7), needs_review에 `expected is None` 추가(info-only 등 미대조 항목 보수적 검토), 예외 본문 비직렬화(evidence 유출 차단), 파서 레지스트리 `parsers/__init__.py`로 이전, `--out-dir`이 입력 데이터 디렉터리면 거부, criteria 컬럼매핑 합성 테스트.
 - 패키지(openpyxl/requests/pytest)는 시스템에 이미 설치됨. **PEP668로 pip install 차단됨 → venv 불필요, 그대로 시스템 python3 사용.**
@@ -40,11 +40,14 @@
    - ⚠️ `--out-dir`을 results/·ref/(입력 데이터 디렉터리)로 주면 **도구가 거부**(안전가드). `out/`도 gitignore됨.
 2. 다음 작업은 **Phase-2**(서버/DB/네트워크 등 분야 확장) 또는 아래 연기항목 처리.
 
-## ⏭️ Phase-2 연기 항목 (2차 리뷰에서 식별, 현 단계 입력 없어 미구현)
-- **증거가드 원시증거(raw) 모드**: 현 `build_evidence_text`는 status 사전분류(good/info) 전제. DB/서버 등 status 없는 원시증거 분야 추가 시, spec 6.3의 "행 상한+일부표시" 모드가 필요 → `profile.evidence_mode`("preclassified"|"raw") 등으로 분기 추가 필요. judge.py 재수정 지점.
-- **Azure XML 파서 견고성**: 실 `results/Public Cloud/azure_report_20251121.xml`이 894행 태그 불일치로 ParseError. Azure variant 지원 시 파서/정제 보강 또는 명확한 에러 안내 필요. (현 1단계는 AWS만이라 무관.)
-- **criteria_version 하드코딩**(main.py: "제2026-1호"): 기준 개정 시 수동 동기화 위험. CLI 인자화 또는 파일명 추출 검토(Minor).
-- **normalize_id가 전 분야 공통 정규식**: 분할 구분자 다른 분야 나오면 프로파일별 오버라이드 필요(Minor).
+## ⏭️ Phase-2 연기 항목
+### ✅ 처리 완료 (2026-06-02)
+- **[②] 손상 XML 견고성**: `cloud_xml.parse`가 ParseError를 `ReportError`(judge_tool/errors.py, ValueError 하위)로 변환해 파일경로+line/col 명확 안내(evidence 미유출). `main()`은 `except (ReportError, OSError)`로 입력오류만 깔끔히 안내·종료하고 우발적 버그(ValueError)는 트레이스백 전파. 실 azure 파일(894행 미닫힘 `<Evidence>`)이 이제 명확한 메시지로 처리됨. 단 **Azure 실파일은 소스 XML 자체가 손상**(스캐너 빈 Evidence 버그)이라 파싱하려면 별도 데이터 수정 필요 — 도구 책임 아님.
+- **[③] criteria_version 하드코딩 제거**: `_extract_criteria_version`이 criteria 파일명에서 `제\d{4}-\d+호` 추출, 실패 시 "제2026-1호" 폴백.
+
+### ⬜ 미구현 (실 Phase-2 데이터 생길 때까지 정직하게 연기)
+- **[①] 증거가드 원시증거(raw) 모드**: `build_evidence_text`는 status 사전분류(good/info) 전제. DB/서버 등 status 없는 원시증거용 "행 상한+일부표시" 모드(`profile.evidence_mode` 등) 필요. **`results/DB/`는 .DS_Store뿐 — 실제 DB 보고서 샘플·포맷 전무**하여 지금 구현하면 추측 코드. 실 데이터 확보 후 brainstorming→plan부터.
+- **[④] normalize_id 분야별 오버라이드**: 분할 구분자/ID 체계 다른 분야가 아직 없음. 투기적 → 해당 분야 등장 시.
 
 ## ▶ 개발 재개 루틴 (트리거: 사용자가 "개발해줘" 라고 하면)
 
