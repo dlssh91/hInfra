@@ -86,27 +86,26 @@ def build_evidence_text_raw(item: EvidenceItem, max_chars: int = 24000) -> str:
 def _group_summary(resources) -> str:
     """행들이 'GRANTEE' 같은 그룹키 + 값(PRIVILEGE_TYPE)을 가지면 그룹별
     값 집합 요약을 만든다. 해당 구조가 아니면 빈 문자열."""
-    import json as _json
     groups = {}
-    ok = 0
     for r in resources:
         try:
-            d = _json.loads(r.evidence)
+            d = json.loads(r.evidence)
         except Exception:  # noqa: BLE001
             return ""
         if not isinstance(d, dict) or "GRANTEE" not in d:
             return ""
-        key = d.get("GRANTEE", "")
-        val = d.get("PRIVILEGE_TYPE", "")
-        groups.setdefault(key, set()).add(val)
-        ok += 1
-    if ok == 0:
+        groups.setdefault(d.get("GRANTEE", ""), set()).add(
+            d.get("PRIVILEGE_TYPE", ""))
+    if not groups:
         return ""
     parts = ["[요약] 계정별 권한집합:"]
     for k, vs in groups.items():
         vlist = sorted(v for v in vs if v)
-        parts.append(f"  {k}: [{len(vlist)}] " + ", ".join(vlist[:12])
-                     + (f" ...(+{len(vlist) - 12})" if len(vlist) > 12 else ""))
+        shown = ", ".join(vlist[:12])
+        if len(vlist) > 12:
+            shown += f" ...(+{len(vlist) - 12})"
+        line = f"  {k}: [{len(vlist)}]"
+        parts.append(f"{line} {shown}" if shown else line)
     return "\n".join(parts)
 
 
