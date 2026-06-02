@@ -1,16 +1,17 @@
 import os
 import re
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import Dict, FrozenSet, Optional, Tuple
 
 
 @dataclass(frozen=True)
 class VariantSpec:
     name: str
-    eval_type_col: int
     standard_col: int
     method_col: int
     filename_markers: Tuple[str, ...]
+    eval_type_col: Optional[int] = None      # cloud: 적용여부 판정용. DB: 없음.
+    applicability_col: Optional[int] = None  # DB: 평가대상 'o' 컬럼. cloud: 없음.
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,10 @@ class Profile:
     risk_col: int
     variants: Dict[str, VariantSpec]
     parser: str
+    evidence_mode: str = "preclassified"           # "preclassified"|"raw"
+    status_available: bool = True                  # False면 LLM 단독(교차비교 없음)
+    flag_vulnerable_for_review: bool = False        # True면 verdict=취약도 needs_review
+    empty_means_good: FrozenSet[str] = frozenset()  # 빈 RESULT=양호신호인 base id
 
     def normalize_id(self, raw: str) -> str:
         """'pism_037_1' -> 'PISM-037'. 접두어+첫 숫자만 사용, 하위 인덱스 제거."""
@@ -57,7 +62,36 @@ CLOUD = Profile(
     },
 )
 
-_PROFILES = {CLOUD.key: CLOUD}
+# DB(MySQL) — 원시증거. 평가대상 'o' 컬럼으로 적용여부 판정(eval_type 컬럼 없음).
+# 컬럼(열 인덱스): 적용 rds=17/aurora=18/azure=19, 판단기준 37/39/41, 판단방법 38/40/42.
+DB_MYSQL = Profile(
+    key="db_mysql",
+    sheet_name="데이터베이스",
+    header_row=4,
+    data_start_row=5,
+    id_col=2,
+    name_col=7,
+    risk_col=8,
+    parser="db_json",
+    evidence_mode="raw",
+    status_available=False,
+    flag_vulnerable_for_review=True,
+    # 위반필터형 쿼리(빈 결과=위반 0건=양호 신호). 스크립트 분석 기준.
+    empty_means_good=frozenset({"DBM-005", "DBM-017", "DBM-019", "DBM-028"}),
+    variants={
+        "mysql_rds": VariantSpec(
+            "mysql_rds", standard_col=37, method_col=38,
+            applicability_col=17, filename_markers=("mysql_result_rds",)),
+        "mysql_aurora": VariantSpec(
+            "mysql_aurora", standard_col=39, method_col=40,
+            applicability_col=18, filename_markers=("mysql_result_aurora",)),
+        "mysql_azure": VariantSpec(
+            "mysql_azure", standard_col=41, method_col=42,
+            applicability_col=19, filename_markers=("mysql_result_azure",)),
+    },
+)
+
+_PROFILES = {CLOUD.key: CLOUD, DB_MYSQL.key: DB_MYSQL}
 
 
 def get_profile(key: str) -> Profile:
