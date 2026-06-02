@@ -12,9 +12,26 @@
 
 ## Git 상태
 - 브랜치: `main` (feature/cloud-aws-llm-judgment에서 이름변경)
-- 마지막 커밋: `ef2728f` (연기항목 2·3 — 손상XML 견고성/ReportError, criteria_version 파일명추출)
-- 테스트: `python3 -m pytest -q` → **84 passed** (openpyxl UserWarning 5건은 무해)
-- **Task 0~9 전부 완료·리뷰·2차 전체코드리뷰(정확성/보안/설계) ✅.** 남은 것: Task 10(실제 Ollama 스모크, 수동·선택).
+- 마지막 커밋: DB Phase-2(MySQL) T1~T8 완료 — 각 태스크 구현→리뷰(미듐+ 수정 반복)→simplify.
+- 테스트: `python3 -m pytest -q` → **125 passed** (openpyxl UserWarning 5건은 무해)
+- **1단계(클라우드 AWS) Task 0~10 전부 완료.** Phase-2 DB(MySQL) T1~T8 완료(아래 별도 표). 남은 것: DB T10(실제 Ollama 스모크, 수동·선택).
+
+## Phase-2 DB(MySQL) 진행 (plan: docs/superpowers/plans/2026-06-02-db-mysql-raw-judgment.md)
+| T | 내용 | 상태 |
+|---|---|---|
+| 1~3 | models.applicable/context, profile.DB_MYSQL, criteria_loader applicable | ✅ (결합, cloud 동치 회귀) |
+| 4 | db_json 마스킹(해시/평문 휴리스틱, 방어심화) | ✅ |
+| 5 | db_json 파서 본체(경계분할·살균·NOTE/빈/중복키) | ✅ (보안누출·무음손실·NOTE phantom 3차 수정, 실데이터 손실0/누출0) |
+| 6 | mapper context(2/3-tuple) | ✅ |
+| 7 | judge raw 증거가드 + reconcile 확장(status_available 등) | ✅ |
+| 8 | main.run DB 연결 + NOTE→판단보류 | ✅ (실데이터 E2E: coverage 16/17, DBM-025 missing — spec §10 일치) |
+| 9 | 거버넌스+회귀 | ✅ |
+| 10 | 실제 Ollama 스모크(수동·선택) | ⬜ |
+
+### ⚠️ DB 산출물 거버넌스 (민감정보)
+- DB 결과(.txt)엔 **비밀번호 해시·평문**이 포함됨. db_json 파서가 **마스킹**(값 제거+길이/plugin 노출)하나, `out/` 산출물(JSON/Excel)엔 여전히 **계정명/호스트/내부IP 등 식별정보**가 남는다.
+- `out/`은 gitignore됨. **해시/평문 원문은 마스킹되어 산출물에 미포함**(실데이터 3파일 누출 0건 회귀 테스트로 고정).
+- 산출물 보관/삭제 책임은 평가자에게 있으며 **민감 디렉터리(results/ 등)에 출력 금지**(도구가 `--out-dir`=입력 디렉터리면 거부).
 - 2차 리뷰 보강(커밋 f5155ed/fc8eb4d/3c2bf5e): non-dict JSON 가드, status 분류 일원화(GOOD_STATUSES 단일출처), **error/증거없음→판단보류 강제**(spec 6.7), needs_review에 `expected is None` 추가(info-only 등 미대조 항목 보수적 검토), 예외 본문 비직렬화(evidence 유출 차단), 파서 레지스트리 `parsers/__init__.py`로 이전, `--out-dir`이 입력 데이터 디렉터리면 거부, criteria 컬럼매핑 합성 테스트.
 - 패키지(openpyxl/requests/pytest)는 시스템에 이미 설치됨. **PEP668로 pip install 차단됨 → venv 불필요, 그대로 시스템 python3 사용.**
 
