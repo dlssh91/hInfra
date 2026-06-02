@@ -6,4 +6,5 @@ result_*.xlsx
 .DS_Store
 **/.DS_Store
 results/
+out/
 scripts/*.zip

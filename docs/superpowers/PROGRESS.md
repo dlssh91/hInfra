@@ -31,12 +31,14 @@
 | 7 | judge.py 2부 (OllamaClient/judge_item/reconcile) | ✅ 완료·리뷰 (스펙✅+품질✅, confidence안전캐스팅 등 `64f77e1`) |
 | 8 | writer.py (JSON/Excel/커버리지) | ✅ 완료·리뷰 (스펙✅+품질✅, None방어/auto-mkdir `08faf49`) |
 | 9 | main.py (CLI run() + 골든 E2E, LLM 모킹) | ✅ 완료·리뷰 (스펙✅+품질✅, 부분실패격리/CLI·결정성테스트 `07952cd`) |
-| 10 | 실제 Ollama 스모크(수동, 선택) | ⬜ 미착수 (사용자 수동 실행) |
+| 10 | 실제 Ollama 스모크(수동, 선택) | ✅ 완료 (qwen3-coder:30b, 2026-06-02) |
 
 ## 다음에 할 일 (정확한 재개 지점)
-1. **1단계(클라우드 AWS) 구현+2차 전체리뷰까지 완료.** Task 10(실제 Ollama 스모크)만 수동·선택으로 남음.
-   - 실행 예: `python3 -m judge_tool.main --report "results/Public Cloud/aws_report_20251223_hinno.xml" --criteria "ref/...xlsx" --out-dir <별도경로>`
-   - ⚠️ `--out-dir`을 results/·ref/(입력 데이터 디렉터리)로 주면 이제 **도구가 거부**한다(안전가드). 출력은 별도 경로로.
+1. **1단계(클라우드 AWS) 완전 종료** — 구현+2차 전체리뷰+Task 10 실제 Ollama 스모크까지 완료.
+   - Task 10 결과(2026-06-02, `qwen3-coder:30b`): 판정 18/22(미판정 4건은 보고서에 증거 없는 항목 PISM-041/045/060/064), verdict 취약13·양호3·판단보류2, 일치14·N/A3·불일치1(PISM-043), 재검토 7건. 근거가 실제 증거(S3/보안그룹/RDS) 인용해 구체적. 출력은 `out/`(gitignore, 민감데이터).
+   - 실행 예: `python3 -m judge_tool.main --report "results/Public Cloud/aws_report_20251223_hinno.xml" --criteria "ref/...xlsx" --out-dir out --model "qwen3-coder:30b"`
+   - ⚠️ `--out-dir`을 results/·ref/(입력 데이터 디렉터리)로 주면 **도구가 거부**(안전가드). `out/`도 gitignore됨.
+2. 다음 작업은 **Phase-2**(서버/DB/네트워크 등 분야 확장) 또는 아래 연기항목 처리.
 
 ## ⏭️ Phase-2 연기 항목 (2차 리뷰에서 식별, 현 단계 입력 없어 미구현)
 - **증거가드 원시증거(raw) 모드**: 현 `build_evidence_text`는 status 사전분류(good/info) 전제. DB/서버 등 status 없는 원시증거 분야 추가 시, spec 6.3의 "행 상한+일부표시" 모드가 필요 → `profile.evidence_mode`("preclassified"|"raw") 등으로 분기 추가 필요. judge.py 재수정 지점.
