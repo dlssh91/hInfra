@@ -41,4 +41,5 @@ def test_cloud_profile_defaults_unchanged():
 def test_empty_means_good_set():
     assert "DBM-017" in DB_MYSQL.empty_means_good
     assert "DBM-028" in DB_MYSQL.empty_means_good
+    assert "DBM-024" in DB_MYSQL.empty_means_good  # IS_GRANTABLE='YES' 필터
     assert "DBM-004" not in DB_MYSQL.empty_means_good

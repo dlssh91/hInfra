@@ -77,7 +77,10 @@ DB_MYSQL = Profile(
     status_available=False,
     flag_vulnerable_for_review=True,
     # 위반필터형 쿼리(빈 결과=위반 0건=양호 신호). 스크립트 분석 기준.
-    empty_means_good=frozenset({"DBM-005", "DBM-017", "DBM-019", "DBM-028"}),
+    # DBM-024는 모든 하위쿼리가 WHERE IS_GRANTABLE='YES' 필터라 빈 결과=GRANT
+    # OPTION 없음=양호 (스모크에서 확인, 초기 분류가 IS_GRANTABLE 패턴 누락).
+    empty_means_good=frozenset(
+        {"DBM-005", "DBM-017", "DBM-019", "DBM-024", "DBM-028"}),
     variants={
         "mysql_rds": VariantSpec(
             "mysql_rds", standard_col=37, method_col=38,
