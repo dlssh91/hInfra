@@ -11,10 +11,11 @@
 - 실행 방식: **superpowers:subagent-driven-development** (태스크마다 새 구현 서브에이전트 → 스펙 리뷰 → 코드품질 리뷰 → 다음)
 
 ## Git 상태
-- 브랜치: `feature/cloud-aws-llm-judgment`
-- 마지막 커밋: `978a5b6` (전체 최종 리뷰 보강 — criteria id 정규화/빈기준 스킵/is_judgeable 추출)
-- 테스트: `python3 -m pytest -q` → **58 passed** (openpyxl UserWarning 5건은 무해)
-- **Task 0~9 전부 완료·리뷰·최종통합리뷰 ✅ Ready.** 남은 것: Task 10(실제 Ollama 스모크, 수동·선택) + 브랜치 마무리.
+- 브랜치: `main` (feature/cloud-aws-llm-judgment에서 이름변경)
+- 마지막 커밋: `3c2bf5e` (2차 전체 리뷰 보강 — 정확성/보안/확장성 미듐+ 이슈 수정)
+- 테스트: `python3 -m pytest -q` → **75 passed** (openpyxl UserWarning 5건은 무해)
+- **Task 0~9 전부 완료·리뷰·2차 전체코드리뷰(정확성/보안/설계) ✅.** 남은 것: Task 10(실제 Ollama 스모크, 수동·선택).
+- 2차 리뷰 보강(커밋 f5155ed/fc8eb4d/3c2bf5e): non-dict JSON 가드, status 분류 일원화(GOOD_STATUSES 단일출처), **error/증거없음→판단보류 강제**(spec 6.7), needs_review에 `expected is None` 추가(info-only 등 미대조 항목 보수적 검토), 예외 본문 비직렬화(evidence 유출 차단), 파서 레지스트리 `parsers/__init__.py`로 이전, `--out-dir`이 입력 데이터 디렉터리면 거부, criteria 컬럼매핑 합성 테스트.
 - 패키지(openpyxl/requests/pytest)는 시스템에 이미 설치됨. **PEP668로 pip install 차단됨 → venv 불필요, 그대로 시스템 python3 사용.**
 
 ## 진행 현황 (10개 태스크 중)
@@ -33,9 +34,15 @@
 | 10 | 실제 Ollama 스모크(수동, 선택) | ⬜ 미착수 (사용자 수동 실행) |
 
 ## 다음에 할 일 (정확한 재개 지점)
-1. **Task 6~9 전부 완료·리뷰.** 전체 코드 최종 리뷰 진행 중 → 이후 `superpowers:finishing-a-development-branch`.
-2. Task 10(실제 Ollama 스모크)은 수동·선택 — 사용자가 직접 실행: `python3 -m judge_tool.main --report "results/Public Cloud/aws_report_20251223_hinno.xml" --criteria "ref/...xlsx" --out-dir results` (단 results/ 출력은 사용자 판단).
-3. 모든 태스크 후 전체 코드 최종 리뷰 → `superpowers:finishing-a-development-branch`.
+1. **1단계(클라우드 AWS) 구현+2차 전체리뷰까지 완료.** Task 10(실제 Ollama 스모크)만 수동·선택으로 남음.
+   - 실행 예: `python3 -m judge_tool.main --report "results/Public Cloud/aws_report_20251223_hinno.xml" --criteria "ref/...xlsx" --out-dir <별도경로>`
+   - ⚠️ `--out-dir`을 results/·ref/(입력 데이터 디렉터리)로 주면 이제 **도구가 거부**한다(안전가드). 출력은 별도 경로로.
+
+## ⏭️ Phase-2 연기 항목 (2차 리뷰에서 식별, 현 단계 입력 없어 미구현)
+- **증거가드 원시증거(raw) 모드**: 현 `build_evidence_text`는 status 사전분류(good/info) 전제. DB/서버 등 status 없는 원시증거 분야 추가 시, spec 6.3의 "행 상한+일부표시" 모드가 필요 → `profile.evidence_mode`("preclassified"|"raw") 등으로 분기 추가 필요. judge.py 재수정 지점.
+- **Azure XML 파서 견고성**: 실 `results/Public Cloud/azure_report_20251121.xml`이 894행 태그 불일치로 ParseError. Azure variant 지원 시 파서/정제 보강 또는 명확한 에러 안내 필요. (현 1단계는 AWS만이라 무관.)
+- **criteria_version 하드코딩**(main.py: "제2026-1호"): 기준 개정 시 수동 동기화 위험. CLI 인자화 또는 파일명 추출 검토(Minor).
+- **normalize_id가 전 분야 공통 정규식**: 분할 구분자 다른 분야 나오면 프로파일별 오버라이드 필요(Minor).
 
 ## ▶ 개발 재개 루틴 (트리거: 사용자가 "개발해줘" 라고 하면)
 
