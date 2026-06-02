@@ -36,7 +36,7 @@ def load_criteria(xlsx_path: str,
 
             for vname, vspec in profile.variants.items():
                 eval_type = (_cell(ws, row, vspec.eval_type_col)
-                             if vspec.eval_type_col else "")
+                             if vspec.eval_type_col is not None else "")
                 standard = _cell(ws, row, vspec.standard_col)
                 method = _cell(ws, row, vspec.method_col)
                 if vspec.applicability_col is not None:
