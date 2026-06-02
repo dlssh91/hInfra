@@ -4,6 +4,12 @@ from typing import List, Optional
 # overall_status 우선순위 (앞일수록 우선)
 _STATUS_PRIORITY = ["bad", "review", "error", "good", "info"]
 
+# status 분류 단일 출처(single source of truth).
+# good/info 만이 "양호측 보조 증거"로 취급된다. 그 외(미지 status 포함)는
+# 취약 후보(primary)로 보존되어야 하며 양호측으로 오인되면 안 된다.
+# judge.py 의 증거가드가 이 집합을 import 해 _GOOD 대신 사용한다.
+GOOD_STATUSES = {"good", "info"}
+
 
 @dataclass
 class Criterion:
@@ -55,6 +61,13 @@ class EvidenceItem:
         for s in _STATUS_PRIORITY:
             if s in statuses:
                 return s
+        # 우선순위에 없는 미지 status는 "info"(양호측)로 강등하지 않는다.
+        # 미지/검토필요 status가 양호로 오인되면 안 되므로, 그런 status가
+        # 존재하면 그대로(임의로 하나) 반환해 reconcile 이 양호/취약 매핑
+        # 불가로 인지하고 needs_review 처리하도록 한다.
+        if statuses:
+            return sorted(statuses)[0]
+        # 리소스가 전혀 없을 때만 "info".
         return "info"
 
 

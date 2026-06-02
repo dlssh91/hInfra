@@ -4,7 +4,8 @@ from typing import Dict
 
 import requests
 
-from judge_tool.models import Criterion, EvidenceItem, Judgment
+from judge_tool.models import (
+    Criterion, EvidenceItem, Judgment, GOOD_STATUSES)
 
 SYSTEM_PROMPT = (
     "당신은 전자금융기반시설 클라우드 보안 취약점 평가자다. "
@@ -18,7 +19,8 @@ SYSTEM_PROMPT = (
     '"cited_evidence": ["인용한 리소스ID 또는 핵심 증거 문자열", ...]}'
 )
 
-_GOOD = {"good", "info"}
+# status 분류는 models.GOOD_STATUSES 를 단일 출처로 사용한다.
+_GOOD = GOOD_STATUSES
 
 
 def build_evidence_text(item: EvidenceItem, max_chars: int = 8000) -> str:
@@ -167,15 +169,23 @@ def judge_item(criterion: Criterion, item: EvidenceItem, client,
         except json.JSONDecodeError as e:
             last_err = e
             continue
+        # 유효 JSON이지만 객체(dict)가 아닌 경우(예: ["양호"], 스칼라):
+        # data.get(...) 이 AttributeError 를 던지므로 가드 후 재시도.
+        if not isinstance(data, dict):
+            last_err = ValueError("JSON 객체 아님")
+            continue
         if data.get("verdict") in _VALID_VERDICTS:
             data["confidence"] = _to_float(data.get("confidence", 0.0))
             data.setdefault("rationale", "")
             data.setdefault("cited_evidence", [])
             return data
         last_err = ValueError(f"잘못된 verdict: {data.get('verdict')}")
-    # 모든 시도 실패 → 판단보류로 안전 처리
+    # 모든 시도 실패 → 판단보류로 안전 처리.
+    # 보안: 예외 본문에는 LLM 응답 원문(evidence 반향 가능)이 섞일 수 있으므로
+    # 예외 타입명/고정문구만 노출하고 raw 응답은 rationale 에 넣지 않는다.
+    err_name = type(last_err).__name__ if last_err is not None else "Unknown"
     return {"verdict": "판단보류", "confidence": 0.0,
-            "rationale": f"LLM 응답 파싱 실패: {last_err}", "cited_evidence": []}
+            "rationale": f"LLM 응답 파싱 실패({err_name})", "cited_evidence": []}
 
 
 def reconcile(llm: Dict, criterion: Criterion, item: EvidenceItem) -> Judgment:
@@ -183,17 +193,33 @@ def reconcile(llm: Dict, criterion: Criterion, item: EvidenceItem) -> Judgment:
     expected = _STATUS_TO_VERDICT.get(script_status)
     verdict = llm.get("verdict", "판단보류")
     confidence = _to_float(llm.get("confidence", 0.0))
+    rationale = llm.get("rationale", "")
 
     if expected is None:
         agreement = "N/A"
     else:
         agreement = "일치" if verdict == expected else "불일치"
 
+    # spec 6.7: script_status 가 "error" 이거나 증거가 전혀 없으면 신뢰할 수
+    # 없으므로 LLM verdict 와 무관하게 판단보류로 강제하고 검토 대상으로 표시.
+    # cited_evidence 는 보존한다.
+    no_evidence = not item.resources
+    if script_status == "error" or no_evidence:
+        if verdict != "판단보류":
+            verdict = "판단보류"
+            reason = ("증거 없음" if no_evidence
+                      else "스크립트 점검 오류(error)")
+            note = f"[자동 판단보류: {reason}]"
+            rationale = f"{rationale} {note}".strip() if rationale else note
+
     needs_review = (
         agreement == "불일치"
         or confidence < _LOW_CONFIDENCE
         or criterion.is_mixed
         or verdict == "판단보류"
+        # script_status 가 good/bad 로 매핑되지 않으면(미지/review/error 등)
+        # 양호/취약 자동 대조가 불가하므로 사람 검토가 필요하다.
+        or expected is None
     )
     return Judgment(
         item_id=criterion.item_id,
@@ -202,7 +228,7 @@ def reconcile(llm: Dict, criterion: Criterion, item: EvidenceItem) -> Judgment:
         risk=criterion.risk,
         verdict=verdict,
         confidence=confidence,
-        rationale=llm.get("rationale", ""),
+        rationale=rationale,
         cited_evidence=list(llm.get("cited_evidence", [])),
         scope="스크립트 부분만" if criterion.is_mixed else "스크립트 전체",
         management_review_needed=criterion.is_mixed,

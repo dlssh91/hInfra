@@ -177,6 +177,81 @@ def test_reconcile_non_numeric_confidence_no_error():
     assert j.confidence == 0.0
 
 
+# Pass: 정확성/스펙/보안 이슈 수정 테스트 ------------------------------------
+
+# A: non-dict 유효 JSON에서 judge_item 깨짐
+def test_judge_item_non_dict_json_falls_back():
+    # ["양호"]는 유효 JSON이지만 dict가 아님 → AttributeError 없이 판단보류 폴백
+    client = FakeClient('["양호"]')
+    out = judge_item(_crit(), _item("bad"), client)  # retries 기본=2
+    assert out["verdict"] == "판단보류"
+    assert out["confidence"] == 0.0
+    assert len(client.calls) == 3  # retries(2) + 1
+
+
+def test_judge_item_scalar_json_falls_back():
+    client = FakeClient('42')
+    out = judge_item(_crit(), _item("bad"), client)
+    assert out["verdict"] == "판단보류"
+    assert len(client.calls) == 3
+
+
+# D-judge: 폴백 rationale에 예외 본문(LLM 원문) 비직렬화
+def test_judge_item_fallback_rationale_redacts_exception_body():
+    # 비-JSON 응답이 rationale에 새지 않아야 한다
+    secret = "민감한증거AKIA_SECRET_KEY_XYZ"
+    client = FakeClient(secret + " 이건 JSON이 아니다")
+    out = judge_item(_crit(), _item("bad"), client)
+    assert out["verdict"] == "판단보류"
+    assert secret not in out["rationale"]
+    # 타입명/고정문구만 (JSONDecodeError 타입명은 허용)
+    assert "JSONDecodeError" in out["rationale"] or "파싱 실패" in out["rationale"]
+
+
+# B+C: error status → 판단보류 강제 + needs_review
+def test_reconcile_error_status_forces_pending():
+    llm = {"verdict": "양호", "confidence": 0.95,
+           "rationale": "정상으로 보임", "cited_evidence": ["e1"]}
+    j = reconcile(llm, _crit(), _item("error"))  # script overall=error
+    assert j.verdict == "판단보류"
+    assert j.needs_review is True
+    assert j.cited_evidence == ["e1"]  # cited_evidence 보존
+
+
+# B+C: 증거 없음(resources=[]) → 판단보류 강제 + needs_review
+def test_reconcile_no_evidence_forces_pending():
+    llm = {"verdict": "양호", "confidence": 0.95,
+           "rationale": "x", "cited_evidence": []}
+    item = EvidenceItem("PISM-001", "AWS", [])
+    j = reconcile(llm, _crit(), item)
+    assert j.verdict == "판단보류"
+    assert j.needs_review is True
+
+
+# B+C: 미지 status("manual")가 overall_status에서 info로 강등되지 않음
+def test_overall_status_unknown_not_downgraded_to_info():
+    item = _item("manual")
+    assert item.overall_status != "info"
+    assert item.overall_status == "manual"
+
+
+# B+C: 미지 status는 증거가드에서 primary로 보존 (good/info만 축약)
+def test_evidence_guard_unknown_status_is_primary():
+    item = _item("good", "good", "good", "manual")
+    text = build_evidence_text(item, max_chars=500)
+    assert "res-3" in text  # manual 리소스는 primary로 전량 보존
+    assert "축약" in text or "생략" in text
+
+
+# B+C: 미지/good·bad 아님 status → needs_review True
+def test_reconcile_unknown_status_triggers_review():
+    llm = {"verdict": "양호", "confidence": 0.95,
+           "rationale": "x", "cited_evidence": []}
+    j = reconcile(llm, _crit(), _item("manual"))
+    assert j.agreement == "N/A"
+    assert j.needs_review is True
+
+
 def test_ollama_client_chat_payload():
     fake_resp = mock.Mock()
     fake_resp.json.return_value = {"message": {"content": '{"verdict":"양호"}'}}
