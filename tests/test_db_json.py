@@ -20,3 +20,42 @@ def test_mask_row_plaintext_password_column():
     assert "PlainText123" not in m["RESULT"]
     assert "REDACTED" in m["RESULT"]
     assert m["TABLE_NAME"] == "users"   # 비민감 보존
+
+
+def test_mask_row_broadened_sensitive_keys():
+    row = {"pw": "p4ssw0rd", "credential": "topsecretval",
+           "auth_token": "abc.def.ghi", "api_key": "AKIAxyz123"}
+    m = db_json._mask_row(row)
+    assert "p4ssw0rd" not in m["pw"]
+    assert "REDACTED" in m["pw"]
+    assert "topsecretval" not in m["credential"]
+    assert "REDACTED" in m["credential"]
+    assert "abc.def.ghi" not in m["auth_token"]
+    assert "REDACTED" in m["auth_token"]
+    assert "AKIAxyz123" not in m["api_key"]
+    assert "REDACTED" in m["api_key"]
+
+
+def test_mask_row_no_overmask_regression():
+    # 비민감 키는 마스킹되지 않아야 한다(오마스킹 회귀 방지)
+    row = {"PRIMARY_KEY": "id_column", "VARIABLE_NAME": "max_connections",
+           "COLUMN_NAME": "username", "RESULT": "admin"}
+    m = db_json._mask_row(row)
+    assert m["PRIMARY_KEY"] == "id_column"
+    assert m["VARIABLE_NAME"] == "max_connections"
+    assert m["RESULT"] == "admin"   # COLUMN_NAME이 비민감이므로 평문 유지
+
+
+def test_mask_row_nested_dict():
+    row = {"meta": {"AUTHENTICATION_STRING": "$A$005$nestedhashvalue"}}
+    m = db_json._mask_row(row)
+    assert "nestedhashvalue" not in m["meta"]["AUTHENTICATION_STRING"]
+    assert "REDACTED" in m["meta"]["AUTHENTICATION_STRING"]
+
+
+def test_mask_row_nested_list():
+    row = {"rows": [{"password": "plainpw1"}, {"username": "alice"}]}
+    m = db_json._mask_row(row)
+    assert "plainpw1" not in m["rows"][0]["password"]
+    assert "REDACTED" in m["rows"][0]["password"]
+    assert m["rows"][1]["username"] == "alice"   # 비민감 보존

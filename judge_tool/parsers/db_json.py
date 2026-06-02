@@ -6,7 +6,9 @@ from judge_tool.errors import ReportError
 from judge_tool.models import ResourceEvidence
 
 # 민감 키(해시/비번류)
-_PASS_KEY = re.compile(r"(pass|pwd|pswd|auth\w*string|hash|secret)", re.I)
+_PASS_KEY = re.compile(
+    r"(pass|pwd|pswd|pword|\bpw\b|auth\w*string|hash|secret|credential|token|api[_-]?key)",
+    re.I)
 # MySQL 해시류 값 패턴: $A$..., *HEX, 긴 hex
 _HASH_VAL = re.compile(r"^\*?[0-9A-Fa-f]{16,}$|^\$[A-Za-z0-9]")
 # JSON 문자열을 깨뜨리는 raw 제어문자(탭/개행 제외)
@@ -29,7 +31,15 @@ def _mask_row(row: Dict) -> Dict:
     pass_col = bool(_PASS_KEY.search(col))
     out = {}
     for k, v in row.items():
-        if isinstance(v, str) and v:
+        if isinstance(v, dict):
+            out[k] = _mask_row(v)
+        elif isinstance(v, list):
+            out[k] = [_mask_row(x) if isinstance(x, dict)
+                      else (f"<REDACTED len={len(x)}>"
+                            if isinstance(x, str) and x and _HASH_VAL.match(x.strip())
+                            else x)
+                      for x in v]
+        elif isinstance(v, str) and v:
             if _PASS_KEY.search(k) or _HASH_VAL.match(v.strip()):
                 out[k] = _mask_value(k, v)
             elif pass_col and k.upper() == "RESULT":
