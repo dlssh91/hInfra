@@ -203,6 +203,50 @@ def test_run_variant_identification_failure(tmp_path):
             xlsx_out=os.path.join(str(tmp_path), "x.xlsx"), model_name="stub")
 
 
+def test_run_variant_identification_failure_is_report_error(tmp_path):
+    """variant 식별 실패는 전용 ReportError(ValueError 하위)로 raise."""
+    from judge_tool.errors import ReportError
+
+    bad_name = os.path.join(str(tmp_path), "unknown.xml")
+    with open(bad_name, "w", encoding="utf-8") as fh:
+        fh.write("<AuditReport/>")
+    criteria = os.path.join(str(tmp_path), "criteria.xlsx")
+    _write_synthetic_criteria(criteria)
+
+    with pytest.raises(ReportError):
+        run(report_path=bad_name, criteria_path=criteria, profile_key="cloud",
+            client=StubClient(), json_out=os.path.join(str(tmp_path), "j.json"),
+            xlsx_out=os.path.join(str(tmp_path), "x.xlsx"), model_name="stub")
+
+
+def test_main_propagates_unexpected_value_error(tmp_path, monkeypatch):
+    """run 내부 콜트리의 우발적(비-ReportError) ValueError 는 main()이 삼키지
+    않고 그대로 전파한다(SystemExit 로 가려지지 않아 디버깅 가능)."""
+    from judge_tool.errors import ReportError
+
+    rep_dir = tmp_path / "rep"
+    crit_dir = tmp_path / "crit"
+    out_dir = tmp_path / "out"
+    for d in (rep_dir, crit_dir, out_dir):
+        os.makedirs(str(d), exist_ok=True)
+    report = _copy_fixture_xml(rep_dir)
+    criteria = os.path.join(str(crit_dir), "criteria.xlsx")
+    _write_synthetic_criteria(criteria)
+
+    def _boom(*a, **k):
+        raise ValueError("boom")
+
+    monkeypatch.setattr(main_mod, "load_criteria", _boom)
+    monkeypatch.setattr(main_mod, "OllamaClient",
+                        lambda *a, **k: StubClient())
+
+    with pytest.raises(ValueError) as ei:
+        main(["--report", report, "--criteria", criteria,
+              "--out-dir", str(out_dir), "--model", "stub"])
+    # 전파된 예외가 ReportError 가 아니어야(우발적 버그) 한다.
+    assert not isinstance(ei.value, ReportError)
+
+
 def test_run_isolates_per_item_failure(tmp_path):
     """한 항목 judge 예외가 전체 run 을 중단시키지 않고, 실패 항목은
     판단보류+needs_review 로 격리된 채 출력이 생성된다(I-1)."""
@@ -437,7 +481,7 @@ def test_main_malformed_xml_exits_cleanly(tmp_path, monkeypatch, capsys):
               "--out-dir", str(out_dir), "--model", "stub"])
 
     err = capsys.readouterr().err
-    assert "파싱 실패" in err or "오류" in err
+    assert "파싱 실패" in err
 
 
 # --------------------------------------------------------------------------
@@ -456,6 +500,12 @@ def test_extract_criteria_version_fallback_when_no_pattern():
 
 def test_extract_criteria_version_other_version():
     assert _extract_criteria_version("기준(제2027-3호).xlsx") == "제2027-3호"
+
+
+def test_extract_criteria_version_multi_match_takes_first():
+    """다중 매칭 시 첫 매칭을 채택한다(현 동작 고정)."""
+    p = "기준(제2026-1호)_(제2027-2호).xlsx"
+    assert _extract_criteria_version(p) == "제2026-1호"
 
 
 def test_run_empty_input(tmp_path):

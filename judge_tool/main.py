@@ -9,6 +9,7 @@ from typing import Dict, Optional
 
 from judge_tool import __version__
 from judge_tool.criteria_loader import load_criteria
+from judge_tool.errors import ReportError
 from judge_tool.judge import OllamaClient, judge_item, reconcile
 from judge_tool.mapper import aggregate
 from judge_tool.models import Judgment
@@ -94,7 +95,7 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
     profile = get_profile(profile_key)
     variant = profile.variant_from_filename(report_path)
     if variant is None:
-        raise ValueError(f"파일명에서 variant를 식별할 수 없음: {report_path}")
+        raise ReportError(f"파일명에서 variant를 식별할 수 없음: {report_path}")
 
     criteria = load_criteria(criteria_path, profile)
     parser = get_parser(profile.parser)
@@ -148,9 +149,12 @@ def main(argv=None):
     try:
         cov = run(args.report, args.criteria, args.profile, client,
                   json_out, xlsx_out, args.model)
-    except (ValueError, FileNotFoundError, OSError) as e:
-        # 사용자 입력 오류(손상 XML/파일 부재 등): raw 트레이스백 대신
-        # stderr에 한 줄 명확한 안내 후 비정상 종료.
+    except (ReportError, OSError) as e:
+        # 사용자 입력 오류(손상 XML/파일 부재 등)만 깔끔히 안내한다.
+        # ReportError 는 의도된 입력/보고서 문제, OSError(FileNotFoundError
+        # 포함)는 파일 부재/권한 등 파일시스템 오류. 그 외 우발적 ValueError
+        # 등 프로그래밍 버그는 잡지 않고 트레이스백으로 노출시켜 디버깅 가능.
+        # raw 트레이스백 대신 stderr에 한 줄 명확한 안내 후 비정상 종료.
         print(f"오류: {e}", file=sys.stderr)
         raise SystemExit(2) from e
     print(f"판정 {cov['judged']}/{cov['expected']} 완료. "

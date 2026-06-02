@@ -2,6 +2,7 @@ import re
 import xml.etree.ElementTree as ET
 from typing import List, Tuple
 
+from judge_tool.errors import ReportError
 from judge_tool.models import ResourceEvidence
 
 # 유효한 엔티티(&amp; &lt; &#39; 등)가 아닌 단독 '&'를 escape
@@ -36,7 +37,7 @@ def parse(xml_path: str) -> List[Tuple[str, List[ResourceEvidence]]]:
         root = ET.fromstring(sanitize(raw))
     except ET.ParseError as e:
         # XML 본문/민감 evidence는 메시지에 싣지 않는다(경로·파서 위치 요약만).
-        raise ValueError(
+        raise ReportError(
             f"XML 파싱 실패: {xml_path} ({e}). "
             "보고서가 손상되었을 수 있습니다(예: 닫히지 않은 태그)."
         ) from e

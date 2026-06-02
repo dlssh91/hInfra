@@ -61,6 +61,15 @@ def test_parse_malformed_xml_raises_clear_value_error():
     assert "synthetic evidence text" not in msg
 
 
+def test_parse_malformed_xml_raises_report_error():
+    """손상 XML → 전용 ReportError(단, ValueError 하위라 기존 호환 유지)."""
+    from judge_tool.errors import ReportError
+
+    with pytest.raises(ReportError) as ei:
+        parse(MALFORMED_FIXTURE)
+    assert isinstance(ei.value, ValueError)
+
+
 def test_parse_real_report_if_present(aws_report_path):
     if not os.path.exists(aws_report_path):
         pytest.skip("실제 점검 결과 파일 없음 (평가자 환경에서만 존재)")
