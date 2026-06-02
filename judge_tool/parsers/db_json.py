@@ -15,10 +15,18 @@ _HASH_VAL = re.compile(r"^\*?[0-9A-Fa-f]{16,}$|^\$[A-Za-z0-9]")
 _CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
-def _mask_value(key: str, val: str) -> str:
-    if _PASS_KEY.search(key) or _HASH_VAL.match(val.strip()):
-        return f"<REDACTED len={len(val)}>"
-    return val
+def _is_sensitive(key: str, val: str) -> bool:
+    """키가 비번/해시류이거나 값이 해시패턴이면 민감(마스킹 대상)."""
+    return bool(_PASS_KEY.search(key) or _HASH_VAL.match(val.strip()))
+
+
+def _value_in_list(x):
+    """리스트 원소 마스킹: 중첩 dict는 재귀, 해시패턴 문자열만 길이 노출 마스킹."""
+    if isinstance(x, dict):
+        return _mask_row(x)
+    if isinstance(x, str) and x and _HASH_VAL.match(x.strip()):
+        return f"<REDACTED len={len(x)}>"
+    return x
 
 
 def _mask_row(row: Dict) -> Dict:
@@ -34,18 +42,11 @@ def _mask_row(row: Dict) -> Dict:
         if isinstance(v, dict):
             out[k] = _mask_row(v)
         elif isinstance(v, list):
-            out[k] = [_mask_row(x) if isinstance(x, dict)
-                      else (f"<REDACTED len={len(x)}>"
-                            if isinstance(x, str) and x and _HASH_VAL.match(x.strip())
-                            else x)
-                      for x in v]
-        elif isinstance(v, str) and v:
-            if _PASS_KEY.search(k) or _HASH_VAL.match(v.strip()):
-                out[k] = _mask_value(k, v)
-            elif pass_col and k.upper() == "RESULT":
-                out[k] = f"<REDACTED 평문추정 len={len(v)}>"
-            else:
-                out[k] = v
+            out[k] = [_value_in_list(x) for x in v]
+        elif isinstance(v, str) and v and _is_sensitive(k, v):
+            out[k] = f"<REDACTED len={len(v)}>"
+        elif isinstance(v, str) and v and pass_col and k.upper() == "RESULT":
+            out[k] = f"<REDACTED 평문추정 len={len(v)}>"
         else:
             out[k] = v
     return out
