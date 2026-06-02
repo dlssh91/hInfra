@@ -47,7 +47,14 @@ def _judge_one(crit, item, item_id: str, variant: str, client,
     - judge 실패 → 판단보류 폴백으로 reconcile (격리, 결과 포함)
     - 폴백 reconcile 마저 실패 → 해당 항목만 스킵(None 반환)
     """
-    empty_ok = item_id in profile.empty_means_good
+    # reconcile은 항상 동일한 프로파일 인자로 호출되므로 지역 헬퍼로 묶는다.
+    def _reconcile(llm: Dict) -> Judgment:
+        return reconcile(
+            llm, crit, item,
+            status_available=profile.status_available,
+            flag_vulnerable_for_review=profile.flag_vulnerable_for_review,
+            empty_means_good=item_id in profile.empty_means_good)
+
     # B-2: NOTE 보유 항목은 기술점검 범위 밖(관리체계/외부확인/N-A)이므로
     # LLM 호출 없이 판단보류로 강제하고 NOTE를 사유로 기록(empty_means_good보다 우선).
     # 줄-시작 정규식으로 NOTE 줄만 정확히 매칭한다.
@@ -59,19 +66,11 @@ def _judge_one(crit, item, item_id: str, variant: str, client,
         forced = {"verdict": "판단보류", "confidence": 0.0,
                   "rationale": f"[자동 판단보류: NOTE] {note}".strip(),
                   "cited_evidence": []}
-        return reconcile(
-            forced, crit, item,
-            status_available=profile.status_available,
-            flag_vulnerable_for_review=profile.flag_vulnerable_for_review,
-            empty_means_good=empty_ok)
+        return _reconcile(forced)
     try:
         llm = judge_item(crit, item, client,
                          evidence_mode=profile.evidence_mode)
-        return reconcile(
-            llm, crit, item,
-            status_available=profile.status_available,
-            flag_vulnerable_for_review=profile.flag_vulnerable_for_review,
-            empty_means_good=empty_ok)
+        return _reconcile(llm)
     except Exception as e:  # noqa: BLE001 - 부분 실패 격리(네트워크/HTTP/KeyError 등)
         # 예외 본문에는 LLM 응답/evidence 원문이 섞일 수 있으므로 산출물·로그에
         # raw 메시지를 직렬화하지 않는다(타입명/item_id 만 남긴다).
@@ -82,11 +81,7 @@ def _judge_one(crit, item, item_id: str, variant: str, client,
                         "cited_evidence": []}
 
     try:
-        return reconcile(
-            fallback_llm, crit, item,
-            status_available=profile.status_available,
-            flag_vulnerable_for_review=profile.flag_vulnerable_for_review,
-            empty_means_good=empty_ok)
+        return _reconcile(fallback_llm)
     except Exception as e2:  # noqa: BLE001 - reconcile 자체 실패 시 해당 항목만 스킵
         log.warning("폴백 reconcile 실패, 스킵 item=%s variant=%s type=%s",
                     item_id, variant, type(e2).__name__)
