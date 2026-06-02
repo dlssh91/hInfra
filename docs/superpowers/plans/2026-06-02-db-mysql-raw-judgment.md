@@ -29,6 +29,8 @@
 
 ---
 
+> **실행 노트(태스크 결합):** Task 1(models의 `applicable` 기본 True)은 단독 적용 시 cloud `is_judgeable`을 느슨하게 만들어 cloud 회귀를 깬다. cloud 동치는 Task 3(loader가 cloud applicable 계산)에서 복원되고, Task 3 loader는 Task 2(VariantSpec.applicability_col)에 의존한다. → **Task 1+2+3은 한 단위로 적용**해 전체 green을 유지한다(중간 단독 커밋 금지).
+
 ## Task 1: models — Criterion.applicable + EvidenceItem.context
 
 **Files:**
