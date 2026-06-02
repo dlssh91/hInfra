@@ -57,14 +57,72 @@ def build_evidence_text(item: EvidenceItem, max_chars: int = 8000) -> str:
     return "\n".join(lines)
 
 
+def build_evidence_text_raw(item: EvidenceItem, max_chars: int = 24000) -> str:
+    """원시증거(DB) 직렬화: 사전분류 status가 없으므로 전수 보존이 기본.
+
+    context(QUERY/NOTE)를 상단에 두고 모든 행을 직렬화한다. 행이 한 그룹키로
+    반복되는 결과(예: GRANTEE)는 그룹별 요약을 병기한다. 총량이 max_chars를
+    넘으면 행을 잘라 "M행 중 N행 표시, K행 생략"을 명시한다.
+    """
+    head = (item.context + "\n") if item.context else ""
+    if not item.resources:
+        return head + "(점검 결과 0건)"
+    lines = [r.evidence if r.evidence else r.detail for r in item.resources]
+    summary = _group_summary(item.resources)
+    body_head = head + (summary + "\n" if summary else "")
+    total = len(lines)
+    shown, used = [], len(body_head)
+    for ln in lines:
+        if used + len(ln) + 1 > max_chars:
+            break
+        shown.append(ln)
+        used += len(ln) + 1
+    out = body_head + "\n".join(shown)
+    if len(shown) < total:
+        out += f"\n... ({total}행 중 {len(shown)}행 표시, {total - len(shown)}행 생략)"
+    return out
+
+
+def _group_summary(resources) -> str:
+    """행들이 'GRANTEE' 같은 그룹키 + 값(PRIVILEGE_TYPE)을 가지면 그룹별
+    값 집합 요약을 만든다. 해당 구조가 아니면 빈 문자열."""
+    import json as _json
+    groups = {}
+    ok = 0
+    for r in resources:
+        try:
+            d = _json.loads(r.evidence)
+        except Exception:  # noqa: BLE001
+            return ""
+        if not isinstance(d, dict) or "GRANTEE" not in d:
+            return ""
+        key = d.get("GRANTEE", "")
+        val = d.get("PRIVILEGE_TYPE", "")
+        groups.setdefault(key, set()).add(val)
+        ok += 1
+    if ok == 0:
+        return ""
+    parts = ["[요약] 계정별 권한집합:"]
+    for k, vs in groups.items():
+        vlist = sorted(v for v in vs if v)
+        parts.append(f"  {k}: [{len(vlist)}] " + ", ".join(vlist[:12])
+                     + (f" ...(+{len(vlist) - 12})" if len(vlist) > 12 else ""))
+    return "\n".join(parts)
+
+
 def build_prompt(criterion: Criterion, item: EvidenceItem,
-                 max_chars: int = 8000) -> str:
+                 max_chars: int = 8000,
+                 evidence_mode: str = "preclassified") -> str:
     scope_note = ""
     if criterion.is_mixed:
         scope_note = (
             "\n[중요] 이 항목은 '관리체계+스크립트' 혼합이다. "
             "판단기준 중 기술/스크립트로 확인 가능한 부분만 대조해 판정하고, "
             "관리체계(문서·정책·인터뷰) 영역은 판정 근거로 삼지 말 것.")
+    if evidence_mode == "raw":
+        evidence = build_evidence_text_raw(item, max(max_chars, 24000))
+    else:
+        evidence = build_evidence_text(item, max_chars)
     return (
         f"평가항목: {criterion.item_id} {criterion.item_name} "
         f"(위험도 {criterion.risk})\n"
@@ -72,7 +130,7 @@ def build_prompt(criterion: Criterion, item: EvidenceItem,
         f"--- 판단기준 ---\n{criterion.standard}\n"
         f"--- 판단방법 ---\n{criterion.method}\n"
         f"{scope_note}\n"
-        f"--- 점검 증거 ---\n{build_evidence_text(item, max_chars)}\n"
+        f"--- 점검 증거 ---\n{evidence}\n"
         f"--- 위 판단기준에 따라 JSON으로 판정하라. ---"
     )
 
@@ -154,13 +212,14 @@ class OllamaClient:
 
 
 def judge_item(criterion: Criterion, item: EvidenceItem, client,
-               max_chars: int = 8000, retries: int = 2) -> Dict:
+               max_chars: int = 8000, retries: int = 2,
+               evidence_mode: str = "preclassified") -> Dict:
     """LLM 호출 후 검증된 판정 dict 반환. JSON 실패 시 재시도.
 
     JSON 파싱 실패만 재시도하며, 네트워크/HTTP 예외(requests 예외) 및
     응답 구조 오류는 호출부(Task 9) 책임으로 전파한다.
     """
-    prompt = build_prompt(criterion, item, max_chars)
+    prompt = build_prompt(criterion, item, max_chars, evidence_mode)
     last_err = None
     for _ in range(retries + 1):
         raw = client.chat(SYSTEM_PROMPT, prompt)
@@ -188,9 +247,16 @@ def judge_item(criterion: Criterion, item: EvidenceItem, client,
             "rationale": f"LLM 응답 파싱 실패({err_name})", "cited_evidence": []}
 
 
-def reconcile(llm: Dict, criterion: Criterion, item: EvidenceItem) -> Judgment:
-    script_status = item.overall_status
-    expected = _STATUS_TO_VERDICT.get(script_status)
+def reconcile(llm: Dict, criterion: Criterion, item: EvidenceItem, *,
+              status_available: bool = True,
+              flag_vulnerable_for_review: bool = False,
+              empty_means_good: bool = False) -> Judgment:
+    if status_available:
+        script_status = item.overall_status
+        expected = _STATUS_TO_VERDICT.get(script_status)
+    else:
+        script_status = None
+        expected = None
     verdict = llm.get("verdict", "판단보류")
     confidence = _to_float(llm.get("confidence", 0.0))
     rationale = llm.get("rationale", "")
@@ -202,8 +268,9 @@ def reconcile(llm: Dict, criterion: Criterion, item: EvidenceItem) -> Judgment:
 
     # spec 6.7: script_status 가 "error" 이거나 증거가 전혀 없으면 신뢰할 수
     # 없으므로 LLM verdict 와 무관하게 판단보류로 강제하고 검토 대상으로 표시.
+    # 단 empty_means_good(위반 0건=양호 후보)면 무증거 강제 보류에서 제외.
     # cited_evidence 는 보존한다.
-    no_evidence = not item.resources
+    no_evidence = (not item.resources) and not empty_means_good
     if (script_status == "error" or no_evidence) and verdict != "판단보류":
         verdict = "판단보류"
         reason = "증거 없음" if no_evidence else "스크립트 점검 오류(error)"
@@ -218,6 +285,7 @@ def reconcile(llm: Dict, criterion: Criterion, item: EvidenceItem) -> Judgment:
         # script_status 가 good/bad 로 매핑되지 않으면(미지/review/error 등)
         # 양호/취약 자동 대조가 불가하므로 사람 검토가 필요하다.
         or expected is None
+        or (flag_vulnerable_for_review and verdict == "취약")
     )
     return Judgment(
         item_id=criterion.item_id,

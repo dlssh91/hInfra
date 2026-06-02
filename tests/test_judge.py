@@ -276,3 +276,73 @@ def test_ollama_client_chat_payload():
     assert roles == ["system", "user"]
     assert payload["messages"][0]["content"] == "sys"
     assert payload["messages"][1]["content"] == "usr"
+
+
+from judge_tool.judge import (
+    build_evidence_text_raw, reconcile, build_prompt)
+
+
+def _db_item(rows, context=None):
+    from judge_tool.models import EvidenceItem, ResourceEvidence
+    res = [ResourceEvidence(f"row{i}", "", "", e) for i, e in enumerate(rows)]
+    it = EvidenceItem("DBM-004", "mysql_rds", res)
+    it.context = context
+    return it
+
+
+def _db_crit(standard="* 양호 - ...\n* 취약 - ..."):
+    from judge_tool.models import Criterion
+    return Criterion("DBM-004", "권한", 5.0, "mysql_rds", "", standard,
+                     "방법", applicable=True)
+
+
+def test_raw_evidence_preserves_all_rows_with_cap_note():
+    rows = [f'{{"GRANTEE":"u{i}","PRIVILEGE_TYPE":"SELECT"}}' for i in range(5)]
+    text = build_evidence_text_raw(_db_item(rows, "QUERY: q"), max_chars=24000)
+    assert "QUERY: q" in text
+    for i in range(5):
+        assert f"u{i}" in text          # 전수 보존
+
+
+def test_raw_evidence_cap_truncates_with_note():
+    rows = [f'{{"GRANTEE":"user{i}","PRIVILEGE_TYPE":"SELECT"}}'
+            for i in range(500)]
+    text = build_evidence_text_raw(_db_item(rows, None), max_chars=300)
+    assert "생략" in text or "표시" in text
+
+
+def test_db_prompt_uses_raw_mode_and_context():
+    p = build_prompt(_db_crit(), _db_item(['{"GRANTEE":"x"}'], "QUERY: select 1"),
+                     evidence_mode="raw")
+    assert "select 1" in p
+    assert "DBM-004" in p
+
+
+def test_reconcile_db_status_unavailable():
+    llm = {"verdict": "취약", "confidence": 0.9, "rationale": "x",
+           "cited_evidence": []}
+    j = reconcile(llm, _db_crit(), _db_item(['{"GRANTEE":"x"}']),
+                  status_available=False, flag_vulnerable_for_review=True)
+    assert j.script_status is None
+    assert j.agreement == "N/A"
+    assert j.needs_review is True          # 취약 → 검토
+    assert j.scope == "스크립트 전체"
+
+
+def test_reconcile_db_empty_means_good_not_forced_boryu():
+    # 빈 RESULT지만 empty_means_good 항목이면 판단보류 강제 안 함
+    llm = {"verdict": "양호", "confidence": 0.9, "rationale": "위반 0건",
+           "cited_evidence": []}
+    j = reconcile(llm, _db_crit(), _db_item([], "QUERY: q"),
+                  status_available=False, flag_vulnerable_for_review=True,
+                  empty_means_good=True)
+    assert j.verdict == "양호"             # 강제 보류 아님
+
+
+def test_reconcile_db_empty_default_forces_boryu():
+    llm = {"verdict": "양호", "confidence": 0.9, "rationale": "x",
+           "cited_evidence": []}
+    j = reconcile(llm, _db_crit(), _db_item([], "QUERY: q"),
+                  status_available=False, flag_vulnerable_for_review=True,
+                  empty_means_good=False)
+    assert j.verdict == "판단보류"         # 무증거 → 보류
