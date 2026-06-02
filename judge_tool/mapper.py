@@ -1,6 +1,6 @@
-from typing import Dict, List, Optional, Tuple
+from typing import Dict
 
-from judge_tool.models import EvidenceItem, ResourceEvidence
+from judge_tool.models import EvidenceItem
 from judge_tool.profile import Profile
 
 
