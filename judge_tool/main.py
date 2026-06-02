@@ -38,16 +38,36 @@ def _sha256(path: str) -> str:
     return h.hexdigest()
 
 
-def _judge_one(crit, item, item_id: str, variant: str,
-               client) -> Optional[Judgment]:
-    """단일 항목을 판정한다. 부분 실패를 격리하는 견고성 로직:
+def _judge_one(crit, item, item_id: str, variant: str, client,
+               profile) -> Optional[Judgment]:
+    """단일 항목을 판정한다. 프로파일 속성으로 evidence/판정 모드를 결정하며
+    부분 실패를 격리하는 견고성 로직:
 
+    - NOTE 보유 항목 → LLM 호출 없이 판단보류 강제(empty_means_good보다 우선)
     - judge 실패 → 판단보류 폴백으로 reconcile (격리, 결과 포함)
     - 폴백 reconcile 마저 실패 → 해당 항목만 스킵(None 반환)
     """
+    empty_ok = item_id in profile.empty_means_good
+    # B-2: NOTE 보유 항목은 기술점검 범위 밖(관리체계/외부확인/N-A)이므로
+    # LLM 호출 없이 판단보류로 강제하고 NOTE를 사유로 기록(empty_means_good보다 우선).
+    if item.context and "NOTE:" in item.context:
+        note = item.context.split("NOTE:", 1)[1].strip().splitlines()[0]
+        forced = {"verdict": "판단보류", "confidence": 0.0,
+                  "rationale": f"[자동 판단보류: NOTE] {note}",
+                  "cited_evidence": []}
+        return reconcile(
+            forced, crit, item,
+            status_available=profile.status_available,
+            flag_vulnerable_for_review=profile.flag_vulnerable_for_review,
+            empty_means_good=empty_ok)
     try:
-        llm = judge_item(crit, item, client)
-        return reconcile(llm, crit, item)
+        llm = judge_item(crit, item, client,
+                         evidence_mode=profile.evidence_mode)
+        return reconcile(
+            llm, crit, item,
+            status_available=profile.status_available,
+            flag_vulnerable_for_review=profile.flag_vulnerable_for_review,
+            empty_means_good=empty_ok)
     except Exception as e:  # noqa: BLE001 - 부분 실패 격리(네트워크/HTTP/KeyError 등)
         # 예외 본문에는 LLM 응답/evidence 원문이 섞일 수 있으므로 산출물·로그에
         # raw 메시지를 직렬화하지 않는다(타입명/item_id 만 남긴다).
@@ -58,7 +78,11 @@ def _judge_one(crit, item, item_id: str, variant: str,
                         "cited_evidence": []}
 
     try:
-        return reconcile(fallback_llm, crit, item)
+        return reconcile(
+            fallback_llm, crit, item,
+            status_available=profile.status_available,
+            flag_vulnerable_for_review=profile.flag_vulnerable_for_review,
+            empty_means_good=empty_ok)
     except Exception as e2:  # noqa: BLE001 - reconcile 자체 실패 시 해당 항목만 스킵
         log.warning("폴백 reconcile 실패, 스킵 item=%s variant=%s type=%s",
                     item_id, variant, type(e2).__name__)
@@ -107,7 +131,7 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
         crit = criteria.get((item_id, variant))
         if crit is None or not crit.is_judgeable:
             continue  # 기준에 없거나 스크립트 대상 아님/빈 판단기준 → 스킵
-        judgment = _judge_one(crit, item, item_id, variant, client)
+        judgment = _judge_one(crit, item, item_id, variant, client, profile)
         if judgment is not None:
             judgments.append(judgment)
 
