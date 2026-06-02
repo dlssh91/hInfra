@@ -20,9 +20,8 @@
 "QUERY": "SELECT VARIABLE_NAME, VARIABLE_VALUE ... LIKE audit_log",
 "RESULT": [
 "audit_log.so plugin is not loaded!"
-],
 "NOTE": "For audit log upload settings, refer to the PISM-011 script results."
-}},
+]}},
 {"DBM-019":{
 "NOTE": "관리형 DB를 사용하는 환경일 경우 N/A"
 }},

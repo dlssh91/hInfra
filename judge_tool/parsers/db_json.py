@@ -196,6 +196,12 @@ def _parse_rows(result_block: str, check_id: str) -> List[ResourceEvidence]:
     값에 '}' 가 있어도 유령 행이 생기지 않도록 정규식 residue 방식을 폐기한다."""
     rows: List[ResourceEvidence] = []
     idx = 0
+    # 실데이터(DBM-011·DBM-013)는 NOTE가 RESULT 배열 안에 콤마 누락 상태로 들어와
+    # bare 문자열 추출 시 phantom 증거 행이 된다. NOTE는 이미 _extract_note 가
+    # context 로 가져가므로, 행 추출 전에 stray NOTE 키:값과 단독 토큰을 제거한다.
+    # (NOTE 값에 '"' 가 포함되지 않음 — 실데이터 확인.)
+    result_block = re.sub(r'"NOTE"\s*:\s*"[^"]*"', "", result_block)
+    result_block = re.sub(r'"NOTE"\s*', "", result_block)
     for kind, text in _iter_top_result_items(result_block):
         if kind == "obj":
             san = _json_safe(text)

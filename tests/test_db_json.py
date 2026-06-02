@@ -91,6 +91,24 @@ def test_parse_returns_items_with_context():
     assert "DBM-022" in by_id
 
 
+def test_parse_dbm011_stray_note_not_evidence_but_context():
+    """버그: 실데이터처럼 NOTE가 RESULT 배열 안에 콤마 누락 상태로 들어있을 때,
+    진짜 결과("audit_log.so...not loaded")는 evidence 행에 남고, NOTE 값
+    ("refer to the PISM-011")은 evidence 행에 절대 들어가면 안 되며
+    context에만 들어가야 한다(phantom NOTE 행 금지)."""
+    out = db_json.parse(FIX)
+    by_id = {cid: (res, ctx) for cid, res, ctx in out}
+    res011, ctx011 = by_id["DBM-011"]
+    blob = "\n".join((r.evidence or "") + "\n" + (r.detail or "") for r in res011)
+    # 진짜 점검 결과는 evidence 행에 유지
+    assert "not loaded" in blob, f"진짜 결과행 손실: {blob!r}"
+    # NOTE 값은 evidence 행에 절대 없음
+    assert "PISM-011" not in blob, f"NOTE가 phantom evidence 행으로 누출됨: {blob!r}"
+    assert "refer to" not in blob, f"NOTE가 phantom evidence 행으로 누출됨: {blob!r}"
+    # NOTE는 context에 있어야 함
+    assert ctx011 and "PISM-011" in ctx011, f"NOTE가 context에 없음: {ctx011!r}"
+
+
 def test_parse_includes_query_in_context():
     out = db_json.parse(FIX)
     by_id = {cid: ctx for cid, res, ctx in out}
@@ -221,6 +239,30 @@ def test_real_data_no_item_loss():
         original = set(_real_dbm_keys(path))
         missing = original - parsed
         assert not missing, f"{rel}: 손실된 DBM키 {len(missing)}건: {sorted(missing)}"
+    if checked == 0:
+        pytest.skip("실데이터 파일 없음")
+
+
+def test_real_data_no_phantom_note_rows():
+    """phantom 가드: 실 3파일 어떤 항목의 evidence 행에도 NOTE 문구가
+    들어가면 안 된다(DBM-011·DBM-013의 배열 내 stray NOTE 회귀 방지).
+    NOTE는 context로만 가야 하므로 evidence/detail에 '스크립트 참고'·'refer to'가 0건."""
+    import pytest
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    note_markers = ("스크립트 참고", "refer to")
+    checked = 0
+    for rel in _REAL_FILES:
+        path = os.path.join(repo_root, rel)
+        if not os.path.exists(path):
+            continue
+        checked += 1
+        out = db_json.parse(path)
+        for cid, res, ctx in out:
+            for r in res:
+                row_text = (r.evidence or "") + "\n" + (r.detail or "")
+                for mark in note_markers:
+                    assert mark not in row_text, (
+                        f"{rel}/{cid}: phantom NOTE 행 누출 {mark!r}: {row_text!r}")
     if checked == 0:
         pytest.skip("실데이터 파일 없음")
 
