@@ -49,11 +49,13 @@
    - 원문 해시·평문은 **프롬프트·출력 JSON/Excel·로그·예외 어디에도** 넣지 않는다.
 4. **[B-4] 대용량 RESULT = 요약 + 원행**: 그룹 가능한 결과(예: GRANTEE/PRIVILEGE_TYPE)는 **계정별 권한집합 요약(무손실 재구성)** 을 context 상단에 병기하고, 그 뒤 **원행을 상한 내 전수**. `max_chars` 기본을 24000으로 상향(30B 32K 안전선). 그래도 초과 시 "M행 중 N행, K행 생략" 명시. 요약은 "행이 한 그룹키로 반복되는" 결과형에만 적용.
 5. **[B-2] NOTE = 자동 판단보류 강제 + 사유기록**: 항목에 NOTE 존재 시 verdict=판단보류 강제, NOTE 원문을 rationale에 보존, needs_review=True. (실 NOTE 5종 전부 "기술점검 범위 밖/외부확인/N/A"로 확인됨.)
-6. **[B-1] 빈 RESULT = 점검 스크립트 기반 항목별 정책** *(스크립트 입수 후 확정 — §11)*:
-   - 사용자 제공 점검 스크립트에서 각 DBM의 "빈 결과=정상(위반0건=양호) vs 미수집/해당없음"을 도출해 **항목별 empty-정책 테이블**로 인코딩.
-   - 빈 결과가 "양호 후보"인 항목: `RESULT:[]`를 "위반 0건"으로 프롬프트에 명시 → LLM이 판단기준으로 해석(무증거→판단보류 강제를 이 항목엔 적용 안 함).
-   - 빈 결과가 "미수집/N/A"인 항목: 판단보류.
-   - **임시(스크립트 입수 전) 폴백**: NOTE 없는 빈 RESULT는 보수적으로 판단보류.
+6. **[B-1] 빈 RESULT = 점검 스크립트 기반 항목별 정책** *(스크립트 `scripts/DB/MySQL/mysql_v251017.sql` 분석 완료)*:
+   스크립트의 쿼리 의미를 분석해 항목별 empty-정책 테이블을 만든다. 세 부류:
+   - **위반필터형**(`WHERE ... NOT IN/NOT LIKE`로 위반행만 반환): DBM-005, 017_1~4, 019, 024_1, 028_1~4.
+     → 빈 RESULT = **위반 0건 = 양호 신호.** 프롬프트에 "이 점검은 위반 0건"임을 명시, LLM이 판단기준으로 해석(이 항목엔 무증거→판단보류 강제를 적용하지 않음).
+   - **상태/설정 조회형**: DBM-003,004,006,008_1/2,009,016,020,024_2~4,025,033. 빈 결과가 드물며, 값 자체를 LLM이 판정. 빈이면 판단보류.
+   - **NOTE/명시메시지형**: 011·013(cloud 환경)은 NOTE 보유 → 판단보류(§5-5). 007·011은 빈 대신 `"...plugin is not loaded!"` bare 문자열을 RESULT에 넣음(= 취약 후보, 정상 증거로 취급).
+   - 전체 DBM↔부류 매핑은 plan에서 스크립트 기준으로 확정(약 16개 판정대상).
 7. **적용여부 일반화(기술)**: `VariantSpec`에 `applicability_col`(평가대상 열) 추가. DB applicable = `cell.strip().lower()=="o"`. cloud는 기존대로 eval_type/is_script_based에서 도출(applicable 동치). `Criterion.applicable` 필드를 loader가 채움. **is_judgeable = applicable AND standard.strip().** cloud 동치 회귀 테스트 필수.
 8. **reconcile 시그니처 변경(기술, "플래그 흡수" 아님)**: `reconcile(llm, criterion, item, *, status_available=True, flag_vulnerable_for_review=False)`.
    - DB: status_available=False → script_status=None, agreement="N/A", scope="전체", management_review_needed=False.
@@ -92,5 +94,7 @@
 - DB 항목 상당수는 원시증거만으로 판정 불가(해시 크랙 전제 DBM-001, NOTE류) → **판단보류 다수 예상**(정상 동작, 사람 검토로).
 - 빈 RESULT 의미는 §5-6 스크립트 기반 테이블로 항목별 처리.
 
-## 11. 미해결(plan 전 필요) 입력
-- **[B-1] 점검 스크립트**: 사용자 제공 예정. 각 DBM의 "빈 결과 정상 여부"를 도출해 §5-6 empty-정책 테이블 작성. 입수 전엔 보수적 폴백(빈→판단보류)으로 plan/구현 가능, 스크립트 입수 시 테이블만 채우면 됨.
+## 11. 입력 자료 (확보됨)
+- **[B-1] 점검 스크립트 확보**: `scripts/DB/MySQL/mysql_v251017.sql`. §5-6 empty-정책을 이 스크립트의 쿼리 의미에서 도출(위반필터/상태조회/NOTE 3부류 분류 완료). plan에서 DBM별 매핑 테이블을 확정한다.
+  - 참고: 스크립트는 환경(state 0~3: self/Aurora/RDS/Azure)을 자동탐지해 환경별 쿼리를 분기하고, 분할항목(017_1~4 등)을 별도 출력한다. 변형별 적용 차이가 여기서 비롯됨.
+- 다른 DBMS 스크립트도 `scripts/DB/{PostgreSQL,Oracle,MS-SQL,MariaDB}/`에 존재(이번 범위 외).
