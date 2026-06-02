@@ -35,14 +35,26 @@ def load_criteria(xlsx_path: str,
                 risk = None
 
             for vname, vspec in profile.variants.items():
+                eval_type = (_cell(ws, row, vspec.eval_type_col)
+                             if vspec.eval_type_col else "")
+                standard = _cell(ws, row, vspec.standard_col)
+                method = _cell(ws, row, vspec.method_col)
+                if vspec.applicability_col is not None:
+                    # DB: 평가대상 컬럼 'o'
+                    marker = _cell(ws, row, vspec.applicability_col).strip().lower()
+                    applicable = (marker == "o")
+                else:
+                    # cloud: 기존 is_judgeable 동치(스크립트 기반 & N/A 아님)
+                    applicable = ("스크립트" in eval_type) and eval_type != "N/A"
                 out[(item_id, vname)] = Criterion(
                     item_id=item_id,
                     item_name=name,
                     risk=risk,
                     variant=vname,
-                    eval_type=_cell(ws, row, vspec.eval_type_col),
-                    standard=_cell(ws, row, vspec.standard_col),
-                    method=_cell(ws, row, vspec.method_col),
+                    eval_type=eval_type,
+                    standard=standard,
+                    method=method,
+                    applicable=applicable,
                 )
         return out
     finally:

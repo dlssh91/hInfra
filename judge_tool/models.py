@@ -20,6 +20,7 @@ class Criterion:
     eval_type: str        # "스크립트" | "관리체계, 스크립트" | "N/A" ...
     standard: str         # 판단기준 텍스트
     method: str           # 판단방법 텍스트
+    applicable: bool = True   # 해당 variant 평가대상 여부(loader가 계산)
 
     @property
     def is_mixed(self) -> bool:
@@ -31,14 +32,13 @@ class Criterion:
 
     @property
     def is_judgeable(self) -> bool:
-        """LLM 판정 대상 여부: 스크립트 기반이며 eval_type 이 N/A 가 아니고
-        판단기준(standard)이 비어 있지 않아야 한다.
+        """LLM 판정 대상: 해당 variant에 적용되며 판단기준이 비어있지 않음.
 
-        main.run 의 스킵 조건과 writer.build_coverage 의 expected 조건이
-        공유하는 술어. 두 곳의 일관성을 보장하기 위해 한 곳에 둔다.
+        cloud는 loader가 applicable=(is_script_based and eval_type!='N/A')로
+        계산해 기존 동작과 동치. DB는 applicable=(평가대상 'o').
+        main.run 스킵 조건과 writer.build_coverage expected가 공유한다.
         """
-        return (self.is_script_based and self.eval_type != "N/A"
-                and bool((self.standard or "").strip()))
+        return self.applicable and bool((self.standard or "").strip())
 
 
 @dataclass
@@ -54,6 +54,7 @@ class EvidenceItem:
     item_id: str          # 정규화된 base id "PISM-045"
     variant: str
     resources: List[ResourceEvidence] = field(default_factory=list)
+    context: Optional[str] = None   # 항목단위 맥락(QUERY/NOTE 등; DB용)
 
     @property
     def overall_status(self) -> str:

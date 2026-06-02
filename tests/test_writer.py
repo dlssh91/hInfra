@@ -17,13 +17,15 @@ def _judgment(item_id="PISM-001", needs_review=False, cited_evidence=None,
 
 
 def _criteria():
+    # loader 동치: cloud applicable = ("스크립트" in eval_type) and eval_type != "N/A".
     return {
         ("PISM-001", "AWS"): Criterion("PISM-001", "암호화", 5.0, "AWS",
-                                       "스크립트", "기준", "방법"),
+                                       "스크립트", "기준", "방법", applicable=True),
         ("PISM-005", "AWS"): Criterion("PISM-005", "퍼블릭", 5.0, "AWS",
-                                       "스크립트", "기준", "방법"),
+                                       "스크립트", "기준", "방법", applicable=True),
         ("PISM-006", "AWS"): Criterion("PISM-006", "분리", 3.0, "AWS",
-                                       "관리체계", "기준", "방법"),  # 스크립트 아님
+                                       "관리체계", "기준", "방법",
+                                       applicable=False),  # 스크립트 아님
     }
 
 
