@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AuditReport>
+  <CheckList>
+    <CheckResult>
+      <CheckID>pism_001</CheckID>
+      <Item status="bad">
+        <ResourceID>bucket-A</ResourceID>
+        <Detail>synthetic detail (no sensitive data)</Detail>
+        <Evidence>synthetic evidence text without closing tag
+      </Item>
+    </CheckResult>
+  </CheckList>
+</AuditReport>

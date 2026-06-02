@@ -5,11 +5,13 @@ import openpyxl
 import pytest
 
 import judge_tool.main as main_mod
-from judge_tool.main import main, run
+from judge_tool.main import main, run, _extract_criteria_version
 from judge_tool.profile import CLOUD
 
 FIXTURE_XML = os.path.join(
     os.path.dirname(__file__), "fixtures", "sample_aws_report.xml")
+MALFORMED_XML = os.path.join(
+    os.path.dirname(__file__), "fixtures", "malformed_report.xml")
 
 
 class StubClient:
@@ -404,6 +406,56 @@ def test_main_allows_separate_out_dir(tmp_path, monkeypatch, capsys):
     base = os.path.splitext(os.path.basename(report))[0]
     assert os.path.exists(os.path.join(str(out_dir), f"result_{base}.json"))
     assert os.path.exists(os.path.join(str(out_dir), f"result_{base}.xlsx"))
+
+
+# --------------------------------------------------------------------------
+# 항목2: 손상 XML → main()이 트레이스백 대신 깔끔한 SystemExit
+# --------------------------------------------------------------------------
+
+def test_main_malformed_xml_exits_cleanly(tmp_path, monkeypatch, capsys):
+    """손상 XML 입력 시 main()은 raw 트레이스백이 아니라 SystemExit으로
+    종료하고 stderr에 명확한 에러 메시지를 출력한다."""
+    crit_dir = tmp_path / "crit"
+    out_dir = tmp_path / "out"
+    rep_dir = tmp_path / "rep"
+    for d in (crit_dir, out_dir, rep_dir):
+        os.makedirs(str(d), exist_ok=True)
+    # variant 식별 가능한 파일명으로 손상 XML 복사
+    report = os.path.join(str(rep_dir), "aws_report_malformed.xml")
+    with open(MALFORMED_XML, encoding="utf-8") as src:
+        content = src.read()
+    with open(report, "w", encoding="utf-8") as fh:
+        fh.write(content)
+    criteria = os.path.join(str(crit_dir), "criteria.xlsx")
+    _write_synthetic_criteria(criteria)
+
+    monkeypatch.setattr(main_mod, "OllamaClient",
+                        lambda *a, **k: StubClient())
+
+    with pytest.raises(SystemExit):
+        main(["--report", report, "--criteria", criteria,
+              "--out-dir", str(out_dir), "--model", "stub"])
+
+    err = capsys.readouterr().err
+    assert "파싱 실패" in err or "오류" in err
+
+
+# --------------------------------------------------------------------------
+# 항목3: criteria_version 파일명에서 추출
+# --------------------------------------------------------------------------
+
+def test_extract_criteria_version_from_real_filename():
+    p = ("ref/전자금융기반시설 보안 취약점 평가기준(제2026-1호) "
+         "평가자용_2603개정.xlsx")
+    assert _extract_criteria_version(p) == "제2026-1호"
+
+
+def test_extract_criteria_version_fallback_when_no_pattern():
+    assert _extract_criteria_version("criteria.xlsx") == "제2026-1호"
+
+
+def test_extract_criteria_version_other_version():
+    assert _extract_criteria_version("기준(제2027-3호).xlsx") == "제2027-3호"
 
 
 def test_run_empty_input(tmp_path):

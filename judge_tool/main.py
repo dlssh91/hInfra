@@ -2,6 +2,8 @@ import argparse
 import hashlib
 import logging
 import os
+import re
+import sys
 from datetime import datetime
 from typing import Dict, Optional
 
@@ -15,6 +17,16 @@ from judge_tool.profile import get_profile
 from judge_tool.writer import build_coverage, write_excel, write_json
 
 log = logging.getLogger(__name__)
+
+# 기준 고시 버전 패턴 "제YYYY-N호" (예: "제2026-1호")
+_CRITERIA_VERSION = re.compile(r"제\d{4}-\d+호")
+_DEFAULT_CRITERIA_VERSION = "제2026-1호"
+
+
+def _extract_criteria_version(criteria_path: str) -> str:
+    """평가기준 파일명에서 '제YYYY-N호' 버전을 추출. 실패 시 기본값 폴백."""
+    m = _CRITERIA_VERSION.search(os.path.basename(criteria_path))
+    return m.group(0) if m else _DEFAULT_CRITERIA_VERSION
 
 
 def _sha256(path: str) -> str:
@@ -102,7 +114,7 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
     coverage = build_coverage(criteria, judgments, variant)
     meta = {
         "tool_version": __version__,
-        "criteria_version": "제2026-1호",
+        "criteria_version": _extract_criteria_version(criteria_path),
         "model": model_name,
         "generated_at": now or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "source_file": os.path.basename(report_path),
@@ -133,8 +145,14 @@ def main(argv=None):
     xlsx_out = os.path.join(args.out_dir, f"result_{base}.xlsx")
 
     client = OllamaClient(url=args.ollama_url, model=args.model)
-    cov = run(args.report, args.criteria, args.profile, client,
-              json_out, xlsx_out, args.model)
+    try:
+        cov = run(args.report, args.criteria, args.profile, client,
+                  json_out, xlsx_out, args.model)
+    except (ValueError, FileNotFoundError, OSError) as e:
+        # 사용자 입력 오류(손상 XML/파일 부재 등): raw 트레이스백 대신
+        # stderr에 한 줄 명확한 안내 후 비정상 종료.
+        print(f"오류: {e}", file=sys.stderr)
+        raise SystemExit(2) from e
     print(f"판정 {cov['judged']}/{cov['expected']} 완료. "
           f"미판정: {cov['missing']}")
     print(f"출력: {json_out}\n      {xlsx_out}")

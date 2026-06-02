@@ -6,6 +6,8 @@ from judge_tool.parsers.cloud_xml import sanitize, parse
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures",
                        "sample_aws_report.xml")
+MALFORMED_FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures",
+                                 "malformed_report.xml")
 
 
 def test_sanitize_escapes_bare_ampersand():
@@ -42,6 +44,21 @@ def test_parse_fixture_structure():
     # CDATA 내부 '&' 는 보존되어야 한다 (over-escape 방지)
     assert "&amp;" not in first.evidence
     assert "A & B" in first.evidence
+
+
+def test_parse_malformed_xml_raises_clear_value_error():
+    """닫히지 않은 <Evidence> 등 손상 XML → 경로/원인을 담은 ValueError.
+
+    raw ParseError 트레이스백 대신 명확한 안내 예외로 변환되어야 한다.
+    민감 evidence 본문은 메시지에 포함되면 안 된다(경로·라이브러리 위치만).
+    """
+    with pytest.raises(ValueError) as ei:
+        parse(MALFORMED_FIXTURE)
+    msg = str(ei.value)
+    assert "파싱 실패" in msg
+    assert MALFORMED_FIXTURE in msg
+    # XML 본문/evidence 원문이 메시지에 새어나오면 안 됨
+    assert "synthetic evidence text" not in msg
 
 
 def test_parse_real_report_if_present(aws_report_path):

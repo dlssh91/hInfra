@@ -31,7 +31,15 @@ def _text(el, tag) -> str:
 def parse(xml_path: str) -> List[Tuple[str, List[ResourceEvidence]]]:
     """XML → [(check_id, [ResourceEvidence, ...]), ...]. CheckResult 순서 유지."""
     with open(xml_path, encoding="utf-8") as fh:
-        root = ET.fromstring(sanitize(fh.read()))
+        raw = fh.read()
+    try:
+        root = ET.fromstring(sanitize(raw))
+    except ET.ParseError as e:
+        # XML 본문/민감 evidence는 메시지에 싣지 않는다(경로·파서 위치 요약만).
+        raise ValueError(
+            f"XML 파싱 실패: {xml_path} ({e}). "
+            "보고서가 손상되었을 수 있습니다(예: 닫히지 않은 태그)."
+        ) from e
 
     result: List[Tuple[str, List[ResourceEvidence]]] = []
     for cr in root.findall(".//CheckResult"):
