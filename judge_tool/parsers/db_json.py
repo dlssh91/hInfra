@@ -58,35 +58,6 @@ def _strip_leading_noise(text: str) -> str:
     return text[i:]
 
 
-def _iter_top_objects(arr_text: str):
-    """최상위 배열 텍스트에서 {...} 객체를 brace-match로 순서대로 yield.
-    콤마 누락/트레일링콤마와 무관하게 중괄호 균형만으로 분리한다."""
-    depth = 0
-    start = None
-    in_str = False
-    esc = False
-    for i, ch in enumerate(arr_text):
-        if in_str:
-            if esc:
-                esc = False
-            elif ch == "\\":
-                esc = True
-            elif ch == '"':
-                in_str = False
-            continue
-        if ch == '"':
-            in_str = True
-        elif ch == "{":
-            if depth == 0:
-                start = i
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0 and start is not None:
-                yield arr_text[start:i + 1]
-                start = None
-
-
 def _sanitize_scalar(s: str) -> str:
     return _CTRL.sub("", s)
 
@@ -94,8 +65,11 @@ def _sanitize_scalar(s: str) -> str:
 def _json_safe(s: str) -> str:
     r"""행 텍스트를 json.loads 가능하게 중화.
 
-    제어문자 제거 + JSON에서 유효하지 않은 백슬래시 이스케이프 제거
+    raw 탭(0x09)/개행(0x0a,0x0d)을 \\t/\\n 으로 이스케이프(문자열 값 안의
+    raw 제어문자가 json.loads 를 깨뜨리는 것을 방지: rds DBM-001 해시 3행),
+    그 외 제어문자 제거 + JSON에서 유효하지 않은 백슬래시 이스케이프 제거
     (\" \\ \/ \b \f \n \r \t \uXXXX 만 허용)."""
+    s = s.replace("\t", "\\t").replace("\r", "\\r").replace("\n", "\\n")
     s = _CTRL.sub("", s)
     s = re.sub(r'\\(?!["\\/bfnrtu])', "", s)
     return s
@@ -116,9 +90,60 @@ def _mask_raw_text(s: str) -> str:
     return s
 
 
-def _extract_check_id(obj_text: str) -> Optional[str]:
-    m = re.search(r'"\s*(DBM-[\w]+)\s*"\s*:', obj_text)
-    return m.group(1) if m else None
+def _iter_top_result_items(arr_text: str):
+    """RESULT 대괄호 내부 텍스트를 brace-aware 단일 패스로 순회하며
+    ("obj", 객체텍스트) 또는 ("bare", 문자열값) 을 등장 순서대로 yield.
+
+    depth==0 의 따옴표 문자열은 bare 행, {...} 객체는 행 객체로 수집한다.
+    정규식 residue 방식을 폐기해 값에 '}' 가 있어도 유령 추출이 없다."""
+    depth = 0
+    start = None       # 현재 객체 시작 위치(depth 0→1 진입점)
+    str_start = None    # 현재 top-level bare 문자열 시작(여는 따옴표 다음)
+    in_str = False
+    esc = False
+    for i, ch in enumerate(arr_text):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+                if str_start is not None:
+                    # depth 0 에서 닫힌 bare 문자열
+                    yield ("bare", arr_text[str_start:i])
+                    str_start = None
+            continue
+        if ch == '"':
+            in_str = True
+            if depth == 0:
+                str_start = i + 1
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start is not None:
+                    yield ("obj", arr_text[start:i + 1])
+                    start = None
+
+
+# 최상위 항목 시작 마커: {"DBM-xxx": ...
+_ITEM_START = re.compile(r'\{\s*"(DBM-[\w]+)"\s*:')
+
+
+def _split_items(arr_text: str):
+    """최상위 배열 텍스트를 항목 시작 마커로 경계 분할.
+
+    brace-balance 대신 각 항목 시작부터 다음 시작 직전까지를 한 세그먼트로
+    잘라 yield 한다. 한 항목의 중괄호가 손상돼도(예: outer 미닫힘) 다음
+    항목 경계에서 복원되어 desync 가 번지지 않는다. 중복키도 각각 잡힌다."""
+    starts = [(m.start(), m.group(1)) for m in _ITEM_START.finditer(arr_text)]
+    for i, (s, cid) in enumerate(starts):
+        end = starts[i + 1][0] if i + 1 < len(starts) else len(arr_text)
+        yield cid, arr_text[s:end]
 
 
 def _extract_query(inner: str) -> str:
@@ -163,39 +188,43 @@ def _extract_result_block(inner: str) -> str:
     return inner[i + 1:]
 
 
-def _parse_rows(result_block: str) -> List[ResourceEvidence]:
-    """RESULT 내부에서 행 dict와 bare 문자열을 추출.
-    각 dict는 sanitize 후 개별 json.loads(실패 시 raw 문자열로 보존), 마스킹."""
+def _parse_rows(result_block: str, check_id: str) -> List[ResourceEvidence]:
+    """RESULT 내부에서 행 dict와 bare 문자열을 brace-aware 단일 패스로 추출.
+
+    각 dict는 sanitize 후 개별 json.loads(실패 시 raw 문자열로 보존), 마스킹.
+    resource_id 는 spec §6.1 대로 f'{check_id}#row{i}'(bare/note 는 #note{i}).
+    값에 '}' 가 있어도 유령 행이 생기지 않도록 정규식 residue 방식을 폐기한다."""
     rows: List[ResourceEvidence] = []
-    # 1) 행 객체 {...}
     idx = 0
-    for obj in _iter_top_objects(result_block):
-        san = _json_safe(obj)
-        san = re.sub(r",\s*([}\]])", r"\1", san)  # 트레일링콤마 제거
-        try:
-            d = json.loads(san)
-            if isinstance(d, dict):
-                masked = _mask_row(d)
-                rows.append(ResourceEvidence(
-                    resource_id=f"row{idx}", status="", detail="",
-                    evidence=json.dumps(masked, ensure_ascii=False)))
-                idx += 1
-                continue
-        except json.JSONDecodeError:
-            pass
-        # 파싱 실패 dict → raw 보존하되 반드시 마스킹(해시/평문 누출 방지)
-        rows.append(ResourceEvidence(
-            resource_id=f"row{idx}", status="", detail="(파싱불가 행)",
-            evidence=_mask_raw_text(_json_safe(obj))[:500]))
-        idx += 1
-    # 2) bare 문자열 행(객체 밖의 "....") — 객체를 제거한 잔여에서 추출
-    residue = re.sub(r"\{.*?\}", "", result_block, flags=re.S)
-    for sm in re.finditer(r'"([^"]{3,})"', residue):
-        val = _sanitize_scalar(sm.group(1))
-        if val and val.upper() != "NOTE":
+    for kind, text in _iter_top_result_items(result_block):
+        if kind == "obj":
+            san = _json_safe(text)
+            san = re.sub(r",\s*([}\]])", r"\1", san)  # 트레일링콤마 제거
+            try:
+                d = json.loads(san)
+                if isinstance(d, dict):
+                    masked = _mask_row(d)
+                    rows.append(ResourceEvidence(
+                        resource_id=f"{check_id}#row{idx}", status="", detail="",
+                        evidence=json.dumps(masked, ensure_ascii=False)))
+                    idx += 1
+                    continue
+            except json.JSONDecodeError:
+                pass
+            # 파싱 실패 dict → raw 보존하되 반드시 마스킹(해시/평문 누출 방지)
             rows.append(ResourceEvidence(
-                resource_id=f"note{idx}", status="", detail=val, evidence=val))
+                resource_id=f"{check_id}#row{idx}", status="",
+                detail="(파싱불가 행)",
+                evidence=_mask_raw_text(_json_safe(text))[:500]))
             idx += 1
+        else:  # bare 문자열 행
+            val = _sanitize_scalar(text)
+            if len(val) >= 3 and val.upper() != "NOTE":
+                val = _mask_raw_text(val)
+                rows.append(ResourceEvidence(
+                    resource_id=f"{check_id}#note{idx}", status="",
+                    detail=val, evidence=val))
+                idx += 1
     return rows
 
 
@@ -206,16 +235,16 @@ def parse(txt_path: str) -> List[Tuple[str, List[ResourceEvidence], Optional[str
             raw = fh.read()
         arr = _strip_leading_noise(raw)
         out = []
-        for obj_text in _iter_top_objects(arr):
-            cid = _extract_check_id(obj_text)
-            if not cid:
-                continue
-            # inner = check_id 값(중첩 객체) 본문. 가장 바깥 {} 내부 사용.
-            inner = obj_text
+        # 최상위 항목을 brace-balance 가 아니라 항목 시작 마커로 경계 분할한다.
+        # 한 항목이 손상(예: outer 미닫힘)돼도 다음 항목 경계에서 복원되어
+        # 무음 손실(desync)이 번지지 않는다.
+        for cid, segment in _split_items(arr):
+            # inner = 항목 세그먼트(시작 마커부터 다음 항목 직전까지).
+            inner = segment
             query = _extract_query(inner)
             note = _extract_note(inner)
             result_block = _extract_result_block(inner)
-            resources = _parse_rows(result_block) if result_block.strip() or '"RESULT"' in inner else []
+            resources = _parse_rows(result_block, cid) if result_block.strip() or '"RESULT"' in inner else []
             ctx_parts = []
             if query:
                 ctx_parts.append(f"QUERY: {query}")

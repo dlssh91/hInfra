@@ -123,7 +123,7 @@ def test_parse_rows_illegal_escape_hash_masked():
         '{"USER":"u","AUTHENTICATION_STRING":'
         '"$A$005$abXXXXXXXXXXcd\\x01ef\\zinvalid","PLUGIN":"p"}'
     )
-    rows = db_json._parse_rows(block)
+    rows = db_json._parse_rows(block, "DBM-001")
     assert rows, "행이 하나도 추출되지 않았다"
     joined = " ".join(r.evidence or "" for r in rows)
     # 해시 본문(abXXXXXXXXXXcd)이 raw로 남으면 안 된다
@@ -151,10 +151,78 @@ def test_json_safe_strips_invalid_escapes():
     assert '\\"' in s
 
 
+def test_parse_survives_broken_braces_no_loss():
+    """수정1: 손상 DBM-022(outer 미닫힘) 뒤 DBM-024/028이 손실 없이 파싱.
+
+    중복키 DBM-028_3 둘 다 반환되어야 한다(병합은 aggregate 책임)."""
+    out = db_json.parse(FIX)
+    cids = [cid for cid, _res, _ctx in out]
+    assert "DBM-024_1" in cids, f"손상 항목 뒤 DBM-024_1 손실됨: {cids}"
+    assert cids.count("DBM-028_3") == 2, f"중복 DBM-028_3 보존 실패: {cids}"
+    # 정상 항목이 손상 전후로 전부 살아있음(손실 0)
+    for expected in ("DBM-001", "DBM-004", "DBM-011", "DBM-019",
+                     "DBM-022", "DBM-024_1", "DBM-028_3"):
+        assert expected in cids, f"{expected} 손실: {cids}"
+
+
+def test_parse_rows_no_residue_ghost_extraction():
+    """수정2: 값에 '}'가 든 행에서 다른 키 값이 bare 행으로 중복 추출되지 않음."""
+    block = '{"A":"x}y","B":"secretval123"}'
+    rows = db_json._parse_rows(block, "DBM-099")
+    bare = [r for r in rows if r.resource_id.startswith("DBM-099#note")]
+    joined = " ".join((r.detail or "") + " " + (r.evidence or "") for r in bare)
+    assert "secretval123" not in joined, (
+        f"bare 행으로 유령 추출됨: {[r.resource_id for r in rows]} / {joined!r}")
+    # 정상 행 객체 1개는 추출되어야 한다
+    obj_rows = [r for r in rows if r.resource_id.startswith("DBM-099#row")]
+    assert len(obj_rows) == 1
+
+
+def test_parse_rows_resource_id_convention():
+    """수정3: 행 resource_id는 f'{check_id}#row{i}' 규약."""
+    block = ('{"GRANTEE":"a","PRIVILEGE_TYPE":"SELECT"},'
+             '{"GRANTEE":"b","PRIVILEGE_TYPE":"SUPER"}')
+    rows = db_json._parse_rows(block, "DBM-004")
+    assert rows[0].resource_id == "DBM-004#row0"
+    assert rows[1].resource_id == "DBM-004#row1"
+
+
+def test_parse_real_resource_id_convention():
+    out = db_json.parse(FIX)
+    by_id = {cid: res for cid, res, _ in out}
+    res004 = by_id["DBM-004"]
+    assert res004 and res004[0].resource_id == "DBM-004#row0"
+
+
 _REAL_FILES = [
     os.path.join("results", "DB", "MySQL", f"mysql_result_{name}.txt")
     for name in ("rds", "aurora", "azure")
 ]
+
+
+def _real_dbm_keys(path):
+    """원본 텍스트에서 normalize 전 DBM 키를 등장 순서대로(중복 포함) 수집."""
+    t = open(path, encoding="utf-8", errors="replace").read()
+    return re.findall(r'"(DBM-[\w]+)"\s*:', t)
+
+
+def test_real_data_no_item_loss():
+    """수정1 가드: 실 3파일에서 파싱된 check_id 집합이 원본 DBM키를 전부 포함(손실 0)."""
+    import pytest
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    checked = 0
+    for rel in _REAL_FILES:
+        path = os.path.join(repo_root, rel)
+        if not os.path.exists(path):
+            continue
+        checked += 1
+        out = db_json.parse(path)
+        parsed = {cid for cid, _res, _ctx in out}
+        original = set(_real_dbm_keys(path))
+        missing = original - parsed
+        assert not missing, f"{rel}: 손실된 DBM키 {len(missing)}건: {sorted(missing)}"
+    if checked == 0:
+        pytest.skip("실데이터 파일 없음")
 
 
 def test_real_data_no_hash_leak():

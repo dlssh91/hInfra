@@ -26,5 +26,20 @@
 {"DBM-019":{
 "NOTE": "관리형 DB를 사용하는 환경일 경우 N/A"
 }},
-{"DBM-022":{"설치형DB: 서버 스크립트 참고, 그 외: 해당없음"}}
+{"DBM-022":{"설치형DB: 서버 스크립트 참고, 그 외: 해당없음"},
+{"DBM-024_1":{
+"QUERY": "SELECT GRANTEE, PRIVILEGE_TYPE FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES",
+"RESULT": [
+{"GRANTEE": "'app'@'%'","PRIVILEGE_TYPE": "EXECUTE"},
+]}},
+{"DBM-028_3":{
+"QUERY": "SELECT @@version",
+"RESULT": [
+"8.0.35"
+]}},
+{"DBM-028_3":{
+"QUERY": "SELECT @@version_comment",
+"RESULT": [
+"MySQL Community Server"
+]}}
 ]
