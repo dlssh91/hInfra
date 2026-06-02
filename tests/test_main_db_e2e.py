@@ -2,7 +2,9 @@ import json
 import os
 import openpyxl
 
-from judge_tool.main import run
+from judge_tool.main import run, _judge_one
+from judge_tool.models import Criterion, EvidenceItem, ResourceEvidence
+from judge_tool.profile import get_profile
 
 FIX = os.path.join(os.path.dirname(__file__), "fixtures", "sample_db_mysql.txt")
 
@@ -67,3 +69,40 @@ def test_db_note_forces_judgment_boryu(tmp_path):
         assert j["verdict"] == "판단보류"          # NOTE → 강제 판단보류
         assert j["needs_review"] is True
         assert "NOTE" in j["rationale"]
+
+
+def _db_crit(item_id="DBM-100"):
+    return Criterion(
+        item_id=item_id, item_name=f"{item_id}항목", risk=5.0,
+        variant="MYSQL", eval_type="스크립트",
+        standard="* 양호 - ...\n* 취약 - ...", method="방법",
+        applicable=True)
+
+
+def test_judge_one_blank_note_no_indexerror():
+    # NOTE 값이 공백뿐이면 과거 .splitlines()[0]에서 IndexError 발생.
+    # 줄-시작 정규식으로 교체 후 예외 없이 판단보류를 반환해야 한다.
+    crit = _db_crit("DBM-100")
+    item = EvidenceItem(item_id="DBM-100", variant="MYSQL",
+                        resources=[], context="QUERY: q\nNOTE:   ")
+    profile = get_profile("db_mysql")
+    j = _judge_one(crit, item, "DBM-100", "MYSQL", StubVuln(), profile)
+    assert j is not None
+    assert j.verdict == "판단보류"
+    assert "NOTE" in j.rationale
+
+
+def test_judge_one_inline_note_no_false_match():
+    # QUERY 줄 중간에 "NOTE:"가 섞여 있고 별도 NOTE 줄은 없는 경우,
+    # NOTE 강제 분기에 진입하지 않고 정상 LLM 경로로 가야 한다.
+    crit = _db_crit("DBM-101")
+    # 증거 1건 부여(무증거 자동 판단보류 가드를 피해 LLM verdict 가 흐르도록).
+    item = EvidenceItem(
+        item_id="DBM-101", variant="MYSQL",
+        resources=[ResourceEvidence(
+            resource_id="db1", status="bad", detail="d", evidence="e")],
+        context="QUERY: SELECT 'NOTE: inline' FROM dual")
+    profile = get_profile("db_mysql")
+    j = _judge_one(crit, item, "DBM-101", "MYSQL", StubVuln(), profile)
+    assert j is not None
+    assert j.verdict == "취약"   # StubVuln → 취약, 판단보류 아님

@@ -50,10 +50,14 @@ def _judge_one(crit, item, item_id: str, variant: str, client,
     empty_ok = item_id in profile.empty_means_good
     # B-2: NOTE 보유 항목은 기술점검 범위 밖(관리체계/외부확인/N-A)이므로
     # LLM 호출 없이 판단보류로 강제하고 NOTE를 사유로 기록(empty_means_good보다 우선).
-    if item.context and "NOTE:" in item.context:
-        note = item.context.split("NOTE:", 1)[1].strip().splitlines()[0]
+    # 줄-시작 정규식으로 NOTE 줄만 정확히 매칭한다.
+    # (?m)^NOTE:\s*(.*)$ → QUERY 줄 중간의 "NOTE:"는 오탐하지 않고,
+    # 값이 공백/빈문자면 group(1).strip()이 ""가 되어 IndexError가 없다.
+    note_m = re.search(r"(?m)^NOTE:\s*(.*)$", item.context or "")
+    if note_m:
+        note = note_m.group(1).strip()
         forced = {"verdict": "판단보류", "confidence": 0.0,
-                  "rationale": f"[자동 판단보류: NOTE] {note}",
+                  "rationale": f"[자동 판단보류: NOTE] {note}".strip(),
                   "cited_evidence": []}
         return reconcile(
             forced, crit, item,
