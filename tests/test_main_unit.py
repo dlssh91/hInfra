@@ -49,6 +49,19 @@ class AllFailClient:
         raise RuntimeError("전건 네트워크 폭발")
 
 
+_SECRET_MARKER = "SECRET-EVIDENCE-aws_access_key=AKIA0000"
+
+
+class LeakyFailClient:
+    """예외 메시지에 evidence 원문 같은 민감 문자열을 실어 던지는 대역.
+
+    D-main 검증용: 예외 본문이 rationale/Excel '근거' 로 유출되면 안 된다.
+    """
+
+    def chat(self, system, user):
+        raise RuntimeError(f"LLM 응답 파싱 실패: {_SECRET_MARKER}")
+
+
 def _write_synthetic_criteria(path):
     """CLOUD 프로파일 포맷에 맞는 합성 평가기준 xlsx 생성.
 
@@ -290,6 +303,107 @@ def test_run_all_llm_failures_isolated(tmp_path):
     for j in judgments:
         assert j["verdict"] == "판단보류"
         assert j["needs_review"] is True
+
+
+def test_run_redacts_exception_body_from_rationale(tmp_path):
+    """judge 예외 메시지(민감 evidence 포함)가 rationale 으로 유출되지 않는다.
+
+    rationale 은 예외 타입명/고정문구만 담아야 한다(D-main).
+    """
+    report = _copy_fixture_xml(tmp_path)
+    criteria = os.path.join(str(tmp_path), "criteria.xlsx")
+    _write_synthetic_criteria(criteria)
+    json_out = os.path.join(str(tmp_path), "result.json")
+    xlsx_out = os.path.join(str(tmp_path), "result.xlsx")
+
+    run(report_path=report, criteria_path=criteria, profile_key="cloud",
+        client=LeakyFailClient(), json_out=json_out, xlsx_out=xlsx_out,
+        model_name="stub")
+
+    data = json.load(open(json_out, encoding="utf-8"))
+    for j in data["judgments"]:
+        assert j["verdict"] == "판단보류"
+        # 예외 raw 본문(민감 문자열)이 rationale 에 새어나오면 안 됨
+        assert _SECRET_MARKER not in j["rationale"]
+        # 예외 타입명(고정문구)은 허용
+        assert "RuntimeError" in j["rationale"]
+
+
+# --------------------------------------------------------------------------
+# E: 출력 디렉터리가 입력 데이터 디렉터리로 가는 것 차단(main CLI 경계)
+# --------------------------------------------------------------------------
+
+def test_main_rejects_out_dir_equal_to_report_dir(tmp_path, monkeypatch):
+    report = _copy_fixture_xml(tmp_path)
+    criteria = os.path.join(str(tmp_path / "crit"), "criteria.xlsx")
+    os.makedirs(os.path.dirname(criteria), exist_ok=True)
+    _write_synthetic_criteria(criteria)
+
+    monkeypatch.setattr(main_mod, "OllamaClient",
+                        lambda *a, **k: StubClient())
+
+    # --out-dir 이 --report 가 위치한 디렉터리(tmp_path)와 동일 → 거부
+    with pytest.raises((SystemExit, ValueError)):
+        main(["--report", report, "--criteria", criteria,
+              "--out-dir", str(tmp_path), "--model", "stub"])
+
+
+def test_main_rejects_out_dir_equal_to_criteria_dir(tmp_path, monkeypatch):
+    rep_dir = tmp_path / "rep"
+    crit_dir = tmp_path / "crit"
+    os.makedirs(str(rep_dir), exist_ok=True)
+    os.makedirs(str(crit_dir), exist_ok=True)
+    report = _copy_fixture_xml(rep_dir)
+    criteria = os.path.join(str(crit_dir), "criteria.xlsx")
+    _write_synthetic_criteria(criteria)
+
+    monkeypatch.setattr(main_mod, "OllamaClient",
+                        lambda *a, **k: StubClient())
+
+    # --out-dir 이 --criteria 디렉터리와 동일 → 거부
+    with pytest.raises((SystemExit, ValueError)):
+        main(["--report", report, "--criteria", criteria,
+              "--out-dir", str(crit_dir), "--model", "stub"])
+
+
+def test_main_rejects_out_dir_under_report_dir(tmp_path, monkeypatch):
+    rep_dir = tmp_path / "rep"
+    crit_dir = tmp_path / "crit"
+    os.makedirs(str(rep_dir), exist_ok=True)
+    os.makedirs(str(crit_dir), exist_ok=True)
+    report = _copy_fixture_xml(rep_dir)
+    criteria = os.path.join(str(crit_dir), "criteria.xlsx")
+    _write_synthetic_criteria(criteria)
+    sub = os.path.join(str(rep_dir), "out")  # 입력 디렉터리 하위
+
+    monkeypatch.setattr(main_mod, "OllamaClient",
+                        lambda *a, **k: StubClient())
+
+    with pytest.raises((SystemExit, ValueError)):
+        main(["--report", report, "--criteria", criteria,
+              "--out-dir", sub, "--model", "stub"])
+
+
+def test_main_allows_separate_out_dir(tmp_path, monkeypatch, capsys):
+    rep_dir = tmp_path / "rep"
+    crit_dir = tmp_path / "crit"
+    out_dir = tmp_path / "out"
+    for d in (rep_dir, crit_dir, out_dir):
+        os.makedirs(str(d), exist_ok=True)
+    report = _copy_fixture_xml(rep_dir)
+    criteria = os.path.join(str(crit_dir), "criteria.xlsx")
+    _write_synthetic_criteria(criteria)
+
+    monkeypatch.setattr(main_mod, "OllamaClient",
+                        lambda *a, **k: StubClient(verdict="취약"))
+
+    # 입력과 무관한 별도 디렉터리 → 정상 동작
+    main(["--report", report, "--criteria", criteria,
+          "--out-dir", str(out_dir), "--model", "stub"])
+
+    base = os.path.splitext(os.path.basename(report))[0]
+    assert os.path.exists(os.path.join(str(out_dir), f"result_{base}.json"))
+    assert os.path.exists(os.path.join(str(out_dir), f"result_{base}.xlsx"))
 
 
 def test_run_empty_input(tmp_path):

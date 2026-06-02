@@ -10,11 +10,9 @@ from judge_tool.criteria_loader import load_criteria
 from judge_tool.judge import OllamaClient, judge_item, reconcile
 from judge_tool.mapper import aggregate
 from judge_tool.models import Judgment
-from judge_tool.parsers import cloud_xml
+from judge_tool.parsers import get_parser
 from judge_tool.profile import get_profile
 from judge_tool.writer import build_coverage, write_excel, write_json
-
-_PARSERS = {"cloud_xml": cloud_xml}
 
 log = logging.getLogger(__name__)
 
@@ -38,18 +36,44 @@ def _judge_one(crit, item, item_id: str, variant: str,
         llm = judge_item(crit, item, client)
         return reconcile(llm, crit, item)
     except Exception as e:  # noqa: BLE001 - 부분 실패 격리(네트워크/HTTP/KeyError 등)
-        log.warning("항목 %s(%s) 판정 실패, 판단보류로 격리: %s",
-                    item_id, variant, e)
+        # 예외 본문에는 LLM 응답/evidence 원문이 섞일 수 있으므로 산출물·로그에
+        # raw 메시지를 직렬화하지 않는다(타입명/item_id 만 남긴다).
+        log.warning("judge 실패 item=%s variant=%s type=%s",
+                    item_id, variant, type(e).__name__)
         fallback_llm = {"verdict": "판단보류", "confidence": 0.0,
-                        "rationale": f"판정 중 오류: {e}",
+                        "rationale": f"판정 중 오류({type(e).__name__})",
                         "cited_evidence": []}
 
     try:
         return reconcile(fallback_llm, crit, item)
     except Exception as e2:  # noqa: BLE001 - reconcile 자체 실패 시 해당 항목만 스킵
-        log.warning("항목 %s(%s) 폴백 reconcile 실패, 스킵: %s",
-                    item_id, variant, e2)
+        log.warning("폴백 reconcile 실패, 스킵 item=%s variant=%s type=%s",
+                    item_id, variant, type(e2).__name__)
         return None
+
+
+def _is_within(child: str, parent: str) -> bool:
+    """child(realpath)가 parent(realpath)와 같거나 그 하위면 True.
+
+    경로 문자열 기준으로 정규화해 비교하므로 입력 파일이 실제로
+    존재하지 않아도 안전하게 동작한다.
+    """
+    child = os.path.realpath(child)
+    parent = os.path.realpath(parent)
+    if child == parent:
+        return True
+    return child.startswith(parent + os.sep)
+
+
+def _guard_out_dir(out_dir: str, report_path: str, criteria_path: str) -> None:
+    """출력 디렉터리가 입력 데이터 디렉터리(보고서/평가기준 파일의 디렉터리)와
+    같거나 그 하위면 거부한다. 실데이터 디렉터리 오염을 막는 CLI 경계 가드."""
+    for input_path in (report_path, criteria_path):
+        input_dir = os.path.dirname(os.path.abspath(input_path))
+        if _is_within(out_dir, input_dir):
+            raise SystemExit(
+                "출력 디렉터리가 입력 데이터 디렉터리와 같습니다. "
+                "별도 --out-dir을 지정하세요.")
 
 
 def run(report_path: str, criteria_path: str, profile_key: str, client,
@@ -61,9 +85,7 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
         raise ValueError(f"파일명에서 variant를 식별할 수 없음: {report_path}")
 
     criteria = load_criteria(criteria_path, profile)
-    parser = _PARSERS.get(profile.parser)
-    if parser is None:
-        raise ValueError(f"지원하지 않는 파서: {profile.parser}")
+    parser = get_parser(profile.parser)
     raw_checks = parser.parse(report_path)
     items = aggregate(raw_checks, variant, profile)
 
@@ -103,6 +125,8 @@ def main(argv=None):
     ap.add_argument("--model", default="qwen2.5:14b")
     ap.add_argument("--ollama-url", default="http://localhost:11434")
     args = ap.parse_args(argv)
+
+    _guard_out_dir(args.out_dir, args.report, args.criteria)
 
     base = os.path.splitext(os.path.basename(args.report))[0]
     json_out = os.path.join(args.out_dir, f"result_{base}.json")
