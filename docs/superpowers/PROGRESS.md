@@ -26,7 +26,10 @@
 | 7 | judge raw 증거가드 + reconcile 확장(status_available 등) | ✅ |
 | 8 | main.run DB 연결 + NOTE→판단보류 | ✅ (실데이터 E2E: coverage 16/17, DBM-025 missing — spec §10 일치) |
 | 9 | 거버넌스+회귀 | ✅ |
-| 10 | 실제 Ollama 스모크(수동·선택) | ⬜ |
+| 10 | 실제 Ollama 스모크(수동·선택) | ✅ (qwen3-coder:30b, rds, 2026-06-02) |
+
+DB 스모크 결과(rds, qwen3-coder:30b): 판정 16/17(미판정 DBM-025), 양호5/취약4/판단보류7, needs_review 16/16, 마스킹 누출 0.
+설계 검증: DBM-005 평문→취약(마스킹+사실보존), DBM-004 관리자권한→취약(권한요약), DBM-001 해시→판단보류, DBM-011/013 NOTE→판단보류, DBM-017 빈RESULT→양호(empty_means_good). B-1~B-4 전부 실모델 작동.
 
 ### ⚠️ DB 산출물 거버넌스 (민감정보)
 - DB 결과(.txt)엔 **비밀번호 해시·평문**이 포함됨. db_json 파서가 **마스킹**(값 제거+길이/plugin 노출)하나, `out/` 산출물(JSON/Excel)엔 여전히 **계정명/호스트/내부IP 등 식별정보**가 남는다.
