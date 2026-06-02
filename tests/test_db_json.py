@@ -59,3 +59,49 @@ def test_mask_row_nested_list():
     assert "plainpw1" not in m["rows"][0]["password"]
     assert "REDACTED" in m["rows"][0]["password"]
     assert m["rows"][1]["username"] == "alice"   # 비민감 보존
+
+
+import os
+
+FIX = os.path.join(os.path.dirname(__file__), "fixtures", "sample_db_mysql.txt")
+
+
+def test_parse_returns_items_with_context():
+    out = db_json.parse(FIX)
+    by_id = {cid: (res, ctx) for cid, res, ctx in out}
+    assert "DBM-001" in by_id and "DBM-004" in by_id
+    # DBM-001: 2행, 해시 마스킹됨
+    res001, _ = by_id["DBM-001"]
+    assert len(res001) == 2
+    assert all("FAKEFAKE" not in r.evidence for r in res001)
+    assert any("REDACTED" in r.evidence for r in res001)
+    # DBM-017: 빈 RESULT → resources 0건
+    res017, _ = by_id["DBM-017"]
+    assert res017 == []
+    # DBM-011: bare 문자열 행 + NOTE(context)
+    res011, ctx011 = by_id["DBM-011"]
+    assert any("not loaded" in r.evidence or "not loaded" in r.detail
+               for r in res011)
+    assert ctx011 and "PISM-011" in ctx011
+    # DBM-019: NOTE-only → resources 0건, context에 N/A
+    res019, ctx019 = by_id["DBM-019"]
+    assert res019 == []
+    assert ctx019 and "N/A" in ctx019
+    # DBM-022: 키only dict → 죽지 않고 처리(빈 resources 또는 context)
+    assert "DBM-022" in by_id
+
+
+def test_parse_includes_query_in_context():
+    out = db_json.parse(FIX)
+    by_id = {cid: ctx for cid, res, ctx in out}
+    assert "USER_PRIVILEGES" in (by_id["DBM-004"] or "")
+
+
+def test_parse_malformed_raises_reporterror(tmp_path):
+    import pytest
+    p = tmp_path / "bad.txt"
+    p.write_text("this is not json at all {{{", encoding="utf-8")
+    with pytest.raises(Exception) as ei:
+        db_json.parse(str(p))
+    from judge_tool.errors import ReportError
+    assert isinstance(ei.value, ReportError)

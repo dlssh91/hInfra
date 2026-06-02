@@ -3,9 +3,9 @@
 새 분야(파서) 추가 시 이 파일과 해당 프로파일만 손대면 되도록
 파서 등록 지점을 한 곳으로 모은다(main.py 는 get_parser 만 사용).
 """
-from judge_tool.parsers import cloud_xml
+from judge_tool.parsers import cloud_xml, db_json
 
-_PARSERS = {"cloud_xml": cloud_xml}
+_PARSERS = {"cloud_xml": cloud_xml, "db_json": db_json}
 
 
 def get_parser(name):

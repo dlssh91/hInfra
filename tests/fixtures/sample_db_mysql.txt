@@ -1,0 +1,30 @@
+[INFO] 탐지된 환경: AWS RDS MySQL (State=2)
+[
+{"DBM-001":{
+"QUERY": "SELECT Host, User, password, plugin, account_locked FROM mysql.user",
+"RESULT": [
+{"HOST": "%","USER": "app","AUTHENTICATION_STRING": "$A$005$FAKEFAKEFAKE0123456789","PLUGIN": "caching_sha2_password","ACCOUNT_LOCKED": "N"},
+{"HOST": "localhost","USER": "root","AUTHENTICATION_STRING": "$A$005$ZZZZ1111","PLUGIN": "caching_sha2_password","ACCOUNT_LOCKED": "N"},
+]}},
+{"DBM-004":{
+"QUERY": "SELECT GRANTEE, PRIVILEGE_TYPE FROM INFORMATION_SCHEMA.USER_PRIVILEGES",
+"RESULT": [
+{"GRANTEE": "'app'@'%'","PRIVILEGE_TYPE": "SELECT"},
+{"GRANTEE": "'app'@'%'","PRIVILEGE_TYPE": "SUPER"},
+]}},
+{"DBM-017":{
+"QUERY": "SELECT GRANTEE, PRIVILEGE_TYPE ... WHERE ... NOT IN ('USAGE')",
+"RESULT": [
+]}},
+{"DBM-011":{
+"QUERY": "SELECT VARIABLE_NAME, VARIABLE_VALUE ... LIKE audit_log",
+"RESULT": [
+"audit_log.so plugin is not loaded!"
+],
+"NOTE": "For audit log upload settings, refer to the PISM-011 script results."
+}},
+{"DBM-019":{
+"NOTE": "관리형 DB를 사용하는 환경일 경우 N/A"
+}},
+{"DBM-022":{"설치형DB: 서버 스크립트 참고, 그 외: 해당없음"}}
+]
