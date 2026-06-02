@@ -91,6 +91,31 @@ def _sanitize_scalar(s: str) -> str:
     return _CTRL.sub("", s)
 
 
+def _json_safe(s: str) -> str:
+    r"""행 텍스트를 json.loads 가능하게 중화.
+
+    제어문자 제거 + JSON에서 유효하지 않은 백슬래시 이스케이프 제거
+    (\" \\ \/ \b \f \n \r \t \uXXXX 만 허용)."""
+    s = _CTRL.sub("", s)
+    s = re.sub(r'\\(?!["\\/bfnrtu])', "", s)
+    return s
+
+
+def _mask_raw_text(s: str) -> str:
+    """파싱 불가 raw 텍스트에서 해시/평문 민감값을 정규식으로 마스킹.
+
+    폴백 경로 전용 방어심화: 해시/평문이 절대 raw로 남지 않게 한다."""
+    # 해시류 토큰: $A$..., 긴 hex(16+), *HEX
+    s = re.sub(r'\$[A-Za-z0-9][^"\s,}]*', "<REDACTED>", s)
+    s = re.sub(r'\*?[0-9A-Fa-f]{16,}', "<REDACTED>", s)
+    # 민감 키의 값 마스킹: "...PASS...": "값"
+    s = re.sub(
+        r'("(?:[^"]*(?:pass|pwd|pswd|auth\w*string|hash|secret|credential|token)'
+        r'[^"]*)"\s*:\s*)"[^"]*"',
+        r'\1"<REDACTED>"', s, flags=re.I)
+    return s
+
+
 def _extract_check_id(obj_text: str) -> Optional[str]:
     m = re.search(r'"\s*(DBM-[\w]+)\s*"\s*:', obj_text)
     return m.group(1) if m else None
@@ -145,7 +170,7 @@ def _parse_rows(result_block: str) -> List[ResourceEvidence]:
     # 1) 행 객체 {...}
     idx = 0
     for obj in _iter_top_objects(result_block):
-        san = _sanitize_scalar(obj)
+        san = _json_safe(obj)
         san = re.sub(r",\s*([}\]])", r"\1", san)  # 트레일링콤마 제거
         try:
             d = json.loads(san)
@@ -158,10 +183,10 @@ def _parse_rows(result_block: str) -> List[ResourceEvidence]:
                 continue
         except json.JSONDecodeError:
             pass
-        # 파싱 실패 dict → raw 보존(마스킹 불가 시 통째 마스킹 회피 위해 길이만)
+        # 파싱 실패 dict → raw 보존하되 반드시 마스킹(해시/평문 누출 방지)
         rows.append(ResourceEvidence(
             resource_id=f"row{idx}", status="", detail="(파싱불가 행)",
-            evidence=_sanitize_scalar(obj)[:500]))
+            evidence=_mask_raw_text(_json_safe(obj))[:500]))
         idx += 1
     # 2) bare 문자열 행(객체 밖의 "....") — 객체를 제거한 잔여에서 추출
     residue = re.sub(r"\{.*?\}", "", result_block, flags=re.S)

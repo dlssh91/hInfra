@@ -105,3 +105,75 @@ def test_parse_malformed_raises_reporterror(tmp_path):
         db_json.parse(str(p))
     from judge_tool.errors import ReportError
     assert isinstance(ei.value, ReportError)
+
+
+import re
+
+# 실데이터 누출 가드용 해시 원문 패턴
+_HASH_LEAK = re.compile(r"\$[A-Za-z0-9]\$\d|[0-9A-Fa-f]{32,}")
+
+
+def test_parse_rows_illegal_escape_hash_masked():
+    """합성 회귀: 불법 백슬래시 이스케이프+해시 행이 마스킹되어야 한다.
+
+    근본(이스케이프 중화 후 json.loads→_mask_row) 또는 폴백
+    (_mask_raw_text) 어느 경로로든 해시 본문이 evidence에 남으면 안 된다.
+    """
+    block = (
+        '{"USER":"u","AUTHENTICATION_STRING":'
+        '"$A$005$abXXXXXXXXXXcd\\x01ef\\zinvalid","PLUGIN":"p"}'
+    )
+    rows = db_json._parse_rows(block)
+    assert rows, "행이 하나도 추출되지 않았다"
+    joined = " ".join(r.evidence or "" for r in rows)
+    # 해시 본문(abXXXXXXXXXXcd)이 raw로 남으면 안 된다
+    assert "abXXXXXXXXXXcd" not in joined
+    assert "$A$005$" not in joined
+    assert "REDACTED" in joined
+
+
+def test_mask_raw_text_redacts_hashes_and_sensitive_keys():
+    raw = ('{"AUTHENTICATION_STRING":"$A$005$abcdef0123456789",'
+           '"PASSWORD":"plainsecret","HEX":"DEADBEEFCAFEBABE1234"}')
+    masked = db_json._mask_raw_text(raw)
+    assert "$A$005$abcdef0123456789" not in masked
+    assert "plainsecret" not in masked
+    assert "DEADBEEFCAFEBABE1234" not in masked
+    assert "REDACTED" in masked
+
+
+def test_json_safe_strips_invalid_escapes():
+    s = db_json._json_safe('a\\x01b\\zc\\nd\\"e')
+    # 유효 이스케이프(\n \") 백슬래시는 보존, 무효(\x \z)는 제거
+    assert "\\x" not in s
+    assert "\\z" not in s
+    assert "\\n" in s
+    assert '\\"' in s
+
+
+_REAL_FILES = [
+    os.path.join("results", "DB", "MySQL", f"mysql_result_{name}.txt")
+    for name in ("rds", "aurora", "azure")
+]
+
+
+def test_real_data_no_hash_leak():
+    """실데이터 누출 회귀(가드): 실파일이 있으면 전체 evidence 직렬화에
+    해시 원문 패턴이 0건이어야 한다. results/는 읽기만, 출력 안 만듦."""
+    import pytest
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    checked = 0
+    for rel in _REAL_FILES:
+        path = os.path.join(repo_root, rel)
+        if not os.path.exists(path):
+            continue
+        checked += 1
+        out = db_json.parse(path)
+        blob = "\n".join(
+            (r.evidence or "") + "\n" + (r.detail or "")
+            for _cid, res, _ctx in out for r in res
+        )
+        leaks = _HASH_LEAK.findall(blob)
+        assert not leaks, f"{rel}: 해시 원문 누출 {len(leaks)}건: {leaks[:3]}"
+    if checked == 0:
+        pytest.skip("실데이터 파일 없음")
