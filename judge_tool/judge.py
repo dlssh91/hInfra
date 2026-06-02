@@ -204,13 +204,11 @@ def reconcile(llm: Dict, criterion: Criterion, item: EvidenceItem) -> Judgment:
     # 없으므로 LLM verdict 와 무관하게 판단보류로 강제하고 검토 대상으로 표시.
     # cited_evidence 는 보존한다.
     no_evidence = not item.resources
-    if script_status == "error" or no_evidence:
-        if verdict != "판단보류":
-            verdict = "판단보류"
-            reason = ("증거 없음" if no_evidence
-                      else "스크립트 점검 오류(error)")
-            note = f"[자동 판단보류: {reason}]"
-            rationale = f"{rationale} {note}".strip() if rationale else note
+    if (script_status == "error" or no_evidence) and verdict != "판단보류":
+        verdict = "판단보류"
+        reason = "증거 없음" if no_evidence else "스크립트 점검 오류(error)"
+        note = f"[자동 판단보류: {reason}]"
+        rationale = f"{rationale} {note}".strip()
 
     needs_review = (
         agreement == "불일치"
