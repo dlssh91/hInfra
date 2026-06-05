@@ -1,5 +1,6 @@
 import json
 import re
+import subprocess
 from typing import Dict
 
 import requests
@@ -208,6 +209,31 @@ class OllamaClient:
         )
         resp.raise_for_status()
         return resp.json()["message"]["content"]
+
+
+class ClaudeCliClient:
+    """claude -p CLI를 사용하는 Anthropic 모델 클라이언트.
+
+    OllamaClient와 동일한 chat(system, user) -> str 인터페이스.
+    judge_tool의 Ollama 의존 없이 Anthropic 모델로 절대비교 가능.
+    """
+
+    def __init__(self, model: str = "claude-opus-4-8", timeout: int = 120):
+        self.model = model
+        self.timeout = timeout
+
+    def chat(self, system: str, user: str) -> str:
+        prompt = f"<system>\n{system}\n</system>\n\n{user}"
+        result = subprocess.run(
+            ["claude", "-p", prompt, "--model", self.model,
+             "--output-format", "text"],
+            capture_output=True, text=True, timeout=self.timeout,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"claude CLI 오류 (exit {result.returncode}): "
+                f"{result.stderr[:200]}")
+        return result.stdout.strip()
 
 
 def judge_item(criterion: Criterion, item: EvidenceItem, client,

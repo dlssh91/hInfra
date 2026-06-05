@@ -80,8 +80,47 @@
 
 ---
 
+## Claude Opus (claude-opus-4-8) 절대비교
+
+> 실험일: 2026-06-05 | 스크립트: `scripts/cloud_opus_experiment.py`  
+> 방식: `claude -p` CLI(Anthropic API), temperature 없음(모델 기본값)
+
+### 결과
+
+| 항목 | 값 |
+|------|-----|
+| 판정수/기준 | 18/22 |
+| 결정성 (3회) | **100%** |
+| 런타임 (평균) | ~383s/회 |
+| 30b 대비 일치율 | 15/18 (**83.3%**) |
+
+**verdict 분포 (run1):** 취약 12, 양호 4, 판단보류 2, needs_review=8
+
+### 불일치 3건 분석
+
+| 항목 | 30b | Opus | 평가 |
+|------|-----|------|------|
+| PISM-023 | 취약 | 판단보류 | **Opus가 정확** — 불필요 자원 여부는 인터뷰 확인 항목. 30b는 "오래된 것=불필요"로 과추론 |
+| PISM-025 | 판단보류 | 취약 | **Opus가 정확** — 실제 nodejs18.x·python3.9는 EOL 도달. Opus는 외부 지식으로 판정, 30b는 보수적 판단보류 |
+| PISM-036 | 취약 | 양호 | **Opus가 정확** — KMS 암호화된 값과 Secrets Manager 구성 파라미터(엔드포인트/길이)를 정확히 구분. 30b는 키워드(PASSWORD, SECRETS) 보고 취약 과판정 |
+
+### 결론
+
+**Opus가 3건 모두 더 정확.** 30b는 키워드 기반 과추론 경향:
+- 리소스 오래됨 → 불필요하다고 추론 (PISM-023)
+- 암호화된 값·구성 파라미터를 평문 비밀번호로 오판 (PISM-036)
+
+**권장 업데이트:**
+
+| 목적 | 권장 모델 |
+|------|----------|
+| 최종 산출물 (정확도 최우선) | `claude-opus-4-8` |
+| 빠른 초안 / 사전 검토 | `qwen3-coder:30b` |
+| 빠른 확인 (30b 대용) | `qwen2.5-coder:7b` |
+
+---
+
 ## 다음 단계
 
-1. `scripts/db_smoke_all.py` 실행 → Oracle/MS-SQL/MariaDB/PostgreSQL 스모크
-2. DB 분야 모델 기준선 이 문서에 보완
-3. Azure 클라우드 XML 손상 파악 → 파서 개발
+1. ~~`scripts/db_smoke_all.py` 실행~~ ✅ 완료 (Oracle/MS-SQL/MariaDB/PostgreSQL)
+2. Azure 클라우드 XML 손상 파악 → 파서 개발
