@@ -81,6 +81,71 @@ SYSTEM_PROMPT (단일 전역)
 
 ---
 
+## 1-4. 추가 통찰 — "사람이 개입해야 하는 항목"
+
+**판단기준 자체가 "업무상 불필요 여부"를 핵심 조건으로 두는 항목은
+어떤 기술 증거가 와도 LLM이 판단할 수 없다.**
+
+### 자동 판단보류 대상 항목 (전 DBMS 공통)
+
+| 항목 | 내용 | 자동보류 이유 |
+|------|------|-------------|
+| **DBM-003** | 불필요 계정 존재 | "업무상 불필요한 계정인지" = 담당자만 앎 |
+| **DBM-004** | 불필요 관리자 권한 | "업무상 불필요하게 부여됐는지" = 담당자만 앎 |
+| **DBM-017** | 불필요 시스템 테이블 권한 | "업무상 불필요한 접근 권한인지" = 담당자만 앎 |
+| **DBM-024** | WITH GRANT OPTION | "운영상 불필요한지" = 담당자만 앎 |
+| **DBM-028** | 불필요 DB Object | "업무상 불필요한지" = 담당자만 앎 |
+| DBM-015 | PUBLIC 불필요 권한 (Oracle·MS-SQL·PG) | "업무상 불필요한 권한인지" = 담당자만 앎 |
+| PISM-023 | 불필요 가상자원 (클라우드) | "업무상 불필요한 자원인지" = 담당자만 앎 |
+
+### LLM 호출 절감 효과
+
+| DBMS | 자동보류/전체 | 절감율 |
+|------|------------|--------|
+| MySQL | 5/16 | **31%** |
+| Oracle | 6/19 | **32%** |
+| MS-SQL | 6/14 | **43%** |
+| MariaDB | 5/17 | **29%** |
+| PostgreSQL | 6/14 | **43%** |
+| 클라우드 | 3/22 | **14%** |
+
+### 구현 방법
+
+`Criterion` 모델에 `auto_deferred: bool` 필드 추가.  
+판단기준(standard) 텍스트에 "업무상 불필요"/"운영상 불필요"/"인터뷰하여" 포함 시 `True`.
+
+```python
+# judge_tool/models.py
+@dataclass
+class Criterion:
+    ...
+    auto_deferred: bool = False  # True면 LLM 호출 없이 자동 판단보류
+
+# judge_tool/criteria_loader.py — 로딩 시 자동 감지
+AUTO_DEFERRED_KW = ["업무상 불필요", "업무상 필요", "운영상 불필요", "인터뷰하여"]
+
+def _is_auto_deferred(standard: str) -> bool:
+    return any(kw in standard for kw in AUTO_DEFERRED_KW)
+```
+
+```python
+# judge_tool/main.py — _judge_one 호출 전 체크
+if crit.auto_deferred:
+    judgments.append(Judgment(
+        item_id=item_id, verdict="판단보류", confidence=1.0,
+        rationale="판단기준이 담당자 인터뷰를 통한 업무 필요성 확인을 요구합니다. 기술 증거만으로 판정 불가.",
+        cited_evidence=[], needs_review=True, ...
+    ))
+    continue  # LLM 호출 건너뜀
+```
+
+**이 변경으로:**
+- LLM 호출 29~43% 절감
+- 30b의 잘못된 취약/양호 판정 원천 차단
+- 평가자가 인터뷰로 확인해야 할 항목 명확히 표시
+
+---
+
 ## 2. 설계 방향
 
 ### 2-1. 핵심 원칙
