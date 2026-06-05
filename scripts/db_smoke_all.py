@@ -4,7 +4,7 @@
 실제 Ollama 모델로 parse→aggregate→judge→reconcile 전 파이프라인 검증.
 results/ 는 읽기전용 — 절대 쓰지 않음. 출력은 out/db_smoke/ 에 저장.
 """
-import json, os, sys, datetime, time
+import json, os, re, sys, datetime, time
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
@@ -72,9 +72,12 @@ def run_smoke():
                 v = j["verdict"]
                 verdicts[v] = verdicts.get(v, 0) + 1
             nr = sum(1 for j in data["judgments"] if j.get("needs_review"))
-            masking_ok = all(
-                "<REDACTED" not in str(j.get("rationale", "")) and
-                "<REDACTED" not in str(j.get("cited_evidence", []))
+            # 실제 해시/평문 패턴이 LLM 출력에 노출됐는지 검사.
+            # <REDACTED> 토큰 인용은 정상 동작이므로 오탐하지 않는다.
+            _HASH_RE = re.compile(r'\*?[0-9A-Fa-f]{16,}|\$[A-Za-z0-9][^\"\s,}]*')
+            masking_ok = not any(
+                _HASH_RE.search(str(j.get("rationale", "")) +
+                                str(j.get("cited_evidence", [])))
                 for j in data["judgments"]
             )
 
