@@ -120,7 +120,26 @@
 
 ---
 
+## ⚠️ 현재 기준선의 한계 (클라우드 분야)
+
+### 방화벽 정책 미포함
+
+현재 실험에 사용된 AWS 보고서(`aws_report_20251223_hinno.xml`)는 **방화벽 정책(WAF, Network ACL, 복합 방화벽 규칙 시나리오)을 포함하지 않는다.**
+
+- 보안 그룹(Security Group) 단순 인바운드/아웃바운드 규칙은 PISM-007에서 검증됨
+- 그러나 다음은 미검증:
+  - **WAF(Web Application Firewall)** 규칙 판단
+  - **Network ACL** 과 Security Group 복합 해석 (허용/차단 우선순위)
+  - **방화벽 정책 예외 처리** (특정 IP 허용 + 전체 차단 조합)
+  - **서비스별 방화벽 계층** (ALB → SG → NACL 다단계)
+
+최소 모델 기준선은 이 항목들이 포함된 보고서로 **재검증이 필요하다.** 방화벽 정책 복잡도에 따라 현재 기준선보다 더 큰 모델이 필요할 수 있음.
+
+---
+
 ## 다음 단계
 
 1. ~~`scripts/db_smoke_all.py` 실행~~ ✅ 완료 (Oracle/MS-SQL/MariaDB/PostgreSQL)
-2. Azure 클라우드 XML 손상 파악 → 파서 개발
+2. 나머지 DBMS(Oracle·MS-SQL·MariaDB·PostgreSQL) 모델 비교 실험
+3. Azure 클라우드 XML 손상 파악 → 파서 개발
+4. 방화벽 정책 포함 보고서 확보 후 클라우드 기준선 재검증
