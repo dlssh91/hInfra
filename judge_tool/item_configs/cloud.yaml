@@ -1,0 +1,61 @@
+# cloud 항목 라벨 & LLM 지시
+# label A: 기술 증거로 판정 가능 / B: 담당자 인터뷰 필수
+# B 항목: verdict=판단보류 고정, LLM은 summary_instruction으로 증거 요약만
+
+PISM-001:
+  label: A
+PISM-002:
+  label: A
+PISM-003:
+  label: A
+PISM-005:
+  label: A
+PISM-007:
+  label: A
+PISM-013:
+  label: A
+PISM-016:
+  label: A
+PISM-017:
+  label: A
+PISM-023:
+  label: B
+  summary_instruction: Lambda 함수(이름·런타임·최종수정일)와 S3 버킷(수·생성일 범위)을 요약. 판정하지 말 것.
+  verdict_fixed: 판단보류
+PISM-025:
+  label: A
+PISM-030:
+  label: A
+PISM-031:
+  label: A
+PISM-032:
+  label: A
+PISM-033:
+  label: A
+PISM-034:
+  label: A
+PISM-036:
+  label: A
+PISM-037:
+  label: A
+PISM-039:
+  label: A
+PISM-041:
+  label: A
+PISM-042:
+  label: A
+PISM-043:
+  label: A
+PISM-045:
+  label: B
+  summary_instruction: 점검 대상 항목의 현황을 증거 기반으로 요약. 판정하지 말 것.
+  verdict_fixed: 판단보류
+PISM-046:
+  label: A
+  review_note: '자동분류 B→A 수정: 특정 정책 존재 여부로 기술 판정 가능 (실험 확인)'
+PISM-049:
+  label: A
+PISM-060:
+  label: A
+PISM-064:
+  label: A

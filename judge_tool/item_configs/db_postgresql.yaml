@@ -1,0 +1,56 @@
+# db_postgresql 항목 라벨 & LLM 지시
+# label A: 기술 증거로 판정 가능 / B: 담당자 인터뷰 필수
+# B 항목: verdict=판단보류 고정, LLM은 summary_instruction으로 증거 요약만
+
+DBM-003:
+  label: B
+  summary_instruction: 계정 목록을 활성(ACCOUNT_LOCKED=N)/잠김(Y)/시스템내장(rdsadmin·mysql.sys
+    등)으로 분류하여 요약. 의심 계정명(test·temp·old·backup 포함) 별도 표시. 판정하지 말 것.
+  verdict_fixed: 판단보류
+DBM-004:
+  label: B
+  summary_instruction: '증거의 권한 행을 계정별로 집계하여 요약 (예: admin@% — 27개: ALTER, CREATE 등).
+    USAGE만 있는 계정은 ''일반 권한만''으로 표시. 판정하지 말 것.'
+  verdict_fixed: 판단보류
+DBM-005:
+  label: A
+DBM-006:
+  label: A
+DBM-007:
+  label: A
+DBM-008:
+  label: A
+DBM-009:
+  label: A
+DBM-011:
+  label: A
+DBM-013:
+  label: A
+DBM-015:
+  label: B
+  summary_instruction: PUBLIC에 부여된 권한을 유형별로 요약. SELECT 외 쓰기/실행 권한 별도 표시. 판정하지 말 것.
+  verdict_fixed: 판단보류
+DBM-016:
+  label: A
+DBM-017:
+  label: B
+  summary_instruction: 시스템 테이블 접근 권한을 계정/역할별로 집계하여 요약. 각 계정의 접근 테이블명과 권한 유형 나열. 판정하지
+    말 것.
+  verdict_fixed: 판단보류
+DBM-019:
+  label: A
+DBM-020:
+  label: A
+DBM-024:
+  label: B
+  summary_instruction: IS_GRANTABLE=YES 권한을 계정별로 집계하여 요약. 각 계정과 GRANT OPTION 보유 권한
+    목록 나열. 빈 결과면 'GRANT OPTION 없음 확인됨' 으로 요약. 판정하지 말 것.
+  verdict_fixed: 판단보류
+DBM-025:
+  label: A
+DBM-028:
+  label: B
+  summary_instruction: 오브젝트/권한을 소유자·계정별로 집계하여 요약. 시스템 내장 계정 소유 항목 별도 표시. 판정하지 말 것.
+  verdict_fixed: 판단보류
+DBM-032:
+  label: A
