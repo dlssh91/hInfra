@@ -1,6 +1,6 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-05. 다음 세션에서 이 파일부터 읽고 이어서 진행할 것.
+> 마지막 업데이트: 2026-06-08. 다음 세션에서 이 파일부터 읽고 이어서 진행할 것.
 
 ## 무엇을 만들고 있나
 클라우드(AWS/Azure) + DB(MySQL·Oracle·MS-SQL·MariaDB·PostgreSQL) 점검 결과를
@@ -13,7 +13,7 @@
 
 ---
 
-## 2026-06-05 현재 상태
+## 2026-06-08 현재 상태
 
 ### 완료된 것
 
@@ -21,13 +21,27 @@
 |------|------|
 | 클라우드 AWS 구현 | Task 0~10 완료, 스모크 통과 |
 | DB MySQL 구현 | Phase-2 완료, 스모크 통과 |
-| DB 나머지 프로파일 | Oracle·MS-SQL·MariaDB·PostgreSQL 프로파일 추가 (131 tests passed) |
+| DB 나머지 프로파일 | Oracle·MS-SQL·MariaDB·PostgreSQL 프로파일 추가 |
 | 모델 실험 | 30b/14b/7b ×3회 결정성 100%, Opus 절대비교 완료 |
 | 프롬프트 개선 | few-shot v4 — MySQL 기준 30b Opus 완전 일치(16/16) |
 | DBMS 전체 스모크 | Oracle·MS-SQL·MariaDB·PostgreSQL×3환경 통과 |
 | 모델 기준선 문서 | `2026-06-05-model-baseline.md` — 방화벽 정책 한계 명시 |
 | 아키텍처 설계 | `2026-06-05-prompt-architecture-design.md` |
-| 항목 라벨 YAML 초안 | `judge_tool/item_configs/*.yaml` (6개 파일, 118항목) |
+| A/B/C/D 라벨 체계 구현 | Phase-3 Step 1~3 완료 (136 tests, 3 commits) |
+
+### Phase-3 Step 1~3 완료 내용 (2026-06-08)
+
+| Step | 내용 |
+|------|------|
+| Step 1 | YAML A/B → A/B/C/D 확장. DBM-001→C, DBM-016/025→D, DBM-020→B, DBM-008 PG→variants |
+| Step 2 | criteria_loader variants 오버라이드. db_postgresql DBM-008: default=A, pg_azure=B |
+| Step 3 | B항목 summary 품질 개선. SUMMARY_SYSTEM_PROMPT 텍스트 강제. empty_means_good+B 충돌 해결 |
+
+**라벨별 항목 수 (전 DBMS 합계 기준):**
+- A: 기술 판정 — 대부분
+- B: 인터뷰 필요 — DBM-003·004·017·020·024·028 (전 DBMS), DBM-015(Oracle/MSSQL/PG), PISM-023·045
+- C: 기술 한계 — DBM-001(MySQL/Oracle/MariaDB)
+- D: 외부지식 — DBM-016·025(전 DBMS)
 
 ### 현재 실험 결과 요약
 
@@ -47,9 +61,17 @@
 
 ## 다음에 할 일 (정확한 재개 지점)
 
-### Phase-3: 항목별 라벨 체계 정비 + 구현
+### Phase-3: Step 4~5 (Step 1~3 완료)
 
-#### Step 1. YAML 라벨 체계 확장 (설계 완료, 구현 필요)
+#### Step 1~3. ✅ 완료 (2026-06-08)
+
+#### Step 4. (구현 완료) 재실험 — 개선 효과 검증
+
+Step 1~3 코드가 이미 구현됨. 남은 것은:
+- 전 DBMS × 3회 재실험 → C/D항목 LLM 절약 확인, B항목 요약 품질 확인
+- 특히 30b 모델 기준으로 기존 오류 항목(DBM-009 단위, DBM-001 해시 등) 개선 여부
+
+#### Step 4-실험. 전 DBMS 재실험 (다음 세션 시작 시 진행)
 
 현재 `A/B` 2가지 라벨의 문제점이 발견됨:
 
@@ -99,16 +121,14 @@ DBM-008:
 - PISM-045: 클라우드 관리체계 항목, 스크립트 증거 없을 수 있음
 - DBM-017, DBM-024 MySQL: 빈 결과 케이스 미처리
 
-#### Step 4. 코드 구현
+#### Step 4-실험. 전 DBMS 재실험 스크립트
+```bash
+# MySQL 기준 재실험 (3회, 30b 모델)
+python3 scripts/db_mysql_model_experiment.py
 
-설계 완료된 변경사항 구현 순서:
-1. `Criterion` 모델에 `auto_deferred: bool` + `label` 필드 추가
-2. `criteria_loader.py` — 라벨 YAML 로딩 + auto_deferred 자동 감지
-3. `judge_tool/prompts.py` 신규 — DBMS별 SYSTEM_PROMPT 분리
-4. `Profile.known_units` 추가 + `build_evidence_text` 단위 주석
-5. `main.py` — label별 처리 분기 (A: 판정, B: 요약, C/D: 자동보류)
-6. `writer.py` — B항목 `interview_checklist` 필드 추가 (Excel 출력)
-7. 전 DBMS ×3회 재실험 — 개선 효과 검증
+# 이후 Oracle·MS-SQL·MariaDB·PostgreSQL 순서로
+python3 scripts/db_all_model_compare.py
+```
 
 #### Step 5. Azure 클라우드 (별도)
 
