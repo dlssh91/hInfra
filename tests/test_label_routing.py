@@ -186,3 +186,48 @@ def test_d_label_no_llm_call(monkeypatch):
     j = _auto_defer(crit, item, CLOUD)
     assert counter.calls == 0
     assert j.label == "D"
+
+
+# ---------------------------------------------------------------------------
+# criteria_loader: variant별 라벨 오버라이드
+# ---------------------------------------------------------------------------
+
+def test_variant_label_override(tmp_path):
+    """YAML variants 구조가 variant별로 다른 label을 주입한다.
+
+    db_postgresql.yaml: DBM-008 default=A, pg_azure→B.
+    pg_rds variant는 A를 받고, pg_azure variant는 B를 받아야 한다.
+    """
+    import yaml
+    from judge_tool.criteria_loader import load_criteria
+    from judge_tool.profile import DB_POSTGRESQL
+    import openpyxl
+
+    # 합성 xlsx: DBM-008 항목, pg_rds/pg_aurora/pg_azure 모두 적용
+    p = DB_POSTGRESQL
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = p.sheet_name
+
+    rds = p.variants["pg_rds"]
+    aurora = p.variants["pg_aurora"]
+    azure = p.variants["pg_azure"]
+
+    row = p.data_start_row
+    ws.cell(row, p.id_col, "DBM-008")
+    ws.cell(row, p.name_col, "비밀번호 변경주기")
+    ws.cell(row, p.risk_col, 3.0)
+    for vspec in (rds, aurora, azure):
+        ws.cell(row, vspec.applicability_col, "o")
+        ws.cell(row, vspec.standard_col, "기준텍스트")
+        ws.cell(row, vspec.method_col, "방법")
+
+    xlsx_path = str(tmp_path / "db.xlsx")
+    wb.save(xlsx_path)
+
+    criteria = load_criteria(xlsx_path, DB_POSTGRESQL, profile_key="db_postgresql")
+
+    assert criteria[("DBM-008", "pg_rds")].label == "A"
+    assert criteria[("DBM-008", "pg_aurora")].label == "A"
+    assert criteria[("DBM-008", "pg_azure")].label == "B"
+    assert criteria[("DBM-008", "pg_azure")].summary_instruction is not None

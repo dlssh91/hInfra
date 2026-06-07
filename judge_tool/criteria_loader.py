@@ -63,6 +63,8 @@ def load_criteria(xlsx_path: str,
                     # cloud: 기존 is_judgeable 동치(스크립트 기반 & N/A 아님)
                     applicable = ("스크립트" in eval_type) and eval_type != "N/A"
                 cfg = item_configs.get(item_id, {})
+                # variant별 오버라이드: cfg["variants"][vname]이 있으면 해당 값 우선
+                vcfg = cfg.get("variants", {}).get(vname, {})
                 out[(item_id, vname)] = Criterion(
                     item_id=item_id,
                     item_name=name,
@@ -72,9 +74,11 @@ def load_criteria(xlsx_path: str,
                     standard=standard,
                     method=method,
                     applicable=applicable,
-                    label=cfg.get("label", "A"),
-                    canned_message=cfg.get("canned_message"),
-                    summary_instruction=cfg.get("summary_instruction"),
+                    label=vcfg.get("label", cfg.get("label", "A")),
+                    canned_message=vcfg.get("canned_message",
+                                            cfg.get("canned_message")),
+                    summary_instruction=vcfg.get("summary_instruction",
+                                                 cfg.get("summary_instruction")),
                 )
         return out
     finally:
