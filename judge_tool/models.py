@@ -21,6 +21,10 @@ class Criterion:
     standard: str         # 판단기준 텍스트
     method: str           # 판단방법 텍스트
     applicable: bool = True   # 해당 variant 평가대상 여부(loader가 계산)
+    # 항목 라벨 (item_configs YAML에서 로딩)
+    label: str = "A"                          # A/B/C/D
+    canned_message: Optional[str] = None      # C·D: 자동보류 출력 메시지
+    summary_instruction: Optional[str] = None # B: LLM 증거 요약 지시
 
     @property
     def is_mixed(self) -> bool:
@@ -87,3 +91,5 @@ class Judgment:
     script_status: Optional[str]
     agreement: str        # 일치 | 불일치 | N/A
     needs_review: bool
+    label: str = "A"                          # 항목 라벨 (A/B/C/D)
+    interview_summary: Optional[str] = None   # B항목: LLM 요약문 (인터뷰 보조용)

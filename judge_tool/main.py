@@ -10,7 +10,7 @@ from typing import Dict, Optional
 from judge_tool import __version__
 from judge_tool.criteria_loader import load_criteria
 from judge_tool.errors import ReportError
-from judge_tool.judge import OllamaClient, judge_item, reconcile
+from judge_tool.judge import OllamaClient, judge_item, reconcile, summarize_item
 from judge_tool.mapper import aggregate
 from judge_tool.models import Judgment
 from judge_tool.parsers import get_parser
@@ -36,6 +36,48 @@ def _sha256(path: str) -> str:
         for chunk in iter(lambda: fh.read(8192), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _auto_defer(crit, item, profile) -> Judgment:
+    """C·D 라벨: LLM 호출 없이 판단보류 자동 처리. canned_message를 근거로 기록."""
+    def _reconcile(llm):
+        return reconcile(
+            llm, crit, item,
+            status_available=profile.status_available,
+            flag_vulnerable_for_review=profile.flag_vulnerable_for_review,
+            empty_means_good=crit.item_id in profile.empty_means_good)
+
+    msg = crit.canned_message or f"[{crit.label}항목 자동 판단보류]"
+    forced = {"verdict": "판단보류", "confidence": 0.0,
+              "rationale": msg, "cited_evidence": []}
+    j = _reconcile(forced)
+    j.label = crit.label
+    return j
+
+
+def _summarize_one(crit, item, item_id: str, variant: str, client,
+                   profile) -> Optional[Judgment]:
+    """B 라벨: LLM으로 증거 요약. verdict=판단보류 고정."""
+    def _reconcile(llm):
+        return reconcile(
+            llm, crit, item,
+            status_available=profile.status_available,
+            flag_vulnerable_for_review=profile.flag_vulnerable_for_review,
+            empty_means_good=crit.item_id in profile.empty_means_good)
+
+    summary = summarize_item(crit, item, client, evidence_mode=profile.evidence_mode)
+    forced = {"verdict": "판단보류", "confidence": 0.0,
+              "rationale": "[B항목: 담당자 인터뷰 필요] " + (crit.summary_instruction or ""),
+              "cited_evidence": []}
+    try:
+        j = _reconcile(forced)
+        j.label = "B"
+        j.interview_summary = summary
+        return j
+    except Exception as e:  # noqa: BLE001
+        log.warning("B항목 reconcile 실패, 스킵 item=%s variant=%s type=%s",
+                    item_id, variant, type(e).__name__)
+        return None
 
 
 def _judge_one(crit, item, item_id: str, variant: str, client,
@@ -70,7 +112,9 @@ def _judge_one(crit, item, item_id: str, variant: str, client,
     try:
         llm = judge_item(crit, item, client,
                          evidence_mode=profile.evidence_mode)
-        return _reconcile(llm)
+        j = _reconcile(llm)
+        j.label = "A"
+        return j
     except Exception as e:  # noqa: BLE001 - 부분 실패 격리(네트워크/HTTP/KeyError 등)
         # 예외 본문에는 LLM 응답/evidence 원문이 섞일 수 있으므로 산출물·로그에
         # raw 메시지를 직렬화하지 않는다(타입명/item_id 만 남긴다).
@@ -120,7 +164,7 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
     if variant is None:
         raise ReportError(f"파일명에서 variant를 식별할 수 없음: {report_path}")
 
-    criteria = load_criteria(criteria_path, profile)
+    criteria = load_criteria(criteria_path, profile, profile_key=profile_key)
     parser = get_parser(profile.parser)
     raw_checks = parser.parse(report_path)
     items = aggregate(raw_checks, variant, profile)
@@ -130,7 +174,13 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
         crit = criteria.get((item_id, variant))
         if crit is None or not crit.is_judgeable:
             continue  # 기준에 없거나 스크립트 대상 아님/빈 판단기준 → 스킵
-        judgment = _judge_one(crit, item, item_id, variant, client, profile)
+        label = crit.label
+        if label in ("C", "D"):
+            judgment = _auto_defer(crit, item, profile)
+        elif label == "B":
+            judgment = _summarize_one(crit, item, item_id, variant, client, profile)
+        else:  # A (기본)
+            judgment = _judge_one(crit, item, item_id, variant, client, profile)
         if judgment is not None:
             judgments.append(judgment)
 

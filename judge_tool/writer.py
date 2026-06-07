@@ -40,9 +40,9 @@ def write_json(judgments: List[Judgment], meta: Dict, coverage: Dict,
         json.dump(payload, fh, ensure_ascii=False, indent=2)
 
 
-_HEADERS = ["항목ID", "항목명", "위험도", "변형", "판정", "확신도",
+_HEADERS = ["항목ID", "항목명", "위험도", "변형", "라벨", "판정", "확신도",
             "스크립트status", "일치여부", "재검토", "범위", "관리체계검토",
-            "근거", "인용증거"]
+            "근거", "인용증거", "인터뷰요약"]
 _REVIEW_FILL = PatternFill("solid", fgColor="FFF2CC")  # 연노랑
 
 
@@ -79,11 +79,12 @@ def write_excel(judgments: List[Judgment], meta: Dict, coverage: Dict,
     for j in judgments:
         conf = j.confidence if isinstance(j.confidence, (int, float)) else 0.0
         ws.append([
-            j.item_id, j.item_name, j.risk, j.variant, j.verdict,
+            j.item_id, j.item_name, j.risk, j.variant, j.label, j.verdict,
             round(conf, 2), j.script_status, j.agreement,
             "예" if j.needs_review else "", j.scope,
             "예" if j.management_review_needed else "",
             j.rationale, " | ".join(map(str, j.cited_evidence or [])),
+            j.interview_summary or "",
         ])
         if j.needs_review:
             for c in ws[ws.max_row]:

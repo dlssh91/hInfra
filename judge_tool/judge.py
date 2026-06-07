@@ -255,6 +255,33 @@ class ClaudeCliClient:
         return result.stdout.strip()
 
 
+SUMMARY_SYSTEM_PROMPT = (
+    "당신은 전자금융기반시설 보안점검 보조자다. "
+    "주어진 점검 증거를 요약 지시에 따라 정리하라. "
+    "판정(양호/취약)을 내리지 말 것. 사실만 요약한다. "
+    "한국어로 3~6문장 이내로 간결하게 작성한다."
+)
+
+
+def summarize_item(criterion: Criterion, item: EvidenceItem, client,
+                   evidence_mode: str = "raw") -> str:
+    """B항목: LLM으로 증거를 요약하여 인터뷰 보조 텍스트 반환."""
+    if evidence_mode == "raw":
+        evidence = build_evidence_text_raw(item, 24000)
+    else:
+        evidence = build_evidence_text(item, 8000)
+    instruction = criterion.summary_instruction or "증거를 간결하게 요약하라. 판정하지 말 것."
+    prompt = (
+        f"평가항목: {criterion.item_id} {criterion.item_name}\n"
+        f"--- 점검 증거 ---\n{evidence}\n"
+        f"--- 요약 지시 ---\n{instruction}"
+    )
+    try:
+        return client.chat(SUMMARY_SYSTEM_PROMPT, prompt)
+    except Exception as e:  # noqa: BLE001
+        return f"[요약 실패: {type(e).__name__}]"
+
+
 def judge_item(criterion: Criterion, item: EvidenceItem, client,
                max_chars: int = 8000, retries: int = 2,
                evidence_mode: str = "preclassified") -> Dict:

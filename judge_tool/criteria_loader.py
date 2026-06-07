@@ -1,9 +1,23 @@
+import os
 from typing import Dict, Tuple
 
 import openpyxl
+import yaml
 
 from judge_tool.models import Criterion
 from judge_tool.profile import Profile
+
+_ITEM_CONFIG_DIR = os.path.join(os.path.dirname(__file__), "item_configs")
+
+
+def _load_item_configs(profile_key: str) -> Dict:
+    """item_configs/{profile_key}.yaml 로딩. 파일 없으면 빈 dict 반환."""
+    path = os.path.join(_ITEM_CONFIG_DIR, f"{profile_key}.yaml")
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as fh:
+        data = yaml.safe_load(fh) or {}
+    return data
 
 
 def _cell(ws, row, col) -> str:
@@ -12,8 +26,10 @@ def _cell(ws, row, col) -> str:
 
 
 def load_criteria(xlsx_path: str,
-                  profile: Profile) -> Dict[Tuple[str, str], Criterion]:
+                  profile: Profile,
+                  profile_key: str = "") -> Dict[Tuple[str, str], Criterion]:
     """xlsx → {(item_id, variant): Criterion}. 모든 변형을 로드한다."""
+    item_configs = _load_item_configs(profile_key) if profile_key else {}
     wb = openpyxl.load_workbook(xlsx_path, data_only=True)
     try:
         ws = wb[profile.sheet_name]
@@ -46,6 +62,7 @@ def load_criteria(xlsx_path: str,
                 else:
                     # cloud: 기존 is_judgeable 동치(스크립트 기반 & N/A 아님)
                     applicable = ("스크립트" in eval_type) and eval_type != "N/A"
+                cfg = item_configs.get(item_id, {})
                 out[(item_id, vname)] = Criterion(
                     item_id=item_id,
                     item_name=name,
@@ -55,6 +72,9 @@ def load_criteria(xlsx_path: str,
                     standard=standard,
                     method=method,
                     applicable=applicable,
+                    label=cfg.get("label", "A"),
+                    canned_message=cfg.get("canned_message"),
+                    summary_instruction=cfg.get("summary_instruction"),
                 )
         return out
     finally:

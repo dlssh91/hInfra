@@ -1,6 +1,8 @@
 # cloud 항목 라벨 & LLM 지시
-# label A: 기술 증거로 판정 가능 / B: 담당자 인터뷰 필수
-# B 항목: verdict=판단보류 고정, LLM은 summary_instruction으로 증거 요약만
+# label A: 기술 증거로 판정 가능
+# label B: 담당자 인터뷰 필수 — verdict=판단보류 고정, LLM은 summary_instruction으로 증거 요약만
+# label C: 기술적 한계 — 자동 판단보류, canned_message 출력 (LLM 호출 없음)
+# label D: 외부지식 필요 — 자동 판단보류, canned_message 출력 (LLM 호출 없음)
 
 PISM-001:
   label: A
