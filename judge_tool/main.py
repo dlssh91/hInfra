@@ -57,13 +57,33 @@ def _auto_defer(crit, item, profile) -> Judgment:
 
 def _summarize_one(crit, item, item_id: str, variant: str, client,
                    profile) -> Optional[Judgment]:
-    """B 라벨: LLM으로 증거 요약. verdict=판단보류 고정."""
+    """B 라벨: LLM으로 증거 요약. verdict=판단보류 고정.
+
+    예외: empty_means_good 항목에서 증거가 0건이면 LLM 없이 양호로 처리.
+    (예: DBM-024 빈 결과 = GRANT OPTION 없음 = 양호)
+    """
+    is_empty_good = crit.item_id in profile.empty_means_good
+
     def _reconcile(llm):
         return reconcile(
             llm, crit, item,
             status_available=profile.status_available,
             flag_vulnerable_for_review=profile.flag_vulnerable_for_review,
-            empty_means_good=crit.item_id in profile.empty_means_good)
+            empty_means_good=is_empty_good)
+
+    # 빈 증거 + empty_means_good → A항목처럼 양호로 직결(B 요약 불필요)
+    if is_empty_good and not item.resources:
+        forced = {"verdict": "양호", "confidence": 1.0,
+                  "rationale": "[자동 양호: 빈 결과 = 위반 없음]",
+                  "cited_evidence": []}
+        try:
+            j = _reconcile(forced)
+            j.label = "B"
+            return j
+        except Exception as e:  # noqa: BLE001
+            log.warning("B항목 빈결과 reconcile 실패 item=%s type=%s",
+                        item_id, type(e).__name__)
+            return None
 
     summary = summarize_item(crit, item, client, evidence_mode=profile.evidence_mode)
     forced = {"verdict": "판단보류", "confidence": 0.0,

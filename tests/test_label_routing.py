@@ -192,6 +192,25 @@ def test_d_label_no_llm_call(monkeypatch):
 # criteria_loader: variant별 라벨 오버라이드
 # ---------------------------------------------------------------------------
 
+def test_b_label_empty_means_good_yields_good():
+    """B항목이라도 empty_means_good 항목에서 증거 0건이면 verdict=양호."""
+    from judge_tool.profile import DB_MYSQL
+    from judge_tool.main import _summarize_one
+
+    # DBM-024: DB_MYSQL.empty_means_good 에 포함되어야 함
+    assert "DBM-024" in DB_MYSQL.empty_means_good, "DB_MYSQL.empty_means_good에 DBM-024 없음"
+
+    crit = _make_criterion(item_id="DBM-024", label="B",
+                           summary_instruction="IS_GRANTABLE=YES 집계")
+    item = EvidenceItem(item_id="DBM-024", variant="mysql_rds", resources=[])
+
+    j = _summarize_one(crit, item, "DBM-024", "mysql_rds",
+                       SummaryClient(), DB_MYSQL)
+    assert j.verdict == "양호"
+    assert j.label == "B"
+    assert j.interview_summary is None  # 빈 결과라 요약 없음
+
+
 def test_variant_label_override(tmp_path):
     """YAML variants 구조가 variant별로 다른 label을 주입한다.
 
