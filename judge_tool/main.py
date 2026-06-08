@@ -190,6 +190,8 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
     items = aggregate(raw_checks, variant, profile)
 
     judgments = []
+    judged_ids: set = set()
+
     for item_id, item in items.items():
         crit = criteria.get((item_id, variant))
         if crit is None or not crit.is_judgeable:
@@ -203,6 +205,22 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
             judgment = _judge_one(crit, item, item_id, variant, client, profile)
         if judgment is not None:
             judgments.append(judgment)
+            judged_ids.add(item_id)
+
+    # C/D 라벨 항목은 보고서에 증거가 없어도 자동보류를 생성한다.
+    # (예: DBM-025 버전 섹션이 보고서에 없는 경우에도 canned_message 출력)
+    for (crit_id, crit_variant), crit in criteria.items():
+        if crit_variant != variant or not crit.is_judgeable:
+            continue
+        if crit.label not in ("C", "D") or crit_id in judged_ids:
+            continue
+        # 증거 없는 빈 EvidenceItem 생성
+        from judge_tool.models import EvidenceItem as _EI
+        dummy_item = _EI(item_id=crit_id, variant=variant, resources=[])
+        judgment = _auto_defer(crit, dummy_item, profile)
+        if judgment is not None:
+            judgments.append(judgment)
+            judged_ids.add(crit_id)
 
     judgments.sort(key=lambda j: j.item_id)
     coverage = build_coverage(criteria, judgments, variant)

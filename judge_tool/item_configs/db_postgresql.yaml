@@ -19,7 +19,8 @@ DBM-005:
 DBM-006:
   label: A
 DBM-007:
-  label: A
+  label: C
+  canned_message: 클라우드 관리형 PostgreSQL(RDS/Aurora/Azure)에서는 passwordcheck.so 확장을 설치할 수 없어 기술 증거만으로 비밀번호 복잡도 정책 충족 여부를 판단할 수 없다. 복잡도 정책은 클라우드 콘솔·파라미터 그룹·IAM 정책으로 관리되므로 담당자 인터뷰로 확인 필요.
 DBM-008:
   label: A
   variants:
