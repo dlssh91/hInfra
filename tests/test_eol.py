@@ -31,13 +31,34 @@ def test_mysql_supported_version_good():
     assert "8.4.4" in r["rationale"]
 
 
-def test_mysql_eol_version_vulnerable():
-    """MySQL 8.0은 2026-04-30 지원 종료 → 2026-06-10 기준 취약."""
+def test_mysql_eol_passed_defers_not_vulnerable():
+    """커뮤니티 EOL 경과(MySQL 8.0, 2026-04-30)는 '취약' 단정이 아니라
+    'EOL 후보' 판단보류 — 관리형 서비스는 Extended Support 등 별도
+    lifecycle이 있고, 판단기준도 '사후 관리 절차 없이'를 조건으로 둠."""
     items = _items("DBM-016",
                    '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.0.32"}')
     r = judge_eol("db_mysql", items, today=TODAY)
     assert r is not None
-    assert r["verdict"] == "취약"
+    assert r["verdict"] == "판단보류"
+    assert "EOL 후보" in r["rationale"]
+    assert "경과" in r["rationale"]
+
+
+def test_stale_table_warning_attached():
+    """as_of가 180일 넘게 경과하면 판정 신뢰 불가 경고가 붙는다."""
+    items = _items("DBM-016",
+                   '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.4.4"}')
+    far_future = datetime.date(2027, 6, 10)
+    r = judge_eol("db_mysql", items, today=far_future)
+    assert r is not None
+    assert "갱신 필요" in r["rationale"]
+
+
+def test_fresh_table_no_staleness_warning():
+    items = _items("DBM-016",
+                   '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.4.4"}')
+    r = judge_eol("db_mysql", items, today=TODAY)
+    assert "갱신 필요" not in r["rationale"]
 
 
 def test_postgresql_version_good():
@@ -179,3 +200,5 @@ def test_defer_or_eol_preserves_verdict_with_empty_own_section():
     assert j.verdict == "양호", "EOL 양호 판정이 보존되어야 함"
     assert "[EOL 자동판정]" in j.rationale
     assert "[자동 판단보류" not in j.rationale
+    # 테이블 기반 자동판정은 파서 status 동작과 무관하게 항상 검토 대상
+    assert j.needs_review is True

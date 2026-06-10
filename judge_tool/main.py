@@ -86,6 +86,11 @@ def _defer_or_eol(crit, item, items, profile, profile_key: str) -> Judgment:
         flag_vulnerable_for_review=profile.flag_vulnerable_for_review,
         empty_means_good=False)
     j.label = crit.label
+    # 테이블(eol.yaml) 기반 자동판정은 테이블 노후화 위험이 있으므로
+    # 항상 사람 검토 대상으로 명시한다. 현재 DB 프로파일에서는 status
+    # 미분류 덕에 우연히 needs_review=True가 되지만, 그 우연(파서가
+    # status를 채우지 않는 동작)에 의존하지 않는다(Opus 리뷰 반영).
+    j.needs_review = True
     return j
 
 
@@ -165,9 +170,10 @@ def _clean_note(note: str) -> str:
 
     원본 결과 파일이 비유니코드 인코딩으로 저장되어 한글이 전부 '?'로
     바뀐 경우(예: MariaDB RDS 결과), 깨진 텍스트가 산출물 근거에 그대로
-    노출되는 것을 막는다. '?' 비율 30% 초과를 손상으로 본다.
+    노출되는 것을 막는다. 실제 손상 NOTE는 '?' 비율이 60%+이므로 임계
+    50%로 정상 문장의 물음표 오탐을 피한다(Opus 리뷰 반영).
     """
-    if note and note.count("?") > len(note) * 0.3:
+    if note and note.count("?") > len(note) * 0.5:
         return ("(원본 NOTE 인코딩 손상 — 점검 스크립트 수집 단계의 "
                 "한글 인코딩 확인 필요)")
     return note

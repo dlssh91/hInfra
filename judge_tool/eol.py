@@ -118,11 +118,18 @@ def judge_eol(profile_key: str, items: Dict,
         today = datetime.date.today()
     suffix = (f" (EOL 테이블 기준일 {as_of} — 벤더 정책 변동·Extended Support "
               f"계약 여부는 평가자 확인 필요)" if as_of else "")
+    suffix += _staleness_warning(as_of, today)
     if eol_date < today:
-        return {"verdict": "취약", "confidence": 0.9,
+        # 커뮤니티 EOL 경과를 '취약'으로 단정하지 않는다:
+        # (1) 관리형 서비스(RDS/Aurora/Azure)는 Extended Support 등 별도
+        #     lifecycle을 가지며, (2) 판단기준 자체가 "별도 사후 관리 절차
+        #     없이 사용하는 경우"를 취약 조건으로 둬 인터뷰 확인이 필요하다.
+        return {"verdict": "판단보류", "confidence": 0.5,
                 "rationale": f"[EOL 자동판정] {product} {version} (시리즈 "
-                             f"{series})의 벤더 지원 종료일 {eol_date}이 "
-                             f"경과함.{suffix}",
+                             f"{series})의 커뮤니티 지원 종료일 {eol_date}이 "
+                             f"경과함 — EOL 후보. 관리형 서비스 Extended "
+                             f"Support 계약·사후 관리 절차 여부를 담당자에게 "
+                             f"확인 필요.{suffix}",
                 "cited_evidence": [f"version={version}"]}
     return {"verdict": "양호", "confidence": 0.9,
             "rationale": f"[EOL 자동판정] {product} {version} (시리즈 {series})"
@@ -130,7 +137,23 @@ def judge_eol(profile_key: str, items: Dict,
             "cited_evidence": [f"version={version}"]}
 
 
+_STALE_DAYS = 180
+
+
+def _staleness_warning(as_of, today) -> str:
+    """테이블이 오래되면 '양호' 판정이 false-good이 될 수 있으므로 경고.
+
+    사람의 갱신 규율에만 의존하지 않는 코드 차원 방어(Opus 리뷰 반영).
+    """
+    if isinstance(as_of, datetime.date) and (today - as_of).days > _STALE_DAYS:
+        return (f" [경고: EOL 테이블이 {(today - as_of).days}일 경과 — "
+                f"eol.yaml 갱신 필요, 판정 신뢰 불가]")
+    return ""
+
+
 # MSSQL은 연도(2019)가 시리즈 키이므로 패치 대조는 빌드 번호로 한다.
+# 빌드 문자열이 연도와 다른 증거 행에 분리되어 있으면 추출 실패 →
+# canned_message 폴백(조용한 폴백이지만 안전한 방향).
 _MSSQL_BUILD = re.compile(r"(\d{2}\.\d+\.\d+\.\d+)")
 
 
@@ -138,7 +161,8 @@ def _ver_tuple(v: str):
     return tuple(int(p) for p in re.findall(r"\d+", v))
 
 
-def judge_patch(profile_key: str, items: Dict) -> Optional[Dict]:
+def judge_patch(profile_key: str, items: Dict,
+                today: Optional[datetime.date] = None) -> Optional[Dict]:
     """DBM-016 패치 결정론 대조. 현재 버전 vs 시리즈 최신(latest)을 비교해
     사실만 제공한다. verdict는 판단보류 고정 — 관리형 서비스(RDS/Aurora/
     Azure)는 커뮤니티 최신과 패치 채널이 달라 단정할 수 없기 때문.
@@ -155,7 +179,10 @@ def judge_patch(profile_key: str, items: Dict) -> Optional[Dict]:
         current = _extract_version(items, [_MSSQL_BUILD])
         if current is None:
             return None
+    if today is None:
+        today = datetime.date.today()
     suffix = f" (패치 테이블 기준일 {as_of})" if as_of else ""
+    suffix += _staleness_warning(as_of, today)
     if _ver_tuple(current) < _ver_tuple(str(latest)):
         msg = (f"[패치 자동대조] 현재 {current}, 시리즈({series}) 최신 "
                f"{latest} — 최신 패치 미적용 후보.{suffix} 관리형 서비스의 "
