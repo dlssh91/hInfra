@@ -13,7 +13,7 @@ from judge_tool.errors import ReportError
 from judge_tool.judge import OllamaClient, judge_item, reconcile, summarize_item
 from judge_tool.eol import judge_eol
 from judge_tool.mapper import aggregate
-from judge_tool.models import EvidenceItem, Judgment
+from judge_tool.models import EvidenceItem, Judgment, ResourceEvidence
 from judge_tool.parsers import get_parser
 from judge_tool.profile import get_profile
 from judge_tool.writer import build_coverage, write_excel, write_json
@@ -62,8 +62,20 @@ def _defer_or_eol(crit, item, items, profile, profile_key: str) -> Judgment:
     if crit.eol_check:
         forced = judge_eol(profile_key, items)
         if forced is not None:
+            ev_item = item
+            if not item.resources:
+                # 버전 증거가 타 항목(DBM-016 등)에 있어 자기 섹션이 비어
+                # 있는 경우: 인용 버전을 증거로 실어 reconcile의
+                # '증거 없음 → 판단보류 강제' 가드를 통과시킨다.
+                cited = (forced.get("cited_evidence") or [""])[0]
+                ev_item = EvidenceItem(
+                    item_id=crit.item_id, variant=item.variant,
+                    resources=[ResourceEvidence(
+                        resource_id="eol-version", status="info",
+                        detail="버전 증거(타 항목 섹션에서 추출)",
+                        evidence=cited)])
             j = reconcile(
-                forced, crit, item,
+                forced, crit, ev_item,
                 status_available=profile.status_available,
                 flag_vulnerable_for_review=profile.flag_vulnerable_for_review,
                 empty_means_good=False)

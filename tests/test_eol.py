@@ -106,3 +106,29 @@ def test_rationale_cites_as_of_date():
                    '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.4.4"}')
     r = judge_eol("db_mysql", items, today=TODAY)
     assert "EOL 테이블 기준일" in r["rationale"]
+
+
+def test_defer_or_eol_preserves_verdict_with_empty_own_section():
+    """DBM-025 자기 섹션이 비어 있고 버전이 타 항목에 있어도 EOL 판정의
+    verdict(양호)가 reconcile '증거 없음' 가드에 덮어써지지 않는다.
+
+    회귀: 2026-06-10 실데이터 검증에서 EOL 양호 판정이 빈 더미 item 때문에
+    판단보류로 강제되는 버그 발견.
+    """
+    from judge_tool.main import _defer_or_eol
+    from judge_tool.models import Criterion
+    from judge_tool.profile import DB_MYSQL
+
+    crit = Criterion(
+        item_id="DBM-025", item_name="EOL", risk=3.0, variant="mysql_rds",
+        eval_type="", standard="기준", method="방법", applicable=True,
+        label="D", eol_check=True, canned_message="폴백 메시지")
+    empty_item = EvidenceItem(item_id="DBM-025", variant="mysql_rds",
+                              resources=[])
+    items = _items("DBM-016",
+                   '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.4.4"}')
+
+    j = _defer_or_eol(crit, empty_item, items, DB_MYSQL, "db_mysql")
+    assert j.verdict == "양호", "EOL 양호 판정이 보존되어야 함"
+    assert "[EOL 자동판정]" in j.rationale
+    assert "[자동 판단보류" not in j.rationale

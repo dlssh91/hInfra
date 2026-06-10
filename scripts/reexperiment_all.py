@@ -72,13 +72,16 @@ def label_stats(judgments_map):
 
 def analyze_case(label, runs_map_list, log):
     """단일 케이스 분석."""
-    tee(f"\n  [결정성]", log)
     all_ids = sorted(set().union(*[set(r.keys()) for r in runs_map_list]))
-    stable = sum(
-        1 for i in all_ids
-        if len({r.get(i, {}).get("verdict") for r in runs_map_list}) == 1
-    )
-    tee(f"  {stable}/{len(all_ids)} ({stable/len(all_ids)*100:.0f}%) 항목이 3회 동일 판정", log)
+    n_runs = len(runs_map_list)
+    if n_runs > 1:
+        tee(f"\n  [결정성]", log)
+        stable = sum(
+            1 for i in all_ids
+            if len({r.get(i, {}).get("verdict") for r in runs_map_list}) == 1
+        )
+        tee(f"  {stable}/{len(all_ids)} ({stable/len(all_ids)*100:.0f}%) "
+            f"항목이 {n_runs}회 동일 판정", log)
 
     # 라벨별 통계 (run1 기준)
     stats = label_stats(runs_map_list[0])
