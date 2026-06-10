@@ -279,10 +279,12 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
     # - C/D: canned_message 자동보류 (기존 동작 유지)
     # - A/B: '증거 미수집' 자동보류 — 고위험 항목이 조용히 누락되는 것을 방지
     #   (예: PG 보고서에 DBM-005 섹션 자체가 없는 경우)
+    # 단, 증거 섹션이 있었는데 처리 실패(judgment=None)로 빠진 항목은
+    # '미수집'이 아니므로 제외한다(coverage missing으로 남아 실패가 보임).
     for (crit_id, crit_variant), crit in criteria.items():
         if crit_variant != variant or not crit.is_judgeable:
             continue
-        if crit_id in judged_ids:
+        if crit_id in judged_ids or crit_id in items:
             continue
         if crit.label in ("C", "D"):
             dummy_item = EvidenceItem(item_id=crit_id, variant=variant,

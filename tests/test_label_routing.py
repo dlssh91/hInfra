@@ -295,3 +295,34 @@ def test_run_emits_missing_evidence_rows(tmp_path):
     assert "증거 미수집" in j["rationale"]
     assert j["needs_review"] is True
     assert cov["missing"] == []  # 더 이상 조용한 missing 없음
+
+
+def test_processing_failure_not_mislabeled_as_missing_evidence(
+        tmp_path, monkeypatch):
+    """증거 섹션은 있었는데 처리 실패(judgment=None)한 항목은
+    '증거 미수집'으로 둔갑하지 않고 coverage missing으로 남는다."""
+    src = os.path.join(str(tmp_path), "aws_report_synth.xml")
+    with open(FIXTURE_XML, encoding="utf-8") as f:
+        content = f.read()
+    with open(src, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    criteria = os.path.join(str(tmp_path), "criteria.xlsx")
+    _write_criteria_with_labels(criteria, [
+        ("PISM-001", "통신구간 암호화", 5, "스크립트", "방법1", "기준1"),
+    ])
+    json_out = os.path.join(str(tmp_path), "result.json")
+    xlsx_out = os.path.join(str(tmp_path), "result.xlsx")
+
+    # 증거는 있으나 판정 처리가 전부 실패하는 상황을 모사
+    monkeypatch.setattr(main_mod, "_judge_one", lambda *a, **k: None)
+
+    from judge_tool.main import run as run_fn
+    cov = run_fn(report_path=src, criteria_path=criteria, profile_key="cloud",
+                 client=CallCountClient(), json_out=json_out,
+                 xlsx_out=xlsx_out, model_name="stub")
+
+    data = json.load(open(json_out, encoding="utf-8"))
+    rationales = " ".join(j["rationale"] for j in data["judgments"])
+    assert "증거 미수집" not in rationales, "처리 실패가 미수집으로 둔갑함"
+    assert "PISM-001" in cov["missing"]
