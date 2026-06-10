@@ -361,26 +361,28 @@ def summarize_item(criterion: Criterion, item: EvidenceItem, client,
     - 출력이 JSON이면 위반을 명시해 산문으로 1회 재요청, 그래도 JSON이면
       코드에서 'key: value' 줄글로 평탄화(_json_to_prose).
     """
+    # 대형 증거 타임아웃 대비 축소 사다리: 전체 → 8000자 → 3000자.
+    # (Oracle DBM-004 실데이터에서 8000자도 타임아웃하는 사례 관측)
     if evidence_mode == "raw":
-        evidence = build_evidence_text_raw(item, 24000)
+        sizes = (24000, 8000, 3000)
+        build = build_evidence_text_raw
     else:
-        evidence = build_evidence_text(item, 8000)
-    prompt = _summary_prompt(criterion, evidence)
+        sizes = (8000, 4000, 2000)
+        build = build_evidence_text
 
+    out = None
     truncated = False
-    try:
-        out = client.chat(SUMMARY_SYSTEM_PROMPT, prompt)
-    except Exception:  # noqa: BLE001 - 대형 증거 타임아웃 → 축소 재시도
+    last_err: Exception = RuntimeError("미시도")
+    for i, max_chars in enumerate(sizes):
+        prompt = _summary_prompt(criterion, build(item, max_chars))
         try:
-            if evidence_mode == "raw":
-                evidence = build_evidence_text_raw(item, 8000)
-            else:
-                evidence = build_evidence_text(item, 4000)
-            prompt = _summary_prompt(criterion, evidence)
             out = client.chat(SUMMARY_SYSTEM_PROMPT, prompt)
-            truncated = True
-        except Exception as e2:  # noqa: BLE001
-            return f"[요약 실패: {type(e2).__name__}]"
+            truncated = i > 0
+            break
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+    if out is None:
+        return f"[요약 실패: {type(last_err).__name__}]"
 
     if _looks_like_json(out):
         try:
