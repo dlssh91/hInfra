@@ -11,8 +11,9 @@ from judge_tool import __version__
 from judge_tool.criteria_loader import load_criteria
 from judge_tool.errors import ReportError
 from judge_tool.judge import OllamaClient, judge_item, reconcile, summarize_item
+from judge_tool.eol import judge_eol
 from judge_tool.mapper import aggregate
-from judge_tool.models import Judgment
+from judge_tool.models import EvidenceItem, Judgment
 from judge_tool.parsers import get_parser
 from judge_tool.profile import get_profile
 from judge_tool.writer import build_coverage, write_excel, write_json
@@ -55,6 +56,46 @@ def _auto_defer(crit, item, profile) -> Judgment:
     return j
 
 
+def _defer_or_eol(crit, item, items, profile, profile_key: str) -> Judgment:
+    """C·D 라벨 처리: eol_check 항목은 결정론 EOL 판정을 먼저 시도하고,
+    실패(버전 미검출·테이블 미수록)하면 기존 자동보류로 폴백한다."""
+    if crit.eol_check:
+        forced = judge_eol(profile_key, items)
+        if forced is not None:
+            j = reconcile(
+                forced, crit, item,
+                status_available=profile.status_available,
+                flag_vulnerable_for_review=profile.flag_vulnerable_for_review,
+                empty_means_good=False)
+            j.label = crit.label
+            return j
+    return _auto_defer(crit, item, profile)
+
+
+_MISSING_EVIDENCE_MSG = (
+    "[자동 판단보류: 증거 미수집] 점검 보고서에 해당 항목의 증거 섹션이 없습니다. "
+    "점검 스크립트의 수집 범위를 확인하세요.")
+
+
+def _missing_evidence_defer(crit, variant: str, profile) -> Judgment:
+    """판정대상인데 보고서에 증거 섹션 자체가 없는 항목의 자동보류.
+
+    조용한 누락(coverage missing)을 산출물에 보이는 행으로 바꾼다.
+    섹션 부재는 '수집 안 됨'이지 '위반 0건'이 아니므로 empty_means_good을
+    적용하지 않는다.
+    """
+    item = EvidenceItem(item_id=crit.item_id, variant=variant, resources=[])
+    forced = {"verdict": "판단보류", "confidence": 0.0,
+              "rationale": _MISSING_EVIDENCE_MSG, "cited_evidence": []}
+    j = reconcile(
+        forced, crit, item,
+        status_available=profile.status_available,
+        flag_vulnerable_for_review=profile.flag_vulnerable_for_review,
+        empty_means_good=False)
+    j.label = crit.label
+    return j
+
+
 def _summarize_one(crit, item, item_id: str, variant: str, client,
                    profile) -> Optional[Judgment]:
     """B 라벨: LLM으로 증거 요약. verdict=판단보류 고정.
@@ -86,8 +127,10 @@ def _summarize_one(crit, item, item_id: str, variant: str, client,
             return None
 
     summary = summarize_item(crit, item, client, evidence_mode=profile.evidence_mode)
+    # rationale에 summary_instruction(내부 지시문)을 노출하지 않는다 — 고정 문구만.
     forced = {"verdict": "판단보류", "confidence": 0.0,
-              "rationale": "[B항목: 담당자 인터뷰 필요] " + (crit.summary_instruction or ""),
+              "rationale": "[B항목: 담당자 인터뷰 필요] 기술 증거만으로 판정 불가. "
+                           "'인터뷰요약' 컬럼의 증거 요약을 참고하여 담당자 인터뷰로 확인하세요.",
               "cited_evidence": []}
     try:
         j = _reconcile(forced)
@@ -98,6 +141,19 @@ def _summarize_one(crit, item, item_id: str, variant: str, client,
         log.warning("B항목 reconcile 실패, 스킵 item=%s variant=%s type=%s",
                     item_id, variant, type(e).__name__)
         return None
+
+
+def _clean_note(note: str) -> str:
+    """수집 단계에서 한글이 소실된 NOTE('?? ?? ???')를 감지해 대체 문구로 교체.
+
+    원본 결과 파일이 비유니코드 인코딩으로 저장되어 한글이 전부 '?'로
+    바뀐 경우(예: MariaDB RDS 결과), 깨진 텍스트가 산출물 근거에 그대로
+    노출되는 것을 막는다. '?' 비율 30% 초과를 손상으로 본다.
+    """
+    if note and note.count("?") > len(note) * 0.3:
+        return ("(원본 NOTE 인코딩 손상 — 점검 스크립트 수집 단계의 "
+                "한글 인코딩 확인 필요)")
+    return note
 
 
 def _judge_one(crit, item, item_id: str, variant: str, client,
@@ -124,7 +180,7 @@ def _judge_one(crit, item, item_id: str, variant: str, client,
     # 값이 공백/빈문자면 group(1).strip()이 ""가 되어 IndexError가 없다.
     note_m = re.search(r"(?m)^NOTE:\s*(.*)$", item.context or "")
     if note_m:
-        note = note_m.group(1).strip()
+        note = _clean_note(note_m.group(1).strip())
         forced = {"verdict": "판단보류", "confidence": 0.0,
                   "rationale": f"[자동 판단보류: NOTE] {note}".strip(),
                   "cited_evidence": []}
@@ -198,7 +254,7 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
             continue  # 기준에 없거나 스크립트 대상 아님/빈 판단기준 → 스킵
         label = crit.label
         if label in ("C", "D"):
-            judgment = _auto_defer(crit, item, profile)
+            judgment = _defer_or_eol(crit, item, items, profile, profile_key)
         elif label == "B":
             judgment = _summarize_one(crit, item, item_id, variant, client, profile)
         else:  # A (기본)
@@ -207,17 +263,24 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
             judgments.append(judgment)
             judged_ids.add(item_id)
 
-    # C/D 라벨 항목은 보고서에 증거가 없어도 자동보류를 생성한다.
-    # (예: DBM-025 버전 섹션이 보고서에 없는 경우에도 canned_message 출력)
+    # 보고서에 증거 섹션이 없는 판정대상 항목도 빠짐없이 행을 만든다.
+    # - C/D: canned_message 자동보류 (기존 동작 유지)
+    # - A/B: '증거 미수집' 자동보류 — 고위험 항목이 조용히 누락되는 것을 방지
+    #   (예: PG 보고서에 DBM-005 섹션 자체가 없는 경우)
     for (crit_id, crit_variant), crit in criteria.items():
         if crit_variant != variant or not crit.is_judgeable:
             continue
-        if crit.label not in ("C", "D") or crit_id in judged_ids:
+        if crit_id in judged_ids:
             continue
-        # 증거 없는 빈 EvidenceItem 생성
-        from judge_tool.models import EvidenceItem as _EI
-        dummy_item = _EI(item_id=crit_id, variant=variant, resources=[])
-        judgment = _auto_defer(crit, dummy_item, profile)
+        if crit.label in ("C", "D"):
+            dummy_item = EvidenceItem(item_id=crit_id, variant=variant,
+                                      resources=[])
+            # 버전 증거가 다른 항목(DBM-016 등)에 있을 수 있으므로
+            # 자기 섹션이 없어도 EOL 결정론 판정을 시도한다.
+            judgment = _defer_or_eol(crit, dummy_item, items, profile,
+                                     profile_key)
+        else:
+            judgment = _missing_evidence_defer(crit, variant, profile)
         if judgment is not None:
             judgments.append(judgment)
             judged_ids.add(crit_id)

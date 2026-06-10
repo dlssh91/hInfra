@@ -11,12 +11,10 @@ DBM-003:
   label: B
   summary_instruction: 계정 목록을 활성(ACCOUNT_LOCKED=N)/잠김(Y)/시스템내장(rdsadmin·mysql.sys
     등)으로 분류하여 요약. 의심 계정명(test·temp·old·backup 포함) 별도 표시. 판정하지 말 것.
-  verdict_fixed: 판단보류
 DBM-004:
   label: B
   summary_instruction: '증거의 권한 행을 계정별로 집계하여 요약 (예: admin@% — 27개: ALTER, CREATE 등).
     USAGE만 있는 계정은 ''일반 권한만''으로 표시. 판정하지 말 것.'
-  verdict_fixed: 판단보류
 DBM-005:
   label: A
 DBM-006:
@@ -38,22 +36,19 @@ DBM-017:
   label: B
   summary_instruction: 시스템 테이블 접근 권한을 계정/역할별로 집계하여 요약. 각 계정의 접근 테이블명과 권한 유형 나열. 판정하지
     말 것.
-  verdict_fixed: 판단보류
 DBM-019:
   label: A
 DBM-020:
   label: B
   summary_instruction: 계정 목록을 요약하라. 판정하지 말 것. 로그인 가능 계정(시스템 내장 계정 제외)과 시스템/내장 계정으로 추정되는 항목을 구분하여 나열. 공용 계정명 패턴(admin·operator·dba·shared·common 등)이 있으면 별도 표시. 마지막에 "각 계정이 사용자 1인당 1계정으로 운영되는지, 공유 계정은 없는지 담당자 인터뷰 확인 필요" 추가.
-  verdict_fixed: 판단보류
 DBM-024:
   label: B
   summary_instruction: IS_GRANTABLE=YES 권한을 계정별로 집계하여 요약. 각 계정과 GRANT OPTION 보유 권한
     목록 나열. 빈 결과면 'GRANT OPTION 없음 확인됨' 으로 요약. 판정하지 말 것.
-  verdict_fixed: 판단보류
 DBM-025:
   label: D
+  eol_check: true
   canned_message: DB 버전 정보 확인됨. 서비스 지원 종료(EOL) 여부는 MariaDB 공식 지원 주기 정책 확인 필요. 로컬 LLM은 최신 EOL 기준을 알 수 없어 판단 불가.
 DBM-028:
   label: B
   summary_instruction: 오브젝트/권한을 소유자·계정별로 집계하여 요약. 시스템 내장 계정 소유 항목 별도 표시. 판정하지 말 것.
-  verdict_fixed: 판단보류

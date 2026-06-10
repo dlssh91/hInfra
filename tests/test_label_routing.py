@@ -250,3 +250,48 @@ def test_variant_label_override(tmp_path):
     assert criteria[("DBM-008", "pg_aurora")].label == "A"
     assert criteria[("DBM-008", "pg_azure")].label == "B"
     assert criteria[("DBM-008", "pg_azure")].summary_instruction is not None
+
+
+# ---------------------------------------------------------------------------
+# 증거 미수집 자동보류 / 깨진 NOTE 방어
+# ---------------------------------------------------------------------------
+
+def test_clean_note_mojibake_replaced():
+    """한글이 '?'로 소실된 NOTE는 대체 문구로 교체, 정상 NOTE는 보존."""
+    from judge_tool.main import _clean_note
+    assert "인코딩 손상" in _clean_note("?? ?? ??? ??? ???? ????")
+    assert _clean_note("정상 NOTE 텍스트") == "정상 NOTE 텍스트"
+    assert _clean_note("설정을 확인했는가? 클라우드 콘솔 참고") == (
+        "설정을 확인했는가? 클라우드 콘솔 참고")
+
+
+def test_run_emits_missing_evidence_rows(tmp_path):
+    """보고서에 증거 섹션이 없는 판정대상(A라벨) 항목이 조용히 누락되지
+    않고 '증거 미수집' 자동보류 행으로 출력된다."""
+    src = os.path.join(str(tmp_path), "aws_report_synth.xml")
+    with open(FIXTURE_XML, encoding="utf-8") as f:
+        content = f.read()
+    with open(src, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    criteria = os.path.join(str(tmp_path), "criteria.xlsx")
+    _write_criteria_with_labels(criteria, [
+        ("PISM-001", "통신구간 암호화", 5, "스크립트", "방법1", "기준1"),
+        # 보고서에 존재하지 않는 항목 — 수집 누락 시나리오
+        ("PISM-050", "미수집 항목", 4, "스크립트", "방법50", "기준50"),
+    ])
+    json_out = os.path.join(str(tmp_path), "result.json")
+    xlsx_out = os.path.join(str(tmp_path), "result.xlsx")
+
+    cov = run(report_path=src, criteria_path=criteria, profile_key="cloud",
+              client=CallCountClient(), json_out=json_out, xlsx_out=xlsx_out,
+              model_name="stub")
+
+    data = json.load(open(json_out, encoding="utf-8"))
+    by_id = {j["item_id"]: j for j in data["judgments"]}
+    assert "PISM-050" in by_id, "미수집 항목이 산출물에서 누락됨"
+    j = by_id["PISM-050"]
+    assert j["verdict"] == "판단보류"
+    assert "증거 미수집" in j["rationale"]
+    assert j["needs_review"] is True
+    assert cov["missing"] == []  # 더 이상 조용한 missing 없음

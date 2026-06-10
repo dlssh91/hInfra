@@ -25,6 +25,7 @@ class Criterion:
     label: str = "A"                          # A/B/C/D
     canned_message: Optional[str] = None      # C·D: 자동보류 출력 메시지
     summary_instruction: Optional[str] = None # B: LLM 증거 요약 지시
+    eol_check: bool = False                   # D: eol.yaml 결정론 판정 시도
 
     @property
     def is_mixed(self) -> bool:

@@ -509,7 +509,8 @@ def test_extract_criteria_version_multi_match_takes_first():
 
 
 def test_run_empty_input(tmp_path):
-    """스크립트 대상이 0건인 입력 → judged==0, 출력 정상 생성, 예외 없음."""
+    """증거가 0건인 보고서 → 판정대상 전 항목이 '증거 미수집' 자동보류로
+    출력된다(조용한 누락 금지). 출력 정상 생성, 예외 없음."""
     report = os.path.join(str(tmp_path), "aws_report_empty.xml")
     with open(report, "w", encoding="utf-8") as fh:
         fh.write('<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -524,6 +525,12 @@ def test_run_empty_input(tmp_path):
               model_name="stub")
 
     assert os.path.exists(json_out) and os.path.exists(xlsx_out)
-    assert cov["judged"] == 0
+    # 판정대상 3건(PISM-001/037/007) 모두 증거 미수집 자동보류로 출력
+    assert cov["judged"] == 3
+    assert cov["missing"] == []
     data = json.load(open(json_out, encoding="utf-8"))
-    assert data["judgments"] == []
+    assert len(data["judgments"]) == 3
+    for j in data["judgments"]:
+        assert j["verdict"] == "판단보류"
+        assert "증거 미수집" in j["rationale"]
+        assert j["needs_review"] is True

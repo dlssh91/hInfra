@@ -269,23 +269,106 @@ SUMMARY_SYSTEM_PROMPT = (
 )
 
 
-def summarize_item(criterion: Criterion, item: EvidenceItem, client,
-                   evidence_mode: str = "raw") -> str:
-    """B항목: LLM으로 증거를 요약하여 인터뷰 보조 텍스트 반환."""
-    if evidence_mode == "raw":
-        evidence = build_evidence_text_raw(item, 24000)
-    else:
-        evidence = build_evidence_text(item, 8000)
-    instruction = criterion.summary_instruction or "증거를 간결하게 요약하라. 판정하지 말 것."
-    prompt = (
+def _strip_fences(text: str) -> str:
+    t = text.strip()
+    t = re.sub(r"^```(?:json)?", "", t).strip()
+    return re.sub(r"```$", "", t).strip()
+
+
+def _looks_like_json(text: str) -> bool:
+    t = _strip_fences(text)
+    return t.startswith("{") or t.startswith("[")
+
+
+def _json_to_prose(text: str) -> str:
+    """JSON 요약을 'key: value' 들여쓰기 줄글로 평탄화하는 최후 폴백.
+
+    LLM이 산문 재요청까지 무시했을 때, Excel '인터뷰요약' 셀에서
+    중괄호 덩어리 대신 사람이 읽을 수 있는 형태를 보장한다.
+    파싱 불가면 원문을 그대로 반환한다.
+    """
+    try:
+        data = json.loads(_strip_fences(text))
+    except (json.JSONDecodeError, ValueError):
+        return text
+    out: list = []
+
+    def render(obj, depth=0):
+        pad = "  " * depth
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if isinstance(v, (dict, list)):
+                    out.append(f"{pad}{k}:")
+                    render(v, depth + 1)
+                else:
+                    out.append(f"{pad}{k}: {v}")
+        elif isinstance(obj, list):
+            for v in obj:
+                if isinstance(v, (dict, list)):
+                    render(v, depth)
+                else:
+                    out.append(f"{pad}- {v}")
+        else:
+            out.append(f"{pad}{obj}")
+
+    render(data)
+    return "\n".join(out)
+
+
+def _summary_prompt(criterion: Criterion, evidence: str) -> str:
+    instruction = (criterion.summary_instruction
+                   or "증거를 간결하게 요약하라. 판정하지 말 것.")
+    return (
         f"평가항목: {criterion.item_id} {criterion.item_name}\n"
         f"--- 점검 증거 ---\n{evidence}\n"
         f"--- 요약 지시 ---\n{instruction}"
     )
+
+
+def summarize_item(criterion: Criterion, item: EvidenceItem, client,
+                   evidence_mode: str = "raw") -> str:
+    """B항목: LLM으로 증거를 요약하여 인터뷰 보조 텍스트 반환.
+
+    견고성 계약:
+    - 1차 호출 실패(ReadTimeout 등) → 증거를 8000자로 줄여 1회 재시도,
+      성공 시 '일부만 요약됨' 표시. 그래도 실패하면 [요약 실패] 마커.
+    - 출력이 JSON이면 위반을 명시해 산문으로 1회 재요청, 그래도 JSON이면
+      코드에서 'key: value' 줄글로 평탄화(_json_to_prose).
+    """
+    if evidence_mode == "raw":
+        evidence = build_evidence_text_raw(item, 24000)
+    else:
+        evidence = build_evidence_text(item, 8000)
+    prompt = _summary_prompt(criterion, evidence)
+
+    truncated = False
     try:
-        return client.chat(SUMMARY_SYSTEM_PROMPT, prompt)
-    except Exception as e:  # noqa: BLE001
-        return f"[요약 실패: {type(e).__name__}]"
+        out = client.chat(SUMMARY_SYSTEM_PROMPT, prompt)
+    except Exception:  # noqa: BLE001 - 대형 증거 타임아웃 → 축소 재시도
+        try:
+            if evidence_mode == "raw":
+                evidence = build_evidence_text_raw(item, 8000)
+            else:
+                evidence = build_evidence_text(item, 4000)
+            prompt = _summary_prompt(criterion, evidence)
+            out = client.chat(SUMMARY_SYSTEM_PROMPT, prompt)
+            truncated = True
+        except Exception as e2:  # noqa: BLE001
+            return f"[요약 실패: {type(e2).__name__}]"
+
+    if _looks_like_json(out):
+        try:
+            retry = prompt + ("\n\n[재요청] 직전 응답이 JSON 형식이었다. "
+                              "중괄호·대괄호·따옴표 키 없이 한국어 줄글 "
+                              "문장으로만 다시 작성하라.")
+            out2 = client.chat(SUMMARY_SYSTEM_PROMPT, retry)
+            out = out2 if not _looks_like_json(out2) else _json_to_prose(out2)
+        except Exception:  # noqa: BLE001 - 재요청 실패 시 1차 응답 평탄화
+            out = _json_to_prose(out)
+
+    if truncated:
+        out += "\n(주의: 증거가 커서 일부 행만 요약에 반영됨)"
+    return out
 
 
 def judge_item(criterion: Criterion, item: EvidenceItem, client,
