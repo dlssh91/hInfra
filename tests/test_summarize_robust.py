@@ -131,3 +131,22 @@ class FullCoverageClient:
 def test_full_coverage_summary_no_warning():
     out = summarize_item(_crit(), _multi_row_item(5), FullCoverageClient())
     assert "원본 증거 대조 필요" not in out
+
+
+def test_coverage_handles_pseudo_json_single_quotes():
+    """PG 증거처럼 작은따옴표·NULL을 쓰는 유사 JSON 행에서도 커버리지가
+    집계된다(json.loads 기반이었다면 전 행 파싱 실패로 안전망 무력화 —
+    실데이터 회귀)."""
+    rows = [ResourceEvidence(
+        resource_id=f"r{i}", status="", detail="",
+        evidence=f"{{\"rolname\": 'pg_role_{i:02d}', \"rolcanlogin\": 'f', "
+                 f"\"rolvaliduntil\": NULL}}") for i in range(5)]
+    item = EvidenceItem(item_id="DBM-003", variant="v", resources=rows)
+
+    class OneRowClient:
+        def chat(self, system, user):
+            return "rolname: pg_role_00 계정만 확인됨."
+
+    out = summarize_item(_crit(), item, OneRowClient())
+    assert "5행 중 1행" in out
+    assert "원본 증거 대조 필요" in out

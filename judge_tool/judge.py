@@ -315,24 +315,24 @@ def _json_to_prose(text: str) -> str:
     return "\n".join(out)
 
 
+# 증거 행에서 '값' 토큰만 추출: 콜론 뒤의 따옴표 문자열(3자 이상).
+# 키 이름(": 앞")을 제외해야 모든 행에 반복되는 키("rolname" 등)가 요약에
+# 등장한다는 이유로 행이 '반영됨'으로 잘못 집계되는 것을 막는다.
+# json.loads를 쓰지 않는 이유: PG 증거처럼 작은따옴표·NULL을 쓰는 유사
+# JSON 행은 파싱이 전부 실패해 안전망이 무력화된다(실데이터에서 관측).
+_VALUE_TOKEN = re.compile(r":\s*['\"]([^'\"]{3,})['\"]")
+
+
 def _summary_coverage(item: EvidenceItem, summary: str):
     """요약이 증거 행들을 얼마나 반영했는지 추정. (covered, total) 반환.
 
-    각 증거 행(JSON)의 문자열 값들을 행 식별자 후보로 보고, 그중 하나라도
-    요약에 등장하면 그 행은 '반영됨'으로 센다. 식별자를 못 뽑는 행은
-    분모에서 제외한다. LLM이 증거 첫 행만 요약하는 실패 모드(PG Aurora
-    DBM-003에서 관측)를 산출물에서 감지하기 위한 안전망.
+    각 증거 행의 값 토큰 중 하나라도 요약에 등장하면 그 행은 '반영됨'으로
+    센다. 토큰을 못 뽑는 행은 분모에서 제외한다. LLM이 증거 첫 행만
+    요약하는 실패 모드(PG Aurora DBM-003에서 관측)를 감지하는 안전망.
     """
     covered = total = 0
     for r in item.resources:
-        try:
-            d = json.loads(r.evidence)
-        except (json.JSONDecodeError, TypeError, ValueError):
-            continue
-        if not isinstance(d, dict):
-            continue
-        tokens = [v for v in d.values()
-                  if isinstance(v, str) and len(v) >= 3]
+        tokens = _VALUE_TOKEN.findall(r.evidence or "")
         if not tokens:
             continue
         total += 1
