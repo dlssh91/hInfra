@@ -36,6 +36,7 @@ DBM-015:
   summary_instruction: PUBLIC에 부여된 권한을 유형별로 요약. SELECT 외 쓰기/실행 권한 별도 표시. 판정하지 말 것.
 DBM-016:
   label: D
+  patch_check: true
   canned_message: DB 버전 정보 확인됨. 최신 보안패치 적용 여부는 Oracle CPU(Critical Patch Update) 릴리즈 노트 확인 필요. 로컬 LLM은 최신 패치 기준을 알 수 없어 판단 불가.
 DBM-017:
   label: B

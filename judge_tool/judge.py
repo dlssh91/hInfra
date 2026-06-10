@@ -315,6 +315,32 @@ def _json_to_prose(text: str) -> str:
     return "\n".join(out)
 
 
+def _summary_coverage(item: EvidenceItem, summary: str):
+    """요약이 증거 행들을 얼마나 반영했는지 추정. (covered, total) 반환.
+
+    각 증거 행(JSON)의 문자열 값들을 행 식별자 후보로 보고, 그중 하나라도
+    요약에 등장하면 그 행은 '반영됨'으로 센다. 식별자를 못 뽑는 행은
+    분모에서 제외한다. LLM이 증거 첫 행만 요약하는 실패 모드(PG Aurora
+    DBM-003에서 관측)를 산출물에서 감지하기 위한 안전망.
+    """
+    covered = total = 0
+    for r in item.resources:
+        try:
+            d = json.loads(r.evidence)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            continue
+        if not isinstance(d, dict):
+            continue
+        tokens = [v for v in d.values()
+                  if isinstance(v, str) and len(v) >= 3]
+        if not tokens:
+            continue
+        total += 1
+        if any(t in summary for t in tokens):
+            covered += 1
+    return covered, total
+
+
 def _summary_prompt(criterion: Criterion, evidence: str) -> str:
     instruction = (criterion.summary_instruction
                    or "증거를 간결하게 요약하라. 판정하지 말 것.")
@@ -368,6 +394,13 @@ def summarize_item(criterion: Criterion, item: EvidenceItem, client,
 
     if truncated:
         out += "\n(주의: 증거가 커서 일부 행만 요약에 반영됨)"
+
+    # 요약-증거 커버리지 안전망: 증거가 3행 이상인데 절반 미만만 반영되면
+    # 평가자가 원본 증거를 대조하도록 경고를 부착한다.
+    covered, total = _summary_coverage(item, out)
+    if total >= 3 and covered < total * 0.5:
+        out += (f"\n(주의: 증거 {total}행 중 {covered}행만 요약에 반영된 "
+                f"것으로 보임 — 원본 증거 대조 필요)")
     return out
 
 

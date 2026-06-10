@@ -11,7 +11,7 @@ from judge_tool import __version__
 from judge_tool.criteria_loader import load_criteria
 from judge_tool.errors import ReportError
 from judge_tool.judge import OllamaClient, judge_item, reconcile, summarize_item
-from judge_tool.eol import judge_eol
+from judge_tool.eol import judge_eol, judge_patch
 from judge_tool.mapper import aggregate
 from judge_tool.models import EvidenceItem, Judgment, ResourceEvidence
 from judge_tool.parsers import get_parser
@@ -57,31 +57,36 @@ def _auto_defer(crit, item, profile) -> Judgment:
 
 
 def _defer_or_eol(crit, item, items, profile, profile_key: str) -> Judgment:
-    """C·D 라벨 처리: eol_check 항목은 결정론 EOL 판정을 먼저 시도하고,
-    실패(버전 미검출·테이블 미수록)하면 기존 자동보류로 폴백한다."""
+    """C·D 라벨 처리: eol_check는 EOL 결정론 판정, patch_check는 패치
+    버전 결정론 대조를 먼저 시도하고, 실패(버전 미검출·테이블 미수록)하면
+    기존 canned_message 자동보류로 폴백한다."""
+    forced = None
     if crit.eol_check:
         forced = judge_eol(profile_key, items)
-        if forced is not None:
-            ev_item = item
-            if not item.resources:
-                # 버전 증거가 타 항목(DBM-016 등)에 있어 자기 섹션이 비어
-                # 있는 경우: 인용 버전을 증거로 실어 reconcile의
-                # '증거 없음 → 판단보류 강제' 가드를 통과시킨다.
-                cited = (forced.get("cited_evidence") or [""])[0]
-                ev_item = EvidenceItem(
-                    item_id=crit.item_id, variant=item.variant,
-                    resources=[ResourceEvidence(
-                        resource_id="eol-version", status="info",
-                        detail="버전 증거(타 항목 섹션에서 추출)",
-                        evidence=cited)])
-            j = reconcile(
-                forced, crit, ev_item,
-                status_available=profile.status_available,
-                flag_vulnerable_for_review=profile.flag_vulnerable_for_review,
-                empty_means_good=False)
-            j.label = crit.label
-            return j
-    return _auto_defer(crit, item, profile)
+    elif crit.patch_check:
+        forced = judge_patch(profile_key, items)
+    if forced is None:
+        return _auto_defer(crit, item, profile)
+
+    ev_item = item
+    if not item.resources:
+        # 버전 증거가 타 항목(DBM-016 등)에 있어 자기 섹션이 비어 있는
+        # 경우: 인용 버전을 증거로 실어 reconcile의 '증거 없음 → 판단보류
+        # 강제' 가드를 통과시킨다.
+        cited = (forced.get("cited_evidence") or [""])[0]
+        ev_item = EvidenceItem(
+            item_id=crit.item_id, variant=item.variant,
+            resources=[ResourceEvidence(
+                resource_id="eol-version", status="info",
+                detail="버전 증거(타 항목 섹션에서 추출)",
+                evidence=cited)])
+    j = reconcile(
+        forced, crit, ev_item,
+        status_available=profile.status_available,
+        flag_vulnerable_for_review=profile.flag_vulnerable_for_review,
+        empty_means_good=False)
+    j.label = crit.label
+    return j
 
 
 _MISSING_EVIDENCE_MSG = (

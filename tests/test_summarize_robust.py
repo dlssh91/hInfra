@@ -96,3 +96,38 @@ class AlwaysFailClient:
 def test_total_failure_returns_marker():
     out = summarize_item(_crit(), _item(), AlwaysFailClient())
     assert out.startswith("[요약 실패:")
+
+
+# ---------------------------------------------------------------------------
+# 요약-증거 커버리지 안전망
+# ---------------------------------------------------------------------------
+
+def _multi_row_item(n=5):
+    rows = [ResourceEvidence(
+        resource_id=f"r{i}", status="info", detail="",
+        evidence=f'{{"rolname": "user_{i:02d}_account"}}') for i in range(n)]
+    return EvidenceItem(item_id="DBM-003", variant="v", resources=rows)
+
+
+class FirstRowOnlyClient:
+    """첫 행만 언급하는 불충분 요약을 반환 (PG Aurora DBM-003 실패 모드)."""
+
+    def chat(self, system, user):
+        return "user_00_account 계정은 활성 상태다. 담당자 확인 필요."
+
+
+def test_low_coverage_summary_gets_warning():
+    out = summarize_item(_crit(), _multi_row_item(5), FirstRowOnlyClient())
+    assert "원본 증거 대조 필요" in out
+    assert "5행 중 1행" in out
+
+
+class FullCoverageClient:
+    def chat(self, system, user):
+        return ("user_00_account, user_01_account, user_02_account, "
+                "user_03_account, user_04_account 계정 확인. 인터뷰 필요.")
+
+
+def test_full_coverage_summary_no_warning():
+    out = summarize_item(_crit(), _multi_row_item(5), FullCoverageClient())
+    assert "원본 증거 대조 필요" not in out

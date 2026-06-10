@@ -81,6 +81,8 @@ def load_criteria(xlsx_path: str,
                                                  cfg.get("summary_instruction")),
                     eol_check=bool(vcfg.get("eol_check",
                                             cfg.get("eol_check", False))),
+                    patch_check=bool(vcfg.get("patch_check",
+                                              cfg.get("patch_check", False))),
                 )
         return out
     finally:

@@ -1,7 +1,7 @@
-"""eol.py — DBM-025 EOL 결정론 판정 테스트."""
+"""eol.py — DBM-025 EOL / DBM-016 패치 결정론 판정 테스트."""
 import datetime
 
-from judge_tool.eol import judge_eol, _series
+from judge_tool.eol import judge_eol, judge_patch, _series, _ver_tuple
 from judge_tool.models import EvidenceItem, ResourceEvidence
 
 TODAY = datetime.date(2026, 6, 10)
@@ -106,6 +106,53 @@ def test_rationale_cites_as_of_date():
                    '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.4.4"}')
     r = judge_eol("db_mysql", items, today=TODAY)
     assert "EOL 테이블 기준일" in r["rationale"]
+
+
+# ---------------------------------------------------------------------------
+# judge_patch — DBM-016 패치 대조
+# ---------------------------------------------------------------------------
+
+def test_ver_tuple_numeric_compare():
+    assert _ver_tuple("17.4") < _ver_tuple("17.10")   # 문자열 비교였다면 반대
+    assert _ver_tuple("8.4.9") > _ver_tuple("8.4.4")
+
+
+def test_patch_behind_flagged():
+    """현재 8.4.4 < 시리즈 최신 8.4.9 → 미적용 후보, verdict는 판단보류."""
+    items = _items("DBM-016",
+                   '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.4.4"}')
+    r = judge_patch("db_mysql", items)
+    assert r is not None
+    assert r["verdict"] == "판단보류"
+    assert "미적용 후보" in r["rationale"]
+    assert "8.4.9" in r["rationale"]
+
+
+def test_patch_current_is_latest():
+    items = _items("DBM-016",
+                   '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.4.9"}')
+    r = judge_patch("db_mysql", items)
+    assert r["verdict"] == "판단보류"
+    assert "최신 패치 수준" in r["rationale"]
+
+
+def test_patch_mssql_compares_build_number():
+    """MSSQL은 연도(2019)가 아닌 빌드 번호(15.0.x)로 대조한다."""
+    items = _items("DBM-016",
+                   '{"version_info": "Microsoft SQL Server 2019 (RTM-CU32) '
+                   '(KB5054833) - 15.0.4430.1 (X64)"}')
+    r = judge_patch("db_mssql", items)
+    assert r is not None
+    assert "15.0.4430.1" in r["rationale"]
+    assert "15.0.4470.1" in r["rationale"]
+    assert "미적용 후보" in r["rationale"]
+
+
+def test_patch_oracle_no_latest_falls_back():
+    """Oracle은 latest 미수록 → None 폴백(canned_message 사용)."""
+    items = _items("DBM-016",
+                   '{"description":"Database Release Update : 19.26.0.0.250121"}')
+    assert judge_patch("db_oracle", items) is None
 
 
 def test_defer_or_eol_preserves_verdict_with_empty_own_section():

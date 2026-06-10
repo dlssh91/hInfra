@@ -84,9 +84,8 @@ def _extract_version(items: Dict, patterns) -> Optional[str]:
     return None
 
 
-def judge_eol(profile_key: str, items: Dict,
-              today: Optional[datetime.date] = None) -> Optional[Dict]:
-    """EOL 결정론 판정. 성공 시 reconcile에 넣을 판정 dict, 실패 시 None."""
+def _lookup(profile_key: str, items: Dict):
+    """공통 조회: (product, version, series, entry, as_of) 또는 None."""
     spec = _PATTERNS.get(profile_key)
     if spec is None:
         return None
@@ -98,15 +97,27 @@ def judge_eol(profile_key: str, items: Dict,
     version = _extract_version(items, patterns)
     if version is None:
         return None
-    eol_date = series_map.get(_series(product, version))
+    series = _series(product, version)
+    entry = series_map.get(series)
+    if not isinstance(entry, dict):
+        return None
+    return product, version, series, entry, table.get("as_of")
+
+
+def judge_eol(profile_key: str, items: Dict,
+              today: Optional[datetime.date] = None) -> Optional[Dict]:
+    """EOL 결정론 판정. 성공 시 reconcile에 넣을 판정 dict, 실패 시 None."""
+    found = _lookup(profile_key, items)
+    if found is None:
+        return None
+    product, version, series, entry, as_of = found
+    eol_date = entry.get("eol")
     if not isinstance(eol_date, datetime.date):
         return None
     if today is None:
         today = datetime.date.today()
-    as_of = table.get("as_of")
     suffix = (f" (EOL 테이블 기준일 {as_of} — 벤더 정책 변동·Extended Support "
               f"계약 여부는 평가자 확인 필요)" if as_of else "")
-    series = _series(product, version)
     if eol_date < today:
         return {"verdict": "취약", "confidence": 0.9,
                 "rationale": f"[EOL 자동판정] {product} {version} (시리즈 "
@@ -117,3 +128,41 @@ def judge_eol(profile_key: str, items: Dict,
             "rationale": f"[EOL 자동판정] {product} {version} (시리즈 {series})"
                          f"은 {eol_date}까지 벤더 지원 대상.{suffix}",
             "cited_evidence": [f"version={version}"]}
+
+
+# MSSQL은 연도(2019)가 시리즈 키이므로 패치 대조는 빌드 번호로 한다.
+_MSSQL_BUILD = re.compile(r"(\d{2}\.\d+\.\d+\.\d+)")
+
+
+def _ver_tuple(v: str):
+    return tuple(int(p) for p in re.findall(r"\d+", v))
+
+
+def judge_patch(profile_key: str, items: Dict) -> Optional[Dict]:
+    """DBM-016 패치 결정론 대조. 현재 버전 vs 시리즈 최신(latest)을 비교해
+    사실만 제공한다. verdict는 판단보류 고정 — 관리형 서비스(RDS/Aurora/
+    Azure)는 커뮤니티 최신과 패치 채널이 달라 단정할 수 없기 때문.
+    latest 미수록(예: Oracle)이면 None → canned_message 폴백."""
+    found = _lookup(profile_key, items)
+    if found is None:
+        return None
+    product, version, series, entry, as_of = found
+    latest = entry.get("latest")
+    if not latest:
+        return None
+    current = version
+    if product == "mssql":
+        current = _extract_version(items, [_MSSQL_BUILD])
+        if current is None:
+            return None
+    suffix = f" (패치 테이블 기준일 {as_of})" if as_of else ""
+    if _ver_tuple(current) < _ver_tuple(str(latest)):
+        msg = (f"[패치 자동대조] 현재 {current}, 시리즈({series}) 최신 "
+               f"{latest} — 최신 패치 미적용 후보.{suffix} 관리형 서비스의 "
+               f"패치 채널 차이가 있으므로 담당자 확인 필요.")
+    else:
+        msg = (f"[패치 자동대조] 현재 {current}는 시리즈({series}) 최신 "
+               f"{latest} 이상 — 커뮤니티 기준 최신 패치 수준.{suffix} "
+               f"벤더 권고사항 적용 여부는 담당자 확인 필요.")
+    return {"verdict": "판단보류", "confidence": 0.5,
+            "rationale": msg, "cited_evidence": [f"version={current}"]}
