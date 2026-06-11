@@ -176,6 +176,56 @@ def test_patch_oracle_no_latest_falls_back():
     assert judge_patch("db_oracle", items) is None
 
 
+# ---------------------------------------------------------------------------
+# M2. 네이티브/클라우드 분기 문구 테스트
+# ---------------------------------------------------------------------------
+
+def test_eol_native_variant_no_cloud_phrase():
+    """네이티브 variant 전달 시 rationale에 '관리형 서비스'가 포함되지 않아야 한다."""
+    items = _items("DBM-016",
+                   '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.0.32"}')
+    r = judge_eol("db_mysql", items, today=TODAY, variant="mysql_native")
+    assert r is not None
+    assert r["verdict"] == "판단보류"
+    assert "관리형 서비스" not in r["rationale"]
+    assert "벤더 Extended Support 계약" in r["rationale"]
+    assert "내부 사후 관리 절차" in r["rationale"]
+
+
+def test_eol_cloud_variant_preserves_existing_phrase():
+    """클라우드 variant(또는 기본값 None) 전달 시 기존 관리형 서비스 문구가 유지된다."""
+    items = _items("DBM-016",
+                   '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.0.32"}')
+    # variant=None(기본값) — 기존 동작 보존
+    r_default = judge_eol("db_mysql", items, today=TODAY)
+    assert r_default is not None
+    assert "관리형 서비스" in r_default["rationale"]
+
+    # variant 명시적으로 클라우드 전달
+    r_rds = judge_eol("db_mysql", items, today=TODAY, variant="mysql_rds")
+    assert r_rds is not None
+    assert "관리형 서비스" in r_rds["rationale"]
+
+
+def test_patch_native_variant_no_cloud_phrase():
+    """네이티브 variant 전달 시 judge_patch rationale에 '관리형 서비스'가 없어야 한다."""
+    items = _items("DBM-016",
+                   '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.4.4"}')
+    r = judge_patch("db_mysql", items, variant="mysql_native")
+    assert r is not None
+    assert "관리형 서비스" not in r["rationale"]
+    assert "벤더 권고 패치 적용 절차" in r["rationale"]
+
+
+def test_patch_cloud_variant_preserves_existing_phrase():
+    """클라우드 variant 전달 시 기존 패치 채널 문구가 유지된다."""
+    items = _items("DBM-016",
+                   '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.4.4"}')
+    r_default = judge_patch("db_mysql", items)
+    assert r_default is not None
+    assert "관리형 서비스" in r_default["rationale"]
+
+
 def test_defer_or_eol_preserves_verdict_with_empty_own_section():
     """DBM-025 자기 섹션이 비어 있고 버전이 타 항목에 있어도 EOL 판정의
     verdict(양호)가 reconcile '증거 없음' 가드에 덮어써지지 않는다.

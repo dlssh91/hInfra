@@ -3,6 +3,10 @@
 # label B: 담당자 인터뷰 필수 — verdict=판단보류 고정, LLM은 summary_instruction으로 증거 요약만
 # label C: 기술적 한계 — 자동 판단보류, canned_message 출력 (LLM 호출 없음)
 # label D: 외부지식 필요 — 자동 판단보류, canned_message 출력 (LLM 호출 없음)
+#
+# TODO(네이티브 지원): mariadb_native 전용 항목 DBM-022/026/034는 점검 스크립트가
+# 섹션을 출력하지 않아 '증거 미수집' 자동 판단보류로 처리됨(서버 스크립트 연계
+# 후속 과제).
 
 DBM-001:
   label: C

@@ -61,10 +61,12 @@ def _defer_or_eol(crit, item, items, profile, profile_key: str) -> Judgment:
     버전 결정론 대조를 먼저 시도하고, 실패(버전 미검출·테이블 미수록)하면
     기존 canned_message 자동보류로 폴백한다."""
     forced = None
+    # item.variant를 전달해 네이티브/클라우드 분기 문구가 정확히 선택되도록 한다.
+    item_variant = item.variant if item is not None else None
     if crit.eol_check:
-        forced = judge_eol(profile_key, items)
+        forced = judge_eol(profile_key, items, variant=item_variant)
     elif crit.patch_check:
-        forced = judge_patch(profile_key, items)
+        forced = judge_patch(profile_key, items, variant=item_variant)
     if forced is None:
         return _auto_defer(crit, item, profile)
 
@@ -257,11 +259,34 @@ def _guard_out_dir(out_dir: str, report_path: str, criteria_path: str) -> None:
 
 def run(report_path: str, criteria_path: str, profile_key: str, client,
         json_out: str, xlsx_out: str, model_name: str,
-        now: Optional[str] = None) -> Dict:
-    profile = get_profile(profile_key)
-    variant = profile.variant_from_filename(report_path)
+        now: Optional[str] = None, variant_override: Optional[str] = None) -> Dict:
+    # 잘못된 --profile 입력은 사용자 입력 오류이므로 ReportError로 변환해
+    # main()에서 깔끔히 안내한다(raw KeyError 트레이스백 노출 방지).
+    try:
+        profile = get_profile(profile_key)
+    except KeyError as e:
+        raise ReportError(str(e)) from e
+    # Tibero 등 excluded 프로파일은 구조만 정의돼 있고 판정 대상이 아니다.
+    # load_criteria/parse 전에 차단해 의도치 않은 실행을 막는다.
+    if profile.excluded:
+        raise ReportError(
+            f"프로파일 '{profile_key}'은 현재 판정 대상에서 배제됨"
+            "(구조만 정의, 후속 과제). 다른 프로파일을 지정하세요.")
+    if variant_override is not None:
+        if variant_override not in profile.variants:
+            raise ReportError(
+                f"알 수 없는 variant: {variant_override} "
+                f"(프로파일 '{profile_key}' 사용 가능: {list(profile.variants)})")
+        variant = variant_override
+    else:
+        variant = profile.variant_from_filename(report_path)
     if variant is None:
-        raise ReportError(f"파일명에서 variant를 식별할 수 없음: {report_path}")
+        markers = sorted(
+            m for vs in profile.variants.values() for m in vs.filename_markers)
+        raise ReportError(
+            f"파일명에서 variant를 식별할 수 없음(미식별 또는 모호): {report_path}. "
+            f"고유한 마커({markers})를 가진 파일명을 쓰거나 --variant로 직접 "
+            f"지정하세요.")
 
     criteria = load_criteria(criteria_path, profile, profile_key=profile_key)
     parser = get_parser(profile.parser)
@@ -271,6 +296,12 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
     judgments = []
     judged_ids: set = set()
 
+    # TODO(네이티브 OS레벨 항목): DBM-012(lsnrctl)/022(파일권한)/026(umask)/
+    # 034(구동권한)/021(ODBC) 등은 SQL이 섹션 자체를 출력하지 않아 아래 루프에서
+    # items에 없고, 후단의 '증거 미수집' 보충 루프에서 _missing_evidence_defer로
+    # 자동 판단보류된다(현행 유지). 실제 수집·판정은 서버 스크립트 연계 후속 과제.
+    # 단 MSSQL DBM-031(SA)·MySQL DBM-033(이중화)은 실제 섹션을 내므로 default A로
+    # LLM 판정된다 — 라벨 적정성은 실데이터 확보 후 재검토(item_configs TODO 참조).
     for item_id, item in items.items():
         crit = criteria.get((item_id, variant))
         if crit is None or not crit.is_judgeable:
@@ -333,6 +364,9 @@ def main(argv=None):
     ap.add_argument("--report", required=True, help="점검 결과 XML 경로")
     ap.add_argument("--criteria", required=True, help="평가기준 xlsx 경로")
     ap.add_argument("--profile", default="cloud")
+    ap.add_argument("--variant", default=None,
+                    help="변형 강제 지정(파일명 자동식별을 건너뜀). "
+                         "예: oracle_native, mysql_rds")
     ap.add_argument("--out-dir", default=".")
     ap.add_argument("--model", default="qwen2.5:14b")
     ap.add_argument("--ollama-url", default="http://localhost:11434")
@@ -347,7 +381,8 @@ def main(argv=None):
     client = OllamaClient(url=args.ollama_url, model=args.model)
     try:
         cov = run(args.report, args.criteria, args.profile, client,
-                  json_out, xlsx_out, args.model)
+                  json_out, xlsx_out, args.model,
+                  variant_override=args.variant)
     except (ReportError, OSError) as e:
         # 사용자 입력 오류(손상 XML/파일 부재 등)만 깔끔히 안내한다.
         # ReportError 는 의도된 입력/보고서 문제, OSError(FileNotFoundError

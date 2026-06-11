@@ -1,5 +1,6 @@
 from judge_tool.profile import (
-    get_profile, CLOUD, DB_MYSQL, DB_ORACLE, DB_MSSQL, DB_MARIADB, DB_POSTGRESQL,
+    get_profile, CLOUD, DB_MYSQL, DB_ORACLE, DB_MSSQL, DB_MARIADB,
+    DB_POSTGRESQL, DB_TIBERO,
 )
 
 
@@ -28,7 +29,8 @@ def test_db_variant_from_filename():
     assert DB_MYSQL.variant_from_filename("mysql_result_rds.txt") == "mysql_rds"
     assert DB_MYSQL.variant_from_filename("mysql_result_aurora.txt") == "mysql_aurora"
     assert DB_MYSQL.variant_from_filename("mysql_result_azure.txt") == "mysql_azure"
-    assert DB_MYSQL.variant_from_filename("mysql_result.txt") is None  # 온프렘 미지원
+    # 네이티브 지원 추가: 접미사 없는 파일명은 네이티브로 식별(과거 None → 변경).
+    assert DB_MYSQL.variant_from_filename("mysql_result.txt") == "mysql_native"
 
 
 def test_cloud_profile_defaults_unchanged():
@@ -120,3 +122,90 @@ def test_new_profiles_variant_from_filename():
     assert DB_POSTGRESQL.variant_from_filename("postgresql_result_aurora.txt") == "pg_aurora"
     assert DB_POSTGRESQL.variant_from_filename("postgresql_result_azure.txt") == "pg_azure"
     assert DB_POSTGRESQL.variant_from_filename("unknown.txt") is None
+
+
+# ── 네이티브(온프레미스) 변형 회귀 테스트 ────────────────────────────────────
+
+def test_native_variant_columns():
+    assert DB_ORACLE.variants["oracle_native"].applicability_col == 12
+    assert DB_ORACLE.variants["oracle_native"].standard_col == 27
+    assert DB_ORACLE.variants["oracle_native"].method_col == 28
+    assert DB_MSSQL.variants["mssql_native"].applicability_col == 14
+    assert DB_MSSQL.variants["mssql_native"].standard_col == 31
+    assert DB_MSSQL.variants["mssql_native"].method_col == 32
+    assert DB_MYSQL.variants["mysql_native"].applicability_col == 16
+    assert DB_MYSQL.variants["mysql_native"].standard_col == 35
+    assert DB_MARIADB.variants["mariadb_native"].applicability_col == 20
+    assert DB_MARIADB.variants["mariadb_native"].standard_col == 43
+    assert DB_POSTGRESQL.variants["pg_native"].applicability_col == 22
+    assert DB_POSTGRESQL.variants["pg_native"].standard_col == 47
+
+
+def test_native_vs_cloud_filename_no_collision():
+    # longest-match: 접미사 없는 파일명은 네이티브, 클라우드 접미사는 클라우드.
+    assert DB_ORACLE.variant_from_filename("oracle_result.txt") == "oracle_native"
+    assert DB_ORACLE.variant_from_filename("oracle_result_rds.txt") == "oracle_rds"
+    assert DB_MSSQL.variant_from_filename("mssql_result.txt") == "mssql_native"
+    assert DB_MSSQL.variant_from_filename("mssql_result_rds.txt") == "mssql_rds"
+    assert DB_MARIADB.variant_from_filename("mariadb_result.txt") == "mariadb_native"
+    assert DB_MARIADB.variant_from_filename("mariadb_result_rds.txt") == "mariadb_rds"
+    # PG는 네이티브 + 3종 클라우드가 모두 'postgresql_result' 부분집합.
+    assert DB_POSTGRESQL.variant_from_filename("postgresql_result.txt") == "pg_native"
+    assert DB_POSTGRESQL.variant_from_filename("postgresql_result_rds.txt") == "pg_rds"
+    assert DB_POSTGRESQL.variant_from_filename("postgresql_result_aurora.txt") == "pg_aurora"
+    assert DB_POSTGRESQL.variant_from_filename("postgresql_result_azure.txt") == "pg_azure"
+
+
+# ── Tibero 구조 스텁(배제) ───────────────────────────────────────────────────
+
+def test_tibero_registered_but_excluded():
+    p = get_profile("db_tibero")
+    assert p is DB_TIBERO
+    assert p.excluded is True
+    v = p.variants["tibero"]
+    assert v.applicability_col == 26
+    assert v.standard_col == 55
+    assert v.method_col == 56
+    assert p.variant_from_filename("tibero_result.txt") == "tibero"
+
+
+def test_other_profiles_not_excluded():
+    for prof in (CLOUD, DB_MYSQL, DB_ORACLE, DB_MSSQL, DB_MARIADB, DB_POSTGRESQL):
+        assert prof.excluded is False
+
+
+# ── M1. variant_from_filename 모호성 가드 회귀 테스트 ───────────────────────
+
+def test_ambiguous_rds_prefix_returns_none():
+    """'rds_mysql_result.txt': rds 토큰이 파일명 앞에 있고 mysql_native가
+    최장 매치이면 모호 가드가 발동해 None을 반환해야 한다."""
+    assert DB_MYSQL.variant_from_filename("rds_mysql_result.txt") is None
+
+
+def test_ambiguous_rds_dash_returns_none():
+    """'mysql_result-rds.txt': 대시로 구분된 rds 토큰도 클라우드 힌트로 인식해
+    네이티브 최장 매치를 덮어쓰고 None을 반환해야 한다."""
+    assert DB_MYSQL.variant_from_filename("mysql_result-rds.txt") is None
+
+
+def test_normal_native_filename_unchanged():
+    """정상 네이티브 파일명(클라우드 토큰 없음)은 여전히 네이티브를 반환해야 한다."""
+    assert DB_MYSQL.variant_from_filename("mysql_result.txt") == "mysql_native"
+    assert DB_ORACLE.variant_from_filename("oracle_result.txt") == "oracle_native"
+
+
+def test_normal_cloud_rds_filename_unchanged():
+    """정상 클라우드 파일명(클라우드 접미사 있음)은 클라우드 변형을 그대로 반환해야 한다."""
+    assert DB_MYSQL.variant_from_filename("mysql_result_rds.txt") == "mysql_rds"
+    assert DB_MYSQL.variant_from_filename("mysql_result_rds_backup.txt") == "mysql_rds"
+
+
+def test_guard_word_boundary_no_false_positive():
+    """단어경계 검사: 'rds'가 다른 단어(passwords·standards·records)에 묻힌
+    경우는 클라우드 토큰으로 오인하지 않고 네이티브를 반환해야 한다."""
+    assert DB_MYSQL.variant_from_filename(
+        "mysql_result_passwords.txt") == "mysql_native"
+    assert DB_MYSQL.variant_from_filename(
+        "mysql_result_standards.txt") == "mysql_native"
+    assert DB_ORACLE.variant_from_filename(
+        "oracle_result_records.txt") == "oracle_native"

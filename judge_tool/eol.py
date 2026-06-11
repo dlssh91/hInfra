@@ -104,9 +104,19 @@ def _lookup(profile_key: str, items: Dict):
     return product, version, series, entry, table.get("as_of")
 
 
+def _is_native(variant: Optional[str]) -> bool:
+    """variant가 온프레미스 네이티브 변형이면 True."""
+    return variant is not None and variant.endswith("_native")
+
+
 def judge_eol(profile_key: str, items: Dict,
-              today: Optional[datetime.date] = None) -> Optional[Dict]:
-    """EOL 결정론 판정. 성공 시 reconcile에 넣을 판정 dict, 실패 시 None."""
+              today: Optional[datetime.date] = None,
+              variant: Optional[str] = None) -> Optional[Dict]:
+    """EOL 결정론 판정. 성공 시 reconcile에 넣을 판정 dict, 실패 시 None.
+
+    variant가 네이티브(_native 접미사)이면 온프레미스용 문구로 분기하고,
+    클라우드(또는 기본값)이면 기존 관리형 서비스 문구를 유지한다.
+    """
     found = _lookup(profile_key, items)
     if found is None:
         return None
@@ -124,12 +134,17 @@ def judge_eol(profile_key: str, items: Dict,
         # (1) 관리형 서비스(RDS/Aurora/Azure)는 Extended Support 등 별도
         #     lifecycle을 가지며, (2) 판단기준 자체가 "별도 사후 관리 절차
         #     없이 사용하는 경우"를 취약 조건으로 둬 인터뷰 확인이 필요하다.
+        # 네이티브(온프레미스)는 관리형 서비스 문구 대신 내부 절차 확인 문구로 분기.
+        if _is_native(variant):
+            confirm_msg = ("벤더 Extended Support 계약 및 내부 사후 관리 절차 "
+                           "여부를 담당자에게 확인 필요")
+        else:
+            confirm_msg = ("관리형 서비스 Extended Support 계약·사후 관리 절차 "
+                           "여부를 담당자에게 확인 필요")
         return {"verdict": "판단보류", "confidence": 0.5,
                 "rationale": f"[EOL 자동판정] {product} {version} (시리즈 "
                              f"{series})의 커뮤니티 지원 종료일 {eol_date}이 "
-                             f"경과함 — EOL 후보. 관리형 서비스 Extended "
-                             f"Support 계약·사후 관리 절차 여부를 담당자에게 "
-                             f"확인 필요.{suffix}",
+                             f"경과함 — EOL 후보. {confirm_msg}.{suffix}",
                 "cited_evidence": [f"version={version}"]}
     return {"verdict": "양호", "confidence": 0.9,
             "rationale": f"[EOL 자동판정] {product} {version} (시리즈 {series})"
@@ -162,11 +177,16 @@ def _ver_tuple(v: str):
 
 
 def judge_patch(profile_key: str, items: Dict,
-                today: Optional[datetime.date] = None) -> Optional[Dict]:
+                today: Optional[datetime.date] = None,
+                variant: Optional[str] = None) -> Optional[Dict]:
     """DBM-016 패치 결정론 대조. 현재 버전 vs 시리즈 최신(latest)을 비교해
     사실만 제공한다. verdict는 판단보류 고정 — 관리형 서비스(RDS/Aurora/
     Azure)는 커뮤니티 최신과 패치 채널이 달라 단정할 수 없기 때문.
-    latest 미수록(예: Oracle)이면 None → canned_message 폴백."""
+    latest 미수록(예: Oracle)이면 None → canned_message 폴백.
+
+    variant가 네이티브(_native 접미사)이면 패치 채널 문구를 온프레미스용으로
+    분기하고, 클라우드(또는 기본값)이면 기존 관리형 서비스 문구를 유지한다.
+    """
     found = _lookup(profile_key, items)
     if found is None:
         return None
@@ -184,9 +204,13 @@ def judge_patch(profile_key: str, items: Dict,
     suffix = f" (패치 테이블 기준일 {as_of})" if as_of else ""
     suffix += _staleness_warning(as_of, today)
     if _ver_tuple(current) < _ver_tuple(str(latest)):
+        # 네이티브는 패치 채널이 벤더 직접 배포 경로이므로 관리형 서비스 문구 불필요.
+        if _is_native(variant):
+            channel_msg = "벤더 권고 패치 적용 절차를 담당자에게 확인 필요."
+        else:
+            channel_msg = "관리형 서비스의 패치 채널 차이가 있으므로 담당자 확인 필요."
         msg = (f"[패치 자동대조] 현재 {current}, 시리즈({series}) 최신 "
-               f"{latest} — 최신 패치 미적용 후보.{suffix} 관리형 서비스의 "
-               f"패치 채널 차이가 있으므로 담당자 확인 필요.")
+               f"{latest} — 최신 패치 미적용 후보.{suffix} {channel_msg}")
     else:
         msg = (f"[패치 자동대조] 현재 {current}는 시리즈({series}) 최신 "
                f"{latest} 이상 — 커뮤니티 기준 최신 패치 수준.{suffix} "
