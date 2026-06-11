@@ -4,7 +4,7 @@ import openpyxl
 import pytest
 
 from judge_tool.errors import ReportError
-from judge_tool.main import run, _judge_one
+from judge_tool.main import run, _judge_one, JudgeContext
 from judge_tool.models import Criterion, EvidenceItem, ResourceEvidence
 from judge_tool.profile import get_profile
 
@@ -137,7 +137,9 @@ def test_judge_one_blank_note_no_indexerror():
     item = EvidenceItem(item_id="DBM-100", variant="MYSQL",
                         resources=[], context="QUERY: q\nNOTE:   ")
     profile = get_profile("db_mysql")
-    j = _judge_one(crit, item, "DBM-100", "MYSQL", StubVuln(), profile)
+    ctx = JudgeContext(profile=profile, profile_key="db_mysql",
+                       client=StubVuln(), items={}, variant="MYSQL")
+    j = _judge_one(crit, item, ctx)
     assert j is not None
     assert j.verdict == "판단보류"
     assert "NOTE" in j.rationale
@@ -154,7 +156,9 @@ def test_judge_one_inline_note_no_false_match():
             resource_id="db1", status="bad", detail="d", evidence="e")],
         context="QUERY: SELECT 'NOTE: inline' FROM dual")
     profile = get_profile("db_mysql")
-    j = _judge_one(crit, item, "DBM-101", "MYSQL", StubVuln(), profile)
+    ctx = JudgeContext(profile=profile, profile_key="db_mysql",
+                       client=StubVuln(), items={}, variant="MYSQL")
+    j = _judge_one(crit, item, ctx)
     assert j is not None
     assert j.verdict == "취약"   # StubVuln → 취약, 판단보류 아님
 

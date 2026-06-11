@@ -20,6 +20,27 @@ def _load_item_configs(profile_key: str) -> Dict:
     return data
 
 
+def classify_method(label: str, *, has_summary: bool,
+                    in_empty_means_good: bool) -> str:
+    """라벨+설정에서 판단방식 5분류(정적)를 도출하는 단일 출처.
+
+    - C/D            → det            (canned 기술한계 / EOL·패치 결정론)
+    - B + 요약지시    → interview       (인터뷰-내용정리)
+    - B + 요약지시 X  → interview_holdonly (인터뷰-내용정리X, 요약 없이 보류만)
+    - A + empty_means_good → llm_det   (빈결과=양호 결정론 가드 + LLM)
+    - A (그 외)       → llm
+
+    하이브리드(B + empty_means_good)는 주(主)방식 기준 interview로 분류한다.
+    empty_means_good 가드는 빈결과 시 verdict/rationale에 직교적으로 드러난다.
+    """
+    if label in ("C", "D"):
+        return "det"
+    if label == "B":
+        return "interview" if has_summary else "interview_holdonly"
+    # label A (및 미지 라벨)은 LLM 판정. empty_means_good이면 결정론 가드 동반.
+    return "llm_det" if in_empty_means_good else "llm"
+
+
 def _cell(ws, row, col) -> str:
     v = ws.cell(row=row, column=col).value
     return "" if v is None else str(v).strip()
@@ -65,6 +86,13 @@ def load_criteria(xlsx_path: str,
                 cfg = item_configs.get(item_id, {})
                 # variant별 오버라이드: cfg["variants"][vname]이 있으면 해당 값 우선
                 vcfg = cfg.get("variants", {}).get(vname, {})
+                label = vcfg.get("label", cfg.get("label", "A"))
+                summary_instruction = vcfg.get(
+                    "summary_instruction", cfg.get("summary_instruction"))
+                judgment_method = classify_method(
+                    label,
+                    has_summary=bool(summary_instruction),
+                    in_empty_means_good=(item_id in profile.empty_means_good))
                 out[(item_id, vname)] = Criterion(
                     item_id=item_id,
                     item_name=name,
@@ -74,15 +102,15 @@ def load_criteria(xlsx_path: str,
                     standard=standard,
                     method=method,
                     applicable=applicable,
-                    label=vcfg.get("label", cfg.get("label", "A")),
+                    label=label,
                     canned_message=vcfg.get("canned_message",
                                             cfg.get("canned_message")),
-                    summary_instruction=vcfg.get("summary_instruction",
-                                                 cfg.get("summary_instruction")),
+                    summary_instruction=summary_instruction,
                     eol_check=bool(vcfg.get("eol_check",
                                             cfg.get("eol_check", False))),
                     patch_check=bool(vcfg.get("patch_check",
                                               cfg.get("patch_check", False))),
+                    judgment_method=judgment_method,
                 )
         return out
     finally:

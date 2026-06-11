@@ -48,8 +48,9 @@ PISM-042:
 PISM-043:
   label: A
 PISM-045:
+  # (e) interview_holdonly: 범용 placeholder 요약지시라 조직할 기술 증거가
+  # 불명확 → 요약 없이 담당자 인터뷰 보류만. summary_instruction 제거.
   label: B
-  summary_instruction: 점검 대상 항목의 현황을 증거 기반으로 요약. 판정하지 말 것.
 PISM-046:
   label: A
   review_note: '자동분류 B→A 수정: 특정 정책 존재 여부로 기술 판정 가능 (실험 확인)'

@@ -10,7 +10,7 @@ import openpyxl
 import pytest
 
 import judge_tool.main as main_mod
-from judge_tool.main import run, _auto_defer, _summarize_one
+from judge_tool.main import run, _auto_defer, _summarize_one, JudgeContext
 from judge_tool.models import Criterion, EvidenceItem
 from judge_tool.profile import CLOUD
 
@@ -117,7 +117,9 @@ def test_auto_defer_no_canned_message_fallback():
 def test_summarize_one_verdict_fixed_deferred():
     crit = _make_criterion(label="B", summary_instruction="계정 목록 요약.")
     item = _make_item()
-    j = _summarize_one(crit, item, "PISM-001", "AWS", SummaryClient(), CLOUD)
+    ctx = JudgeContext(profile=CLOUD, profile_key="cloud",
+                       client=SummaryClient(), items={}, variant="AWS")
+    j = _summarize_one(crit, item, ctx)
     assert j.verdict == "판단보류"
     assert j.label == "B"
     assert j.interview_summary is not None
@@ -125,9 +127,11 @@ def test_summarize_one_verdict_fixed_deferred():
 
 
 def test_summarize_one_interview_summary_in_output():
-    crit = _make_criterion(label="B")
+    crit = _make_criterion(label="B", summary_instruction="계정 목록 요약.")
     item = _make_item()
-    j = _summarize_one(crit, item, "PISM-001", "AWS", SummaryClient(), CLOUD)
+    ctx = JudgeContext(profile=CLOUD, profile_key="cloud",
+                       client=SummaryClient(), items={}, variant="AWS")
+    j = _summarize_one(crit, item, ctx)
     assert j.interview_summary
     assert len(j.interview_summary) > 0
 
@@ -204,8 +208,9 @@ def test_b_label_empty_means_good_yields_good():
                            summary_instruction="IS_GRANTABLE=YES 집계")
     item = EvidenceItem(item_id="DBM-024", variant="mysql_rds", resources=[])
 
-    j = _summarize_one(crit, item, "DBM-024", "mysql_rds",
-                       SummaryClient(), DB_MYSQL)
+    ctx = JudgeContext(profile=DB_MYSQL, profile_key="db_mysql",
+                       client=SummaryClient(), items={}, variant="mysql_rds")
+    j = _summarize_one(crit, item, ctx)
     assert j.verdict == "양호"
     assert j.label == "B"
     assert j.interview_summary is None  # 빈 결과라 요약 없음
@@ -314,8 +319,10 @@ def test_processing_failure_not_mislabeled_as_missing_evidence(
     json_out = os.path.join(str(tmp_path), "result.json")
     xlsx_out = os.path.join(str(tmp_path), "result.xlsx")
 
-    # 증거는 있으나 판정 처리가 전부 실패하는 상황을 모사
-    monkeypatch.setattr(main_mod, "_judge_one", lambda *a, **k: None)
+    # 증거는 있으나 판정 처리가 전부 실패하는 상황을 모사.
+    # 디스패치 레지스트리(_HANDLERS)가 import 시 함수 참조를 캡처하므로
+    # 이름 monkeypatch 대신 레지스트리 항목을 교체한다(llm 핸들러 → None 반환).
+    monkeypatch.setitem(main_mod._HANDLERS, "llm", lambda *a, **k: None)
 
     from judge_tool.main import run as run_fn
     cov = run_fn(report_path=src, criteria_path=criteria, profile_key="cloud",

@@ -27,6 +27,9 @@ class Criterion:
     summary_instruction: Optional[str] = None # B: LLM 증거 요약 지시
     eol_check: bool = False                   # D: eol.yaml EOL 결정론 판정 시도
     patch_check: bool = False                 # D: eol.yaml 패치 대조 시도
+    # 판단방식 5분류(정적). label+플래그+empty_means_good에서 loader가 도출.
+    # llm | llm_det | det | interview | interview_holdonly
+    judgment_method: str = "llm"
 
     @property
     def is_mixed(self) -> bool:
@@ -95,3 +98,5 @@ class Judgment:
     needs_review: bool
     label: str = "A"                          # 항목 라벨 (A/B/C/D)
     interview_summary: Optional[str] = None   # B항목: LLM 요약문 (인터뷰 보조용)
+    # 판단방식 5분류(정적). Criterion에서 전파됨.
+    judgment_method: str = "llm"

@@ -22,6 +22,18 @@ def build_coverage(criteria: Dict[Tuple[str, str], Criterion],
             "missing": missing}
 
 
+def _method_distribution(judgments: List[Judgment]) -> str:
+    """판단방식별 항목 수를 '표기 N · 표기 N' 형태 한 줄로 요약(검토 가시성)."""
+    counts: Dict[str, int] = {}
+    for j in judgments:
+        counts[j.judgment_method] = counts.get(j.judgment_method, 0) + 1
+    parts = [f"{METHOD_DISPLAY.get(m, m)} {counts[m]}"
+             for m in METHOD_DISPLAY if m in counts]
+    # 표기 매핑에 없는 미지 method도 빠짐없이 노출
+    parts += [f"{m} {n}" for m, n in counts.items() if m not in METHOD_DISPLAY]
+    return " · ".join(parts)
+
+
 def _ensure_parent_dir(path: str) -> None:
     parent = os.path.dirname(path)
     if parent:
@@ -40,9 +52,18 @@ def write_json(judgments: List[Judgment], meta: Dict, coverage: Dict,
         json.dump(payload, fh, ensure_ascii=False, indent=2)
 
 
-_HEADERS = ["항목ID", "항목명", "위험도", "변형", "라벨", "판정", "확신도",
-            "스크립트status", "일치여부", "재검토", "범위", "관리체계검토",
-            "근거", "인용증거", "인터뷰요약"]
+# 판단방식(judgment_method) 데이터값 → 한글 표기.
+METHOD_DISPLAY = {
+    "llm": "LLM",
+    "llm_det": "LLM+결정론",
+    "det": "결정론",
+    "interview": "인터뷰(내용정리)",
+    "interview_holdonly": "인터뷰(내용정리X)",
+}
+
+_HEADERS = ["항목ID", "항목명", "위험도", "변형", "라벨", "판단방식", "판정",
+            "확신도", "스크립트status", "일치여부", "재검토", "범위",
+            "관리체계검토", "근거", "인용증거", "인터뷰요약"]
 _REVIEW_FILL = PatternFill("solid", fgColor="FFF2CC")  # 연노랑
 
 
@@ -66,6 +87,9 @@ def write_excel(judgments: List[Judgment], meta: Dict, coverage: Dict,
         ("판정 항목수", coverage.get("judged", 0)),
         ("미판정 항목", ", ".join(coverage.get("missing", []))),
         ("재검토 필요수", sum(1 for j in judgments if j.needs_review)),
+        ("판단방식 분포", _method_distribution(judgments)),
+        ("판단방식 주석", "설정상 분류값. 실제 적용 결과는 '판정'/'근거' 참조"
+                         "(빈결과 결정론 양호·NOTE 강제보류·EOL 폴백 보류 등)"),
     ]
     for r, (k, v) in enumerate(rows, start=1):
         summary.cell(r, 1, k).font = Font(bold=True)
@@ -79,8 +103,9 @@ def write_excel(judgments: List[Judgment], meta: Dict, coverage: Dict,
     for j in judgments:
         conf = j.confidence if isinstance(j.confidence, (int, float)) else 0.0
         ws.append([
-            j.item_id, j.item_name, j.risk, j.variant, j.label, j.verdict,
-            round(conf, 2), j.script_status, j.agreement,
+            j.item_id, j.item_name, j.risk, j.variant, j.label,
+            METHOD_DISPLAY.get(j.judgment_method, j.judgment_method),
+            j.verdict, round(conf, 2), j.script_status, j.agreement,
             "예" if j.needs_review else "", j.scope,
             "예" if j.management_review_needed else "",
             j.rationale, " | ".join(map(str, j.cited_evidence or [])),

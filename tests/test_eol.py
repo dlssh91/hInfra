@@ -233,7 +233,7 @@ def test_defer_or_eol_preserves_verdict_with_empty_own_section():
     회귀: 2026-06-10 실데이터 검증에서 EOL 양호 판정이 빈 더미 item 때문에
     판단보류로 강제되는 버그 발견.
     """
-    from judge_tool.main import _defer_or_eol
+    from judge_tool.main import _defer_or_eol, JudgeContext
     from judge_tool.models import Criterion
     from judge_tool.profile import DB_MYSQL
 
@@ -246,7 +246,9 @@ def test_defer_or_eol_preserves_verdict_with_empty_own_section():
     items = _items("DBM-016",
                    '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.4.4"}')
 
-    j = _defer_or_eol(crit, empty_item, items, DB_MYSQL, "db_mysql")
+    ctx = JudgeContext(profile=DB_MYSQL, profile_key="db_mysql", client=None,
+                       items=items, variant="mysql_rds")
+    j = _defer_or_eol(crit, empty_item, ctx)
     assert j.verdict == "양호", "EOL 양호 판정이 보존되어야 함"
     assert "[EOL 자동판정]" in j.rationale
     assert "[자동 판단보류" not in j.rationale

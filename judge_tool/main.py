@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import sys
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, Optional
 
@@ -39,6 +40,17 @@ def _sha256(path: str) -> str:
     return h.hexdigest()
 
 
+@dataclass
+class JudgeContext:
+    """판정 핸들러 공통 컨텍스트. 핸들러마다 profile 속성을 수동 스레딩하던
+    것을 한 객체로 묶어 디스패치 시그니처를 통일한다."""
+    profile: object
+    profile_key: str
+    client: object
+    items: Dict
+    variant: str
+
+
 def _auto_defer(crit, item, profile) -> Judgment:
     """C·D 라벨: LLM 호출 없이 판단보류 자동 처리. canned_message를 근거로 기록."""
     def _reconcile(llm):
@@ -56,10 +68,11 @@ def _auto_defer(crit, item, profile) -> Judgment:
     return j
 
 
-def _defer_or_eol(crit, item, items, profile, profile_key: str) -> Judgment:
-    """C·D 라벨 처리: eol_check는 EOL 결정론 판정, patch_check는 패치
+def _defer_or_eol(crit, item, ctx: "JudgeContext") -> Judgment:
+    """det(C·D 라벨) 처리: eol_check는 EOL 결정론 판정, patch_check는 패치
     버전 결정론 대조를 먼저 시도하고, 실패(버전 미검출·테이블 미수록)하면
     기존 canned_message 자동보류로 폴백한다."""
+    profile, profile_key, items = ctx.profile, ctx.profile_key, ctx.items
     forced = None
     # item.variant를 전달해 네이티브/클라우드 분기 문구가 정확히 선택되도록 한다.
     item_variant = item.variant if item is not None else None
@@ -120,13 +133,17 @@ def _missing_evidence_defer(crit, variant: str, profile) -> Judgment:
     return j
 
 
-def _summarize_one(crit, item, item_id: str, variant: str, client,
-                   profile) -> Optional[Judgment]:
-    """B 라벨: LLM으로 증거 요약. verdict=판단보류 고정.
+def _summarize_one(crit, item, ctx: "JudgeContext") -> Optional[Judgment]:
+    """인터뷰(B 라벨): verdict=판단보류 고정.
 
-    예외: empty_means_good 항목에서 증거가 0건이면 LLM 없이 양호로 처리.
-    (예: DBM-024 빈 결과 = GRANT OPTION 없음 = 양호)
+    - interview(내용정리): LLM으로 증거 요약 → interview_summary.
+    - interview_holdonly(내용정리X): summary_instruction이 없으면 LLM 요약을
+      호출하지 않고 보류만 반환(요약 없음).
+    - 예외: empty_means_good 항목에서 증거가 0건이면 LLM 없이 양호로 처리
+      (예: DBM-024 빈 결과 = GRANT OPTION 없음 = 양호).
     """
+    profile, client = ctx.profile, ctx.client
+    item_id, variant = crit.item_id, ctx.variant
     is_empty_good = crit.item_id in profile.empty_means_good
 
     def _reconcile(llm):
@@ -143,10 +160,25 @@ def _summarize_one(crit, item, item_id: str, variant: str, client,
                   "cited_evidence": []}
         try:
             j = _reconcile(forced)
-            j.label = "B"
+            j.label = crit.label
             return j
         except Exception as e:  # noqa: BLE001
             log.warning("B항목 빈결과 reconcile 실패 item=%s type=%s",
+                        item_id, type(e).__name__)
+            return None
+
+    # (e) interview_holdonly: 요약 지시가 없으면 LLM 요약을 생략하고 보류만.
+    if not crit.summary_instruction:
+        forced = {"verdict": "판단보류", "confidence": 0.0,
+                  "rationale": "[인터뷰 필요] 기술 증거 요약 대상이 아니며, "
+                               "담당자 인터뷰로 확인이 필요한 항목입니다.",
+                  "cited_evidence": []}
+        try:
+            j = _reconcile(forced)
+            j.label = crit.label
+            return j
+        except Exception as e:  # noqa: BLE001
+            log.warning("B항목(holdonly) reconcile 실패, 스킵 item=%s type=%s",
                         item_id, type(e).__name__)
             return None
 
@@ -158,7 +190,7 @@ def _summarize_one(crit, item, item_id: str, variant: str, client,
               "cited_evidence": []}
     try:
         j = _reconcile(forced)
-        j.label = "B"
+        j.label = crit.label
         j.interview_summary = summary
         return j
     except Exception as e:  # noqa: BLE001
@@ -181,15 +213,17 @@ def _clean_note(note: str) -> str:
     return note
 
 
-def _judge_one(crit, item, item_id: str, variant: str, client,
-               profile) -> Optional[Judgment]:
-    """단일 항목을 판정한다. 프로파일 속성으로 evidence/판정 모드를 결정하며
-    부분 실패를 격리하는 견고성 로직:
+def _judge_one(crit, item, ctx: "JudgeContext") -> Optional[Judgment]:
+    """단일 항목을 LLM으로 판정한다(llm·llm_det). 프로파일 속성으로 evidence/
+    판정 모드를 결정하며 부분 실패를 격리하는 견고성 로직:
 
     - NOTE 보유 항목 → LLM 호출 없이 판단보류 강제(empty_means_good보다 우선)
     - judge 실패 → 판단보류 폴백으로 reconcile (격리, 결과 포함)
     - 폴백 reconcile 마저 실패 → 해당 항목만 스킵(None 반환)
     """
+    profile, client = ctx.profile, ctx.client
+    item_id, variant = crit.item_id, ctx.variant
+
     # reconcile은 항상 동일한 프로파일 인자로 호출되므로 지역 헬퍼로 묶는다.
     def _reconcile(llm: Dict) -> Judgment:
         return reconcile(
@@ -214,7 +248,7 @@ def _judge_one(crit, item, item_id: str, variant: str, client,
         llm = judge_item(crit, item, client,
                          evidence_mode=profile.evidence_mode)
         j = _reconcile(llm)
-        j.label = "A"
+        j.label = crit.label  # 리터럴 "A" 대신 설정값 사용(다른 핸들러와 일관성 유지)
         return j
     except Exception as e:  # noqa: BLE001 - 부분 실패 격리(네트워크/HTTP/KeyError 등)
         # 예외 본문에는 LLM 응답/evidence 원문이 섞일 수 있으므로 산출물·로그에
@@ -231,6 +265,19 @@ def _judge_one(crit, item, item_id: str, variant: str, client,
         log.warning("폴백 reconcile 실패, 스킵 item=%s variant=%s type=%s",
                     item_id, variant, type(e2).__name__)
         return None
+
+
+# 판단방식(judgment_method) → 핸들러 디스패치 레지스트리.
+# label if/elif 분기를 대체한다. 새 판정 종류(예: 방화벽 결정론 엔진)는
+# 여기에 method→핸들러를 등록하는 것으로 확장한다(elif 증식 없음).
+# 모든 핸들러는 (crit, item, ctx) -> Optional[Judgment] 시그니처를 따른다.
+_HANDLERS = {
+    "llm": _judge_one,
+    "llm_det": _judge_one,
+    "interview": _summarize_one,
+    "interview_holdonly": _summarize_one,
+    "det": _defer_or_eol,
+}
 
 
 def _is_within(child: str, parent: str) -> bool:
@@ -295,6 +342,8 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
 
     judgments = []
     judged_ids: set = set()
+    ctx = JudgeContext(profile=profile, profile_key=profile_key, client=client,
+                       items=items, variant=variant)
 
     # TODO(네이티브 OS레벨 항목): DBM-012(lsnrctl)/022(파일권한)/026(umask)/
     # 034(구동권한)/021(ODBC) 등은 SQL이 섹션 자체를 출력하지 않아 아래 루프에서
@@ -306,21 +355,22 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
         crit = criteria.get((item_id, variant))
         if crit is None or not crit.is_judgeable:
             continue  # 기준에 없거나 스크립트 대상 아님/빈 판단기준 → 스킵
-        label = crit.label
-        if label in ("C", "D"):
-            judgment = _defer_or_eol(crit, item, items, profile, profile_key)
-        elif label == "B":
-            judgment = _summarize_one(crit, item, item_id, variant, client, profile)
-        else:  # A (기본)
-            judgment = _judge_one(crit, item, item_id, variant, client, profile)
+        # 판단방식 → 핸들러 디스패치. 미지 method는 LLM 판정으로 폴백.
+        # 미등록 method가 조용히 LLM 판정으로 은폐되지 않도록 경고를 남긴다.
+        if crit.judgment_method not in _HANDLERS:
+            log.warning("미등록 judgment_method=%s item=%s → LLM 폴백",
+                        crit.judgment_method, item_id)
+        handler = _HANDLERS.get(crit.judgment_method, _judge_one)
+        judgment = handler(crit, item, ctx)
         if judgment is not None:
+            judgment.judgment_method = crit.judgment_method  # 정적 전파
             judgments.append(judgment)
             judged_ids.add(item_id)
 
     # 보고서에 증거 섹션이 없는 판정대상 항목도 빠짐없이 행을 만든다.
-    # - C/D: canned_message 자동보류 (기존 동작 유지)
-    # - A/B: '증거 미수집' 자동보류 — 고위험 항목이 조용히 누락되는 것을 방지
-    #   (예: PG 보고서에 DBM-005 섹션 자체가 없는 경우)
+    # - det(C/D): canned_message·EOL 결정론 (기존 동작 유지)
+    # - 그 외(llm/llm_det/interview*): '증거 미수집' 자동보류 — 고위험 항목이
+    #   조용히 누락되는 것을 방지(예: PG 보고서에 DBM-005 섹션 자체가 없는 경우)
     # 단, 증거 섹션이 있었는데 처리 실패(judgment=None)로 빠진 항목은
     # '미수집'이 아니므로 제외한다(coverage missing으로 남아 실패가 보임).
     for (crit_id, crit_variant), crit in criteria.items():
@@ -328,16 +378,16 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
             continue
         if crit_id in judged_ids or crit_id in items:
             continue
-        if crit.label in ("C", "D"):
+        if crit.judgment_method == "det":
             dummy_item = EvidenceItem(item_id=crit_id, variant=variant,
                                       resources=[])
             # 버전 증거가 다른 항목(DBM-016 등)에 있을 수 있으므로
             # 자기 섹션이 없어도 EOL 결정론 판정을 시도한다.
-            judgment = _defer_or_eol(crit, dummy_item, items, profile,
-                                     profile_key)
+            judgment = _defer_or_eol(crit, dummy_item, ctx)
         else:
             judgment = _missing_evidence_defer(crit, variant, profile)
         if judgment is not None:
+            judgment.judgment_method = crit.judgment_method  # 정적 전파
             judgments.append(judgment)
             judged_ids.add(crit_id)
 
