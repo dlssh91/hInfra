@@ -80,6 +80,9 @@ def load_criteria(xlsx_path: str,
                     # DB: 평가대상 컬럼 'o'
                     marker = _cell(ws, row, vspec.applicability_col).strip().lower()
                     applicable = (marker == "o")
+                elif vspec.applies_when_standard:
+                    # network generic: 벤더중립 판단기준(C18)이 있으면 적용
+                    applicable = bool(standard)
                 else:
                     # cloud: 기존 is_judgeable 동치(스크립트 기반 & N/A 아님)
                     applicable = ("스크립트" in eval_type) and eval_type != "N/A"
@@ -89,10 +92,16 @@ def load_criteria(xlsx_path: str,
                 label = vcfg.get("label", cfg.get("label", "A"))
                 summary_instruction = vcfg.get(
                     "summary_instruction", cfg.get("summary_instruction"))
-                judgment_method = classify_method(
-                    label,
-                    has_summary=bool(summary_instruction),
-                    in_empty_means_good=(item_id in profile.empty_means_good))
+                # yaml 직접 지정(예: fw_policy)이 classify_method 결과보다 우선.
+                yaml_method = vcfg.get("judgment_method",
+                                       cfg.get("judgment_method"))
+                if yaml_method:
+                    judgment_method = yaml_method
+                else:
+                    judgment_method = classify_method(
+                        label,
+                        has_summary=bool(summary_instruction),
+                        in_empty_means_good=(item_id in profile.empty_means_good))
                 out[(item_id, vname)] = Criterion(
                     item_id=item_id,
                     item_name=name,

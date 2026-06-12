@@ -8,11 +8,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, Optional
 
+import json as _json
+
 from judge_tool import __version__
 from judge_tool.criteria_loader import load_criteria
 from judge_tool.errors import ReportError
 from judge_tool.judge import OllamaClient, judge_item, reconcile, summarize_item
 from judge_tool.eol import judge_eol, judge_patch
+from judge_tool.fw_policy import detect_for_iss, policy_from_dict
 from judge_tool.mapper import aggregate
 from judge_tool.models import EvidenceItem, Judgment, ResourceEvidence
 from judge_tool.parsers import get_parser
@@ -267,6 +270,105 @@ def _judge_one(crit, item, ctx: "JudgeContext") -> Optional[Judgment]:
         return None
 
 
+def _fw_policy_handler(crit, item, ctx: "JudgeContext") -> Optional[Judgment]:
+    """방화벽 이상정책 결정론 판정 핸들러 (judgment_method="fw_policy").
+
+    item.context에서 FW_FORMAT과 FW_POLICIES_JSON을 파싱해
+    fw_policy.detect_for_iss()를 호출한다.
+
+    context 형식 (fw_policy_xlsx.parse() 생성):
+        FW_FORMAT:<fmt>
+        FW_SHEETS:<s1,...>
+        FW_POLICY_COUNT:<n>
+        FW_POLICIES_JSON:<compact_json>
+
+    reconcile의 '빈 증거 → 판단보류 강제' 가드를 통과시키기 위해
+    탐지 결과를 ResourceEvidence로 래핑한 EvidenceItem을 생성한다.
+    needs_review는 항상 True (탐지=결정론, 정당성=사람).
+    """
+    profile = ctx.profile
+    context = item.context or ""
+
+    def _reconcile(llm_dict: Dict, ev_item: EvidenceItem) -> Judgment:
+        return reconcile(
+            llm_dict, crit, ev_item,
+            status_available=profile.status_available,
+            flag_vulnerable_for_review=profile.flag_vulnerable_for_review,
+            empty_means_good=crit.item_id in profile.empty_means_good,
+        )
+
+    # context 파싱
+    fmt = "unknown"
+    policies_json: Optional[str] = None
+    for line in context.splitlines():
+        if line.startswith("FW_FORMAT:"):
+            fmt = line[len("FW_FORMAT:"):].strip()
+        elif line.startswith("FW_POLICIES_JSON:"):
+            policies_json = line[len("FW_POLICIES_JSON:"):].strip()
+
+    if not policies_json:
+        forced = {
+            "verdict": "판단보류", "confidence": 0.0,
+            "rationale": "[FW 파서 오류] 정책 데이터가 context에 없습니다. "
+                         "파서 동작을 확인하세요.",
+            "cited_evidence": [],
+        }
+        # 빈 resources로 reconcile → 판단보류 강제 (원하는 동작)
+        j = _reconcile(forced, item)
+        j.label = crit.label
+        return j
+
+    try:
+        policies_raw = _json.loads(policies_json)
+        policies = [policy_from_dict(d) for d in policies_raw]
+    except Exception as e:  # noqa: BLE001
+        log.warning("FW policy JSON 파싱 실패 item=%s type=%s", crit.item_id, type(e).__name__)
+        forced = {
+            "verdict": "판단보류", "confidence": 0.0,
+            "rationale": f"[FW 정책 파싱 오류] {type(e).__name__}",
+            "cited_evidence": [],
+        }
+        j = _reconcile(forced, item)
+        j.label = crit.label
+        return j
+
+    result = detect_for_iss(crit.item_id, policies, fmt)
+
+    # 탐지 결과를 ResourceEvidence로 래핑 →
+    # reconcile의 '빈 증거 → 판단보류 강제' 가드 우회
+    violation_text = (
+        "\n".join(result.violations[:20]) if result.violations else "이상 정책 없음"
+    )
+    ev_status = "bad" if result.violations else "good"
+    ev_item = EvidenceItem(
+        item_id=crit.item_id,
+        variant=ctx.variant,
+        resources=[ResourceEvidence(
+            resource_id=f"{crit.item_id}-fw-detect",
+            status=ev_status,
+            detail=result.rationale[:200],
+            evidence=violation_text,
+        )],
+        context=None,
+    )
+
+    forced = {
+        "verdict": result.verdict,
+        "confidence": result.confidence,
+        "rationale": result.rationale,
+        "cited_evidence": result.violations[:20],
+    }
+    try:
+        j = _reconcile(forced, ev_item)
+        j.label = crit.label
+        j.needs_review = True  # 탐지=결정론, 정당성=사람 → 항상
+        return j
+    except Exception as e2:  # noqa: BLE001
+        log.warning("FW policy reconcile 실패, 스킵 item=%s type=%s",
+                    crit.item_id, type(e2).__name__)
+        return None
+
+
 # 판단방식(judgment_method) → 핸들러 디스패치 레지스트리.
 # label if/elif 분기를 대체한다. 새 판정 종류(예: 방화벽 결정론 엔진)는
 # 여기에 method→핸들러를 등록하는 것으로 확장한다(elif 증식 없음).
@@ -277,6 +379,7 @@ _HANDLERS = {
     "interview": _summarize_one,
     "interview_holdonly": _summarize_one,
     "det": _defer_or_eol,
+    "fw_policy": _fw_policy_handler,
 }
 
 
@@ -319,6 +422,10 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
         raise ReportError(
             f"프로파일 '{profile_key}'은 현재 판정 대상에서 배제됨"
             "(구조만 정의, 후속 과제). 다른 프로파일을 지정하세요.")
+    # 변형 식별 전에 파서를 가져온다 — 파일명에 변형 마커가 없는 도메인
+    # (서버: 출력 파일명 {hostname}-s-{date}.xml에 OS 정보 없음)은 파서의
+    # 내용 기반 식별(detect_variant)로 폴백하기 위함.
+    parser = get_parser(profile.parser)
     if variant_override is not None:
         if variant_override not in profile.variants:
             raise ReportError(
@@ -327,16 +434,26 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
         variant = variant_override
     else:
         variant = profile.variant_from_filename(report_path)
+        # 내용 기반 폴백 seam: 파서가 detect_variant를 제공하면(서버 XML의
+        # <asset><os>) 그것으로 식별한다. cloud/db 파서는 detect_variant가
+        # 없으므로 hasattr 가드로 기존 동작 불변.
+        if variant is None and hasattr(parser, "detect_variant"):
+            variant = parser.detect_variant(report_path)
     if variant is None:
         markers = sorted(
             m for vs in profile.variants.values() for m in vs.filename_markers)
+        if markers:
+            raise ReportError(
+                f"파일명에서 variant를 식별할 수 없음(미식별 또는 모호): {report_path}. "
+                f"고유한 마커({markers})를 가진 파일명을 쓰거나 --variant로 직접 "
+                f"지정하세요.")
+        # 파일명 마커가 없는 도메인(서버) → 내용 기반 식별까지 실패한 경우.
         raise ReportError(
-            f"파일명에서 variant를 식별할 수 없음(미식별 또는 모호): {report_path}. "
-            f"고유한 마커({markers})를 가진 파일명을 쓰거나 --variant로 직접 "
-            f"지정하세요.")
+            f"보고서 내용에서 variant를 식별할 수 없음: {report_path}. "
+            f"--variant로 직접 지정하세요"
+            f"(사용 가능: {list(profile.variants)}).")
 
     criteria = load_criteria(criteria_path, profile, profile_key=profile_key)
-    parser = get_parser(profile.parser)
     raw_checks = parser.parse(report_path)
     items = aggregate(raw_checks, variant, profile)
 

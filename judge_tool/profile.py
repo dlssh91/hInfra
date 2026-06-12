@@ -16,6 +16,7 @@ class VariantSpec:
     filename_markers: Tuple[str, ...]
     eval_type_col: Optional[int] = None      # cloud: 적용여부 판정용. DB: 없음.
     applicability_col: Optional[int] = None  # DB: 평가대상 'o' 컬럼. cloud: 없음.
+    applies_when_standard: bool = False      # network generic: 판단기준(C18) 비공백=적용
 
 
 @dataclass(frozen=True)
@@ -259,6 +260,187 @@ DB_TIBERO = Profile(
     },
 )
 
+# 서버(OS) — 원시증거(셸/배치 명령 raw 출력). 수집 스크립트(fsi_unix.sh /
+# fsi_win.bat)의 출력 파일명({hostname}-s-{date}.xml)에 OS 변형 마커가 없어
+# filename_markers는 빈 튜플이고, server_xml.detect_variant가 <asset><os>
+# 텍스트로 변형을 식별한다(main.run의 내용 기반 폴백 seam).
+# empty_means_good: 서버용 위반필터형 분석 자료가 아직 없어 빈 집합으로 시작
+# (빈 출력은 보수적으로 '증거 없음 → 판단보류'). 실수집 데이터 확보 후 보강.
+SERVER = Profile(
+    key="server",
+    sheet_name="서버",
+    header_row=4,
+    data_start_row=5,
+    id_col=2,
+    name_col=7,
+    risk_col=8,
+    parser="server_xml",
+    evidence_mode="raw",
+    status_available=False,
+    flag_vulnerable_for_review=True,
+    empty_means_good=frozenset(),
+    variants={
+        "aix": VariantSpec(
+            "aix", standard_col=17, method_col=18,
+            applicability_col=12, filename_markers=()),
+        "hpux": VariantSpec(
+            "hpux", standard_col=19, method_col=20,
+            applicability_col=13, filename_markers=()),
+        "linux": VariantSpec(
+            "linux", standard_col=21, method_col=22,
+            applicability_col=14, filename_markers=()),
+        "solaris": VariantSpec(
+            "solaris", standard_col=23, method_col=24,
+            applicability_col=15, filename_markers=()),
+        "win": VariantSpec(
+            "win", standard_col=25, method_col=26,
+            applicability_col=16, filename_markers=()),
+    },
+)
+
+# 네트워크 장비 — 원시증거(config/show raw). 판단기준(col18)·판단방법(col19)을
+# 전 벤더가 공유하고 벤더별로는 평가대상 'o' 컬럼만 갈린다(col33~42). 현재
+# CISCO 단일 벤더 + generic(미해당) 폴백만 구현. CISCO는 45항목 전부 'o'.
+# generic은 벤더 미식별 장비를 벤더중립 판단기준(C18)으로 LLM 판정하는 폴백.
+#
+# TODO(나머지 9개 벤더 — ④ 활성화 게이트): applicability_col A10=34,BROCADE=35,
+#   ALTEON=36,NOTEL=37,BIGIP=38,CITRIX=39,PIOLINK=40,3COM=41,JUNIPER=42
+#   (standard/method는 18/19 공유). VariantSpec 등록 + detect_variant 토큰 확장.
+# TODO(적용성 보조축 미사용): col12 스위치/col13 라우터/col14~17 A~D그룹.
+# 수집 포맷 미확정(셸 없음→on-host 수집 불가). 파서는 서버 동일 XML 엔벨로프를
+# PROVISIONAL 가정 — network_xml docstring·④ 게이트 참조. empty_means_good 빈 집합.
+NETWORK = Profile(
+    key="network", sheet_name="네트워크 장비",
+    header_row=4, data_start_row=5,
+    id_col=2, name_col=7, risk_col=8,
+    parser="network_xml", evidence_mode="raw",
+    status_available=False, flag_vulnerable_for_review=True,
+    empty_means_good=frozenset(),
+    variants={
+        "cisco": VariantSpec(
+            "cisco", standard_col=18, method_col=19,
+            applicability_col=33, filename_markers=()),
+        "generic": VariantSpec(
+            "generic", standard_col=18, method_col=19,
+            applicability_col=None, applies_when_standard=True,
+            filename_markers=()),
+    },
+)
+
+# 정보보호시스템 장비 (ISS) — FW 변형 1개 + 나머지 5개 TODO.
+# 이번 구현 범위: FW 변형 + ISS-030~041 정책-이상 항목.
+# 파일명에 변형 마커 없음 → detect_variant 폴백("fw" 고정 반환, fw_policy_xlsx 참조).
+# status_available=False → 전 판정 script_status=None → needs_review=True(자동).
+ISS = Profile(
+    key="iss",
+    sheet_name="정보보호시스템 장비",
+    header_row=4,
+    data_start_row=5,
+    id_col=2,
+    name_col=7,
+    risk_col=8,
+    parser="fw_policy_xlsx",
+    evidence_mode="raw",
+    status_available=False,
+    flag_vulnerable_for_review=True,
+    empty_means_good=frozenset(),
+    variants={
+        "fw": VariantSpec(
+            "fw", standard_col=18, method_col=19,
+            applicability_col=12, filename_markers=()),
+        # VPN/IDS/IPS/DDoS/WAF/generic은 iss_device 프로파일 참조(XML 입력).
+    },
+)
+
+# 정보보호시스템 장비 — 비-FW 5종(VPN/IDS/IPS/DDoS/WAF) + generic 폴백.
+# 같은 시트("정보보호시스템 장비")를 iss(FW 정책 xlsx)와 분할 사용.
+# DB 도메인이 한 시트를 엔진별 프로파일로 나누는 선례와 동일.
+# 판단기준(col18)·판단방법(col19)은 전 장비 공유, 장비별로는 applicability_col만 갈린다.
+# generic: 장비 미식별 시 폴백 — network generic 패턴(applies_when_standard=True).
+# 파일명 마커 없음 → iss_xml.detect_variant(<asset><device_type>)로 식별.
+# ISS-030~041(FW 정책 항목): vpn~waf는 해당 열이 None → applicable=False 자동 제외.
+#   generic은 col18 비공백이면 applicable=True가 되나 iss_device.yaml label C로 자동보류.
+ISS_DEVICE = Profile(
+    key="iss_device",
+    sheet_name="정보보호시스템 장비",
+    header_row=4,
+    data_start_row=5,
+    id_col=2,
+    name_col=7,
+    risk_col=8,
+    parser="iss_xml",
+    evidence_mode="raw",
+    status_available=False,
+    flag_vulnerable_for_review=True,
+    empty_means_good=frozenset(),
+    variants={
+        "vpn":  VariantSpec("vpn",  standard_col=18, method_col=19,
+                            applicability_col=13, filename_markers=()),
+        "ids":  VariantSpec("ids",  standard_col=18, method_col=19,
+                            applicability_col=14, filename_markers=()),
+        "ips":  VariantSpec("ips",  standard_col=18, method_col=19,
+                            applicability_col=15, filename_markers=()),
+        "ddos": VariantSpec("ddos", standard_col=18, method_col=19,
+                            applicability_col=16, filename_markers=()),
+        "waf":  VariantSpec("waf",  standard_col=18, method_col=19,
+                            applicability_col=17, filename_markers=()),
+        "generic": VariantSpec("generic", standard_col=18, method_col=19,
+                               applicability_col=None,
+                               applies_when_standard=True,
+                               filename_markers=()),
+    },
+)
+
+# 컨테이너 가상화 시스템 — 9변형(k8s/EKS/AKS/OCP master·worker + Docker-Linux).
+# 파일명 마커로 1차 변형 식별(DB와 동일 패턴). 마커 미매칭 시 detect_variant 폴백
+# (<asset><variant> 직접 키 또는 <platform>+<role> 조합 — container_xml 참조).
+# status_available=False → 전 판정 script_status=None → needs_review=True 자동.
+# 판단기준(standard_col)/판단방법(method_col)은 변형별 전용 컬럼(C21~C38).
+# 평가대상 'o' 컬럼은 변형별(C12~C20).
+CONTAINER = Profile(
+    key="container",
+    sheet_name="컨테이너 가상화 시스템",
+    header_row=4,
+    data_start_row=5,
+    id_col=2,
+    name_col=7,
+    risk_col=8,
+    parser="container_xml",
+    evidence_mode="raw",
+    status_available=False,
+    flag_vulnerable_for_review=True,
+    empty_means_good=frozenset(),
+    variants={
+        "k8s_master": VariantSpec(
+            "k8s_master", standard_col=22, method_col=21,
+            applicability_col=12, filename_markers=("k8s_master",)),
+        "k8s_worker": VariantSpec(
+            "k8s_worker", standard_col=24, method_col=23,
+            applicability_col=13, filename_markers=("k8s_worker",)),
+        "eks_master": VariantSpec(
+            "eks_master", standard_col=26, method_col=25,
+            applicability_col=14, filename_markers=("eks_master",)),
+        "eks_worker": VariantSpec(
+            "eks_worker", standard_col=28, method_col=27,
+            applicability_col=15, filename_markers=("eks_worker",)),
+        "aks_master": VariantSpec(
+            "aks_master", standard_col=30, method_col=29,
+            applicability_col=16, filename_markers=("aks_master",)),
+        "aks_worker": VariantSpec(
+            "aks_worker", standard_col=32, method_col=31,
+            applicability_col=17, filename_markers=("aks_worker",)),
+        "ocp_master": VariantSpec(
+            "ocp_master", standard_col=34, method_col=33,
+            applicability_col=18, filename_markers=("ocp_master",)),
+        "ocp_worker": VariantSpec(
+            "ocp_worker", standard_col=36, method_col=35,
+            applicability_col=19, filename_markers=("ocp_worker",)),
+        "docker_linux": VariantSpec(
+            "docker_linux", standard_col=38, method_col=37,
+            applicability_col=20, filename_markers=("docker_linux",)),
+    },
+)
+
 _PROFILES = {
     CLOUD.key: CLOUD,
     DB_MYSQL.key: DB_MYSQL,
@@ -267,6 +449,11 @@ _PROFILES = {
     DB_MARIADB.key: DB_MARIADB,
     DB_POSTGRESQL.key: DB_POSTGRESQL,
     DB_TIBERO.key: DB_TIBERO,
+    SERVER.key: SERVER,
+    NETWORK.key: NETWORK,
+    ISS.key: ISS,
+    ISS_DEVICE.key: ISS_DEVICE,
+    CONTAINER.key: CONTAINER,
 }
 
 

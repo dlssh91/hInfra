@@ -346,3 +346,41 @@ def test_reconcile_db_empty_default_forces_boryu():
                   status_available=False, flag_vulnerable_for_review=True,
                   empty_means_good=False)
     assert j.verdict == "판단보류"         # 무증거 → 보류
+
+
+# ── network generic variant scope_note 테스트 ─────────────────────────────────
+
+def _net_item():
+    from judge_tool.models import EvidenceItem, ResourceEvidence
+    res = [ResourceEvidence("NET-001#0", "", "", "show run output")]
+    return EvidenceItem("NET-001", "generic", res)
+
+
+def _net_crit(variant="generic"):
+    from judge_tool.models import Criterion
+    return Criterion("NET-001", "원격접속 관리", 5.0, variant,
+                     "", "* 양호 - SSH만 허용\n* 취약 - telnet 허용", "확인방법")
+
+
+def test_build_prompt_generic_variant_includes_vendor_neutral_note():
+    """variant="generic" → 프롬프트에 '벤더 미식별'/'벤더중립' 문구 포함."""
+    c = _net_crit(variant="generic")
+    prompt = build_prompt(c, _net_item(), evidence_mode="raw")
+    assert "벤더 미식별" in prompt
+    assert "벤더중립" in prompt
+
+
+def test_build_prompt_cisco_variant_excludes_vendor_neutral_note():
+    """variant="cisco" → 프롬프트에 '벤더 미식별' 문구 미포함."""
+    c = _net_crit(variant="cisco")
+    prompt = build_prompt(c, _net_item(), evidence_mode="raw")
+    assert "벤더 미식별" not in prompt
+    assert "벤더중립" not in prompt
+
+
+def test_build_prompt_aws_variant_excludes_vendor_neutral_note():
+    """variant="AWS"(기존 cloud) → 프롬프트에 '벤더 미식별' 문구 미포함."""
+    c = _crit()   # AWS variant
+    prompt = build_prompt(c, _item("bad"))
+    assert "벤더 미식별" not in prompt
+    assert "벤더중립" not in prompt

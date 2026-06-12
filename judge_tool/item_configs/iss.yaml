@@ -1,0 +1,91 @@
+# iss(정보보호시스템 장비) 항목 라벨 & 판정방식
+# label A: LLM 판정 (기본)
+# label B: 인터뷰 필수 — verdict=판단보류 고정, LLM은 증거 요약만
+# label C: 기술적 한계 / 외부정보 필요 — 자동보류, canned_message 출력
+# label D: EOL/패치 결정론 — 자동보류 (eol.yaml 연계)
+# judgment_method fw_policy: 결정론 FW 정책 탐지 엔진 (classify_method 우회)
+#
+# 이번 구현 범위: ISS-030~041 (FW 변형 정책-이상 항목)
+# 나머지(ISS-001~029, ISS-042~043): 기본 label A (LLM 판정, 미등재)
+# variant 키: fw
+#   - fw: applicability_col=12 ('o' 컬럼), standard_col=18, method_col=19
+
+# ─ 방화벽 이상정책 항목 (fw_policy 결정론 엔진) ─────────────────────────────────
+
+ISS-030:
+  judgment_method: fw_policy
+  label: A
+  # any-any allow 정책 탐지 (전 포맷 가능)
+
+ISS-031:
+  judgment_method: fw_policy
+  label: A
+  # 광역CIDR + 관리포트(22/23/80/443/3389 등) 허용 탐지
+
+ISS-032:
+  judgment_method: fw_policy
+  label: A
+  # ALL 서비스 / 1~65535 전체포트 허용 탐지
+
+ISS-033:
+  judgment_method: fw_policy
+  label: A
+  # Two-way 허용 정책 탐지
+  # 주의: 역방향 페어(별도 두 규칙) 탐지는 1차 미구현 → needs_review=True
+
+ISS-034:
+  judgment_method: fw_policy
+  label: A
+  # 그림자(shadow) 정책 탐지 (상위가 하위 포함 + action 상이)
+  # 주의: 그룹객체 미확장 → 보수처리, needs_review=True 항상
+
+ISS-035:
+  judgment_method: fw_policy
+  label: A
+  # 출발지포트 지정 허용 정책 탐지
+
+ISS-036:
+  judgment_method: fw_policy
+  label: A
+  # 취약 원격서비스(r-services 512-514, TFTP 69) 허용 탐지
+  # 주의: Xmanager 버전 판정 불가 → needs_review=True
+
+ISS-037:
+  judgment_method: fw_policy
+  label: A
+  # 미사용 정책(hit-count=0) 탐지
+  # 주의: SECUI 포맷은 hit-count 없음 → can_judge=False → 판단보류
+
+ISS-038:
+  label: C
+  canned_message: >-
+    서버 IP 접근 정책 확인은 자산목록(--aux) 연계가 필요합니다.
+    현재 구현 범위 외 항목으로 담당자 인터뷰로 확인하세요.
+
+ISS-039:
+  label: C
+  canned_message: >-
+    접근통제시스템 IP 정책은 네트워크 토폴로지 정보가 필요합니다.
+    현재 구현 범위 외 항목으로 담당자 인터뷰로 확인하세요.
+
+ISS-040:
+  label: C
+  canned_message: >-
+    ISS-040은 방화벽 정책이 아닌 계정·로깅 설정 항목으로
+    현재 자동판정 범위 외입니다. 담당자 인터뷰로 확인하세요.
+
+ISS-041:
+  judgment_method: fw_policy
+  label: A
+  # 광역CIDR + 취약포트(NetBIOS 137-139, SMB 445, DB 포트 등) 허용 탐지
+
+# ─ 기타 항목 (001~029, 042~043) — 기본 label A (LLM 판정) ─────────────────────
+# 현재 미등재 → 전 항목 기본 A(LLM 판정).
+# 실수집 샘플 데이터 확보 후 라벨 분류 및 등재할 것.
+#
+# TODO(후속 과제 — 실수집 샘플 데이터 확보 후):
+# - ISS-001~005: 계정 관련 → B(인터뷰) 후보
+# - ISS-006~010: 비밀번호 정책 → B(인터뷰) + 일부 A
+# - ISS-020~025: 로깅 관련 → B(인터뷰) 후보
+# - ISS-026~029: 패치/버전 → D(eol_check/patch_check) 후보 (eol.yaml 확장 선행 필요)
+# - ISS-042~043: 암호화/인증 항목 → 실데이터 확보 후 분류

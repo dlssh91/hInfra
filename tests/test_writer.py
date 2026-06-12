@@ -98,7 +98,8 @@ def test_excel_review_fill_highlight(tmp_path):
 def test_excel_summary_sheet_contents(tmp_path):
     path = os.path.join(tmp_path, "out.xlsx")
     cov = {"expected": 2, "judged": 1, "missing": ["PISM-005"]}
-    write_excel([_judgment(needs_review=True)], _full_meta(), cov, path)
+    meta = {**_full_meta(), "profile": "network", "variant": "generic"}
+    write_excel([_judgment(needs_review=True)], meta, cov, path)
     wb = openpyxl.load_workbook(path)
     ws = wb["요약"]
     summary = {ws.cell(r, 1).value: ws.cell(r, 2).value
@@ -106,6 +107,9 @@ def test_excel_summary_sheet_contents(tmp_path):
     assert summary["사용 모델"] == "test"
     assert summary["대상 항목수"] == 2
     assert summary["재검토 필요수"] == 1
+    # H: 프로파일·변형이 요약 시트에 노출 (운영자가 generic 판정 인지 가능)
+    assert summary["프로파일"] == "network"
+    assert summary["변형"] == "generic"
 
 
 def test_excel_cited_evidence_join(tmp_path):

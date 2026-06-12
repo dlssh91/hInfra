@@ -1,0 +1,30 @@
+# container(컨테이너 가상화 시스템) 항목 라벨 & 판정방식
+# label A: LLM 판정 (기본)
+# label B: 인터뷰 필수 — verdict=판단보류 고정, LLM은 증거 요약만
+# label C: 기술적 한계 / 외부정보 필요 — 자동보류, canned_message 출력
+# label D: EOL/패치 결정론 — 자동보류 (eol.yaml 연계)
+#
+# 현재: 50항목 전부 기본 A(LLM 판정). 미등재 항목은 자동으로 A로 취급.
+# 실수집 샘플 데이터 확보 후 C/D/B 분류 및 등재할 것.
+#
+# 변형 키: k8s_master / k8s_worker / eks_master / eks_worker /
+#           aks_master / aks_worker / ocp_master / ocp_worker / docker_linux
+#
+# 컬럼 배치 (기준 xlsx '컨테이너 가상화 시스템' 시트):
+#   id=C2, name=C7, risk=C8
+#   평가대상: k8s_master=C12, k8s_worker=C13, eks_master=C14, eks_worker=C15,
+#             aks_master=C16, aks_worker=C17, ocp_master=C18, ocp_worker=C19,
+#             docker_linux=C20
+#   판단방법/판단기준(쌍):
+#     k8s_master=C21/C22, k8s_worker=C23/C24, eks_master=C25/C26,
+#     eks_worker=C27/C28, aks_master=C29/C30, aks_worker=C31/C32,
+#     ocp_master=C33/C34, ocp_worker=C35/C36, docker_linux=C37/C38
+
+# ─ 후속 과제 (실수집 데이터 확보 후 분류 예정) ──────────────────────────────
+# TODO(샘플 확보 후):
+# - PRCC-007/009 (파일권한/로그 설정): kubectl exec 접근 필요 → 수집 방식 확정 후 재분류
+# - PRCC-049/050 (PID/ulimit 제한): Docker 전용, cgroup 직접 조회 필요
+# - 버전/EOL 관련 항목 있으면 D(eol_check) + eol.yaml 확장 필요
+# - 인터뷰가 필요한 정책/절차 항목은 B로 재분류
+#
+# 현재 미등재 → 전 항목 기본 A(LLM 판정).

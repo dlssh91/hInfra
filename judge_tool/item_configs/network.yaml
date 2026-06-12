@@ -1,0 +1,19 @@
+# network(네트워크 장비) 항목 라벨 & LLM 지시 — 스캐폴드(구조 단계)
+# label A: 기술 증거로 판정 가능 (LLM)
+# label B: 담당자 인터뷰 필수 — verdict=판단보류 고정, LLM은 summary_instruction으로 증거 요약만
+# label C: 기술적 한계 — 자동 판단보류, canned_message 출력 (LLM 호출 없음)
+# label D: 외부지식 필요(EOL·패치 등) — 자동 판단보류, canned_message 출력 (LLM 호출 없음)
+#
+# 현재 상태: 항목 미등재 → 전 45항목(NET) 기본 label A(LLM 판정).
+# variant 키: cisco / generic (미해당)
+#   - cisco: applicability_col=33 ('o' 컬럼) 으로 적용 여부 판정
+#   - generic: applies_when_standard=True, 벤더중립 판단기준(C18) 비공백이면 적용
+#
+# TODO(후속 과제 — 실수집 샘플 데이터 확보 후):
+# - NET-001: B(인터뷰) — 관리체계(정책/절차) 확인 항목 후보
+# - NET-048: D(patch_check) — 펌웨어/소프트웨어 패치 결정론 후보
+# - NET-059: D(eol_check) — EOL 판정 후보(eol.yaml에 네트워크 장비 테이블 추가 선행 필요)
+# - NET-056: B — 인터뷰 필수 후보
+# - NET-009: A 유지 + 동등성 마스킹 의존 (같은 패스워드 중복 탐지 증거 보존)
+#
+# 샘플 없이 추정 등재 금지 — 실수집 데이터 확보 후 라벨 분류·등재할 것.

@@ -138,6 +138,11 @@ def build_prompt(criterion: Criterion, item: EvidenceItem,
             "\n[중요] 이 항목은 '관리체계+스크립트' 혼합이다. "
             "판단기준 중 기술/스크립트로 확인 가능한 부분만 대조해 판정하고, "
             "관리체계(문서·정책·인터뷰) 영역은 판정 근거로 삼지 말 것.")
+    if criterion.variant == "generic":
+        scope_note += ("\n[중요] 장비 벤더 미식별 — 벤더중립 판단기준을 적용한다. "
+                       "특정 벤더(Cisco 등) 명령 문법을 가정하지 말고, 증거 설정이 "
+                       "판단기준의 보안 요구를 의미적으로 충족하는지로 판정하라. "
+                       "장비 역할(라우터/스위치 등)에 명백히 해당 없는 기준이면 판단보류.")
     if evidence_mode == "raw":
         evidence = build_evidence_text_raw(item, max(max_chars, 24000))
     else:

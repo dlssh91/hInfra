@@ -1,7 +1,8 @@
 import openpyxl
+import pytest
 
 from judge_tool.criteria_loader import load_criteria
-from judge_tool.profile import CLOUD
+from judge_tool.profile import CLOUD, Profile, VariantSpec
 
 
 def _write_noncanonical_criteria(path):
@@ -133,3 +134,90 @@ def test_both_variants_present(criteria_xlsx_path):
     # 73개 항목 × 2 variant
     item_ids = {k[0] for k in crit}
     assert len(item_ids) == 73
+
+
+# ── applies_when_standard 분기 단위 테스트 ────────────────────────────────────
+
+def _make_applies_when_standard_profile(sheet="TestNet"):
+    """applies_when_standard=True variant를 가진 합성 프로파일."""
+    return Profile(
+        key="testnet",
+        sheet_name=sheet,
+        header_row=4,
+        data_start_row=5,
+        id_col=2,
+        name_col=7,
+        risk_col=8,
+        parser="network_xml",
+        evidence_mode="raw",
+        status_available=False,
+        flag_vulnerable_for_review=True,
+        empty_means_good=frozenset(),
+        variants={
+            "generic": VariantSpec(
+                "generic", standard_col=5, method_col=6,
+                applicability_col=None, applies_when_standard=True,
+                filename_markers=()),
+            # applicability_col 동시 설정 테스트용
+            "with_col": VariantSpec(
+                "with_col", standard_col=5, method_col=6,
+                applicability_col=10, applies_when_standard=True,
+                filename_markers=()),
+        },
+    )
+
+
+def _write_applies_xlsx(tmp_path, standard_val, col10_val=""):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "TestNet"
+    r = 5
+    ws.cell(r, 2, "NET-001")
+    ws.cell(r, 7, "테스트항목")
+    ws.cell(r, 8, 5.0)
+    ws.cell(r, 5, standard_val)
+    ws.cell(r, 6, "방법")
+    if col10_val:
+        ws.cell(r, 10, col10_val)
+    p = str(tmp_path / "applies.xlsx")
+    wb.save(p)
+    return p
+
+
+def test_applies_when_standard_nonempty_applicable(tmp_path):
+    """applies_when_standard=True, standard 비공백 → applicable=True."""
+    p = _write_applies_xlsx(tmp_path, "* 양호 - 기준")
+    profile = _make_applies_when_standard_profile()
+    crit = load_criteria(p, profile)
+    g = crit[("NET-001", "generic")]
+    assert g.applicable is True
+    assert g.is_judgeable is True
+
+
+def test_applies_when_standard_empty_not_applicable(tmp_path):
+    """applies_when_standard=True, standard 빈칸 → applicable=False."""
+    p = _write_applies_xlsx(tmp_path, "")
+    profile = _make_applies_when_standard_profile()
+    crit = load_criteria(p, profile)
+    g = crit[("NET-001", "generic")]
+    assert g.applicable is False
+    assert g.is_judgeable is False
+
+
+def test_applicability_col_takes_precedence_over_applies_when_standard(tmp_path):
+    """applicability_col 동시 설정 시 applicability_col('o') 이 우선 적용된다."""
+    import os
+    p = _write_applies_xlsx(tmp_path, "기준있음", col10_val="o")
+    profile = _make_applies_when_standard_profile()
+    crit = load_criteria(p, profile)
+    # with_col: applicability_col=10, 'o' → applicable True
+    wc = crit[("NET-001", "with_col")]
+    assert wc.applicable is True
+
+    # col10이 없으면 False (applicability_col 분기가 먼저라 applies_when_standard 무관)
+    sub = tmp_path / "sub"
+    os.makedirs(str(sub), exist_ok=True)
+    p2 = _write_applies_xlsx(sub, "기준있음", col10_val="")
+    crit2 = load_criteria(p2, profile)
+    wc2 = crit2[("NET-001", "with_col")]
+    assert wc2.applicable is False  # 'o' 없으면 False

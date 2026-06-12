@@ -1,0 +1,45 @@
+# iss_device(정보보호시스템 장비 — VPN/IDS/IPS/DDoS/WAF/generic) 항목 라벨
+# label A: LLM 판정 (기본)
+# label B: 인터뷰 필수 — verdict=판단보류 고정, LLM은 증거 요약만
+# label C: 기술적 한계 / 외부정보 필요 — 자동보류, canned_message 출력
+# label D: EOL/패치 결정론 — 자동보류 (eol.yaml 연계)
+#
+# 주의: judgment_method fw_policy는 이 프로파일에서 사용 금지.
+# fw_policy 핸들러는 FW 정책 context(FW_POLICIES_JSON)를 기대하며
+# iss_xml은 그것을 생성하지 않는다. FW는 --profile iss.
+#
+# ISS-030~041(FW 정책 항목):
+#   vpn/ids/ips/ddos/waf는 평가대상 컬럼이 None → applicable=False 자동 제외.
+#   generic은 applies_when_standard=True라 col18 비공백이면 applicable=True가 되므로,
+#   label C로 등재해 자동보류시킨다(XML 증거로 정책표 판정 불가).
+
+# ─ FW 정책 항목 — generic 전용 자동보류 ──────────────────────────────────────
+# vpn~waf는 applicability_col 'o' 부재로 코드에서 자동 제외. yaml 등재 불필요.
+# generic은 아래 canned으로 처리.
+
+ISS-030: &fw_only_canned
+  label: C
+  canned_message: >-
+    방화벽 정책 분석 항목입니다. 정책 xlsx를 입력으로
+    --profile iss 로 실행하거나 담당자 인터뷰로 확인하세요.
+
+ISS-031: *fw_only_canned
+ISS-032: *fw_only_canned
+ISS-033: *fw_only_canned
+ISS-034: *fw_only_canned
+ISS-035: *fw_only_canned
+ISS-036: *fw_only_canned
+ISS-037: *fw_only_canned
+ISS-038: *fw_only_canned
+ISS-039: *fw_only_canned
+ISS-040: *fw_only_canned
+ISS-041: *fw_only_canned
+
+# ─ 기타 항목 (001~029, 042~043) — 기본 label A (LLM 판정, 미등재) ──────────
+# 실수집 샘플 데이터 확보 후 장비별 라벨 분류(variants 오버라이드 활용) 예정.
+# 후보 분류 메모 (iss.yaml과 동기화):
+#   ISS-001~002 (정책·로그 백업): B 인터뷰 후보
+#   ISS-006~009 (비밀번호 관련): B 인터뷰 후보
+#   ISS-026 (무결성 검사): B 인터뷰 후보
+#   ISS-005 (보안패치): D patch_check 후보 (eol.yaml ISS 테이블 추가 선행)
+#   ISS-043 (EOL 교체): D eol_check 후보
