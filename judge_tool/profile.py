@@ -477,6 +477,58 @@ OS_VIRT = Profile(
     },
 )
 
+# 웹서버-WAS — 11변형(OS 5종 + 웹서버 6종). 원시증거(명령/config raw 출력).
+# 시트는 서버(SRV) 106항목을 항목명 동일하게 포함(WST-001~120 OS 점검) +
+# 웹서버 특화 20항목(WST-031~044 등). 총 126항목(WST-001~126).
+# ⚠️ 변형별 판단 컬럼 비대칭(1-indexed, openpyxl ws.cell 기준):
+#   적용:   AIX=12 HPUX=13 LINUX=14 SOL=15 WIN=16
+#           웹서비스=17 Apache=18 WebtoB=19 IIS=20 Tomcat=21 JEUS=22
+#   OS 5종:  판단기준 col23/25/27/29/31, 판단방법 col24/26/28/30/32 (기준 먼저).
+#   웹서버 6종: 전용 컬럼 없음 → 공통 판단기준(col37)/판단방법(col38) 공유.
+# 웹 특화 항목의 판단기준은 OS 변형 컬럼(col23~32)에도 복제돼 있어 OS 변형 선택
+# 시에도 웹 항목이 판정됨. OS/웹 이중성은 활성화 게이트(PROGRESS.md ⑦) 참조.
+# status_available=False → 전 판정 needs_review=True 자동.
+WEBWAS = Profile(
+    key="webwas",
+    sheet_name="웹서버-WAS",
+    header_row=4,
+    data_start_row=5,
+    id_col=2,
+    name_col=7,
+    risk_col=8,
+    parser="webwas_xml",
+    evidence_mode="raw",
+    status_available=False,
+    flag_vulnerable_for_review=True,
+    empty_means_good=frozenset(),
+    variants={
+        # OS 5종 — 전용 판단기준/판단방법 컬럼
+        "aix":        VariantSpec("aix", standard_col=23, method_col=24,
+                                  applicability_col=12, filename_markers=()),
+        "hpux":       VariantSpec("hpux", standard_col=25, method_col=26,
+                                  applicability_col=13, filename_markers=()),
+        "linux":      VariantSpec("linux", standard_col=27, method_col=28,
+                                  applicability_col=14, filename_markers=()),
+        "solaris":    VariantSpec("solaris", standard_col=29, method_col=30,
+                                  applicability_col=15, filename_markers=()),
+        "win":        VariantSpec("win", standard_col=31, method_col=32,
+                                  applicability_col=16, filename_markers=()),
+        # 웹서버 6종 — 공통 판단기준(37)/판단방법(38) 공유, applicability만 갈림
+        "webservice": VariantSpec("webservice", standard_col=37, method_col=38,
+                                  applicability_col=17, filename_markers=()),
+        "apache":     VariantSpec("apache", standard_col=37, method_col=38,
+                                  applicability_col=18, filename_markers=()),
+        "webtob":     VariantSpec("webtob", standard_col=37, method_col=38,
+                                  applicability_col=19, filename_markers=()),
+        "iis":        VariantSpec("iis", standard_col=37, method_col=38,
+                                  applicability_col=20, filename_markers=()),
+        "tomcat":     VariantSpec("tomcat", standard_col=37, method_col=38,
+                                  applicability_col=21, filename_markers=()),
+        "jeus":       VariantSpec("jeus", standard_col=37, method_col=38,
+                                  applicability_col=22, filename_markers=()),
+    },
+)
+
 _PROFILES = {
     CLOUD.key: CLOUD,
     DB_MYSQL.key: DB_MYSQL,
@@ -491,6 +543,7 @@ _PROFILES = {
     ISS_DEVICE.key: ISS_DEVICE,
     CONTAINER.key: CONTAINER,
     OS_VIRT.key: OS_VIRT,
+    WEBWAS.key: WEBWAS,
 }
 
 

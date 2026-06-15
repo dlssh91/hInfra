@@ -5,7 +5,7 @@
 """
 from judge_tool.parsers import (
     cloud_xml, container_xml, db_json, fw_policy_xlsx, iss_xml,
-    network_xml, osvirt_xml, server_xml,
+    network_xml, osvirt_xml, server_xml, webwas_xml,
 )
 
 _PARSERS = {
@@ -17,6 +17,7 @@ _PARSERS = {
     "network_xml":    network_xml,
     "osvirt_xml":     osvirt_xml,
     "server_xml":     server_xml,
+    "webwas_xml":     webwas_xml,
 }
 
 

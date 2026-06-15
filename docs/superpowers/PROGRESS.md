@@ -1,6 +1,6 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-15 (⑥ OS 가상화 구조 완료, Opus 리뷰 통과, 626 tests). 다음 세션에서 이 파일부터 읽고 이어서 진행할 것.
+> 마지막 업데이트: 2026-06-15 (⑦ 웹서버-WAS 구조 완료, Opus 리뷰 통과, 658 tests). 다음 세션에서 이 파일부터 읽고 이어서 진행할 것.
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. commit/push 안 함 — 문서로만 이어받음.
 >  "개발진행해" 트리거는 CLAUDE.md 참조. 이 파일이 단일 진실원천.)
 
@@ -21,9 +21,14 @@
   **⑥ OS 가상화 구조 + Opus 리뷰 완료**(2026-06-15, **626 tests**, 3변형 vcenter/esxi/xen,
   osvirt_xml 파서+OS_VIRT Profile+osvirt.yaml. ⚠️컬럼 역전(판단방법<판단기준) 정확 반영.
   detect_variant: <asset><variant>직접키 > <product>토큰, 미식별 None(범주오류 방지).
-  vcenter>esxi 토큰순서로 동시등장 우선순위. 마스킹: server체이닝. Opus [H]없음 통과)
-- **다음 착수 = ⑥·③·④·②·⑤ 활성화 게이트** 중 실수집 데이터 확보 시 진행 (6개 도메인 구조 전부 완료).
-- **단, ③ 서버·④ 네트워크·② 방화벽·⑤ 컨테이너·⑥ OS가상화는 "실수집 데이터 판정 활성화" 전 게이트 미해결** —
+  vcenter>esxi 토큰순서로 동시등장 우선순위. 마스킹: server체이닝. Opus [H]없음 통과) /
+  **⑦ 웹서버-WAS 구조 + Opus 리뷰 완료**(2026-06-15, **658 tests**, 11변형 OS5종+웹서버6종,
+  webwas_xml 파서+WEBWAS Profile+webwas.yaml. 시트=서버 동형 106 + 웹특화 20 = 126항목.
+  ⚠️컬럼 비대칭: OS는 전용컬럼(col23~32 기준먼저), 웹서버는 공통컬럼(col37/38) 공유.
+  detect_variant: 직접키 > <os>(server _OS_VARIANTS 재사용) > <webserver>/<product>, 미식별 None.
+  OS/웹 이중성은 활성화게이트. Opus [H]없음 통과)
+- **다음 착수 = 활성화 게이트** 중 실수집 데이터 확보 시 진행 (7개 도메인 구조 전부 완료).
+- **단, ③서버·④네트워크·②방화벽·⑤컨테이너·⑥OS가상화·⑦웹서버-WAS는 "실수집 데이터 판정 활성화" 전 게이트 미해결** —
   아래 각 도메인 "활성화 게이트" 참조.
 - 작업 브랜치: `feat/native-db-variants`.
 - **에이전트 규칙(정정)**: 계획·설계=Fable, **구현=Sonnet**, 검토=Opus (CLAUDE.md 참조).
@@ -41,6 +46,30 @@
 | ② | 방화벽 이상정책 탐지(정보보호시스템) | **완료(구조·SECUI+ID70+PaloAlto+ISS_DEVICE·Opus재리뷰)** | **샘플O**(정책 20건+, ≥3포맷) | fw_policy.py 결정론 엔진+3종 어댑터+ISS Profile+ISS_DEVICE(VPN/IDS/IPS/DDoS/WAF/generic). 활성화 게이트 미해결(아래) |
 | ⑤ | 컨테이너 가상화 50항목/9변형 | **완료(구조·9변형·Opus재리뷰)** | 기준O/샘플X | container_xml PROVISIONAL. 마스킹 정밀화(_is_base64_like). 활성화 게이트 미해결(아래) |
 | ⑥ | OS 가상화 35항목/3변형 | **완료(구조·vcenter/esxi/xen·Opus리뷰)** | 기준O/샘플X | osvirt_xml 파서. 컬럼 역전 주의. 활성화 게이트 미해결(아래) |
+| ⑦ | 웹서버-WAS 126항목/11변형 | **완료(구조·OS5+웹서버6·Opus리뷰)** | 기준O/샘플X | webwas_xml 파서. 서버동형106+웹특화20. OS전용/웹공통 컬럼 비대칭. 활성화 게이트 미해결(아래) |
+
+### ⑦ 웹서버-WAS 활성화 게이트 (실수집 데이터 판정 활성화 전 필수)
+구조/단위테스트+Opus리뷰 완료(658 tests, webwas 32). 11변형 OS5종+웹서버6종.
+시트=서버 동형 106항목 + 웹 특화 20항목 = 126항목(WST-001~126). 사용자 지시로
+server와 별도 프로파일(웹서버 호스트 완결 점검, OS항목 중복 허용).
+**⚠️ 컬럼 비대칭**: OS 5종은 전용 판단컬럼(기준 col23/25/27/29/31, 방법 col24/26/28/30/32),
+웹서버 6종은 전용 컬럼 없이 공통 판단기준(col37)/판단방법(col38) 공유. applicability만 갈림.
+profile.WEBWAS에 반영, 실데이터 스모크 통과(컬럼 오프셋 버그 없음).
+아래는 **실제 웹서버 결과로 판정을 켜기 전** 처리.
+1. **OS/웹 이중성 처리(핵심 난점)** — 한 호스트가 OS 변형 1개 + 웹서버 변형 1개를
+   동시 보유(예: Linux+Apache)하나 현재 단일 variant 구조는 한 변형만 선택. 웹 특화
+   항목 판단기준이 OS 변형 컬럼(col23~32)에 복제돼 있어 OS 변형 선택 시에도 웹 항목이
+   판정되지만(WST-031 col27=col37 동일 확인), 웹서버 종류별 세분 점검은 별도. 수집
+   포맷 확정 후 (a) OS 변형 단일 판정 + 웹항목 자동포함, 또는 (b) OS+웹 2회 판정,
+   또는 (c) 복합 variant 중 전략 결정.
+2. **수집 포맷 확정(선행조건)** — 웹서버 점검 수집 스크립트 없음. 현재 파서(webwas_xml)는
+   server_xml 동일 PROVISIONAL XML 엔벨로프 가정(<asset><os>+<webserver>).
+3. **item_configs/webwas.yaml 전수 라벨분류** — 126항목 전부 기본 A(LLM). server.yaml의
+   OS 항목 라벨을 항목명 동일한 106개 WST에 동기화(SRV/WST ID 체계 다름 → 평가항목명
+   기준 대조). 웹 특화: WST-126(EOL) D, WST-080(패치) D 후보.
+4. **detect_variant 실데이터 검증** — <asset><variant> 직접키 / <os> / <webserver>/<product>
+   어느 방식인지 확인. 미식별 None→--variant 유도. OS>웹서버 우선순위 재검토.
+5. **empty_means_good 식별** — 수집 스크립트 분석 후.
 
 ### ⑥ OS 가상화 활성화 게이트 (실수집 데이터 판정 활성화 전 필수)
 구조/단위테스트+Opus리뷰 완료(626 tests, osvirt 33). 3변형 vcenter/esxi/xen.

@@ -43,6 +43,9 @@ from judge_tool.parsers.cloud_xml import sanitize
 
 # <asset><os> 텍스트(lower) → 변형 키. 구체 토큰을 먼저 검사한다.
 # 변형 키는 profile.SERVER.variants 키와 일치해야 한다.
+# ⚠️ 재사용 주의: webwas_xml.detect_variant가 이 테이블을 OS 식별에 그대로
+#   재사용한다(profile.WEBWAS도 동일 OS 변형 키 보유). 토큰/키 변경 시
+#   webwas의 detect_variant·불변식 테스트에 동기 영향이 있으므로 함께 점검할 것.
 _OS_VARIANTS: Tuple[Tuple[str, str], ...] = (
     ("hp-ux", "hpux"),
     ("hpux", "hpux"),
