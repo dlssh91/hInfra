@@ -14,3 +14,12 @@ scripts/*.zip
 scripts/check_scripts/
 .DS_Store
 **/.DS_Store
+
+# 대용량 점검 스크립트 zip 모음 — 로컬 유지
+assessment_scripts/
+# 실행 로그
+out_*.log
+*.log
+# 엑셀 임시 락 파일
+ref/~$*
+**/~$*
