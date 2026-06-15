@@ -1,0 +1,1579 @@
+<?xml version="1.0" encoding="EUC-KR"?>
+<?xml-stylesheet type="text/xsl" href="isac.xsl"?>
+<script>
+	<asset>
+		<hostname>fsec-control-plane</hostname>
+		<os>Linux</os>
+		<uname>Linux fsec-control-plane 6.10.14-linuxkit #1 SMP Sat May 17 08:28:57 UTC 2025 aarch64 GNU/Linux</uname>
+		<whoami></whoami>
+		<version>2025v1</version>
+		<app>k8s_master</app>
+	</asset>
+	<results>
+		<dump>
+			<items>
+				<id>PRC-C-001</id>
+				<field>k8s_master</field>
+				<name>불필요한 클러스터 관리자 역할 제거 여부</name>
+			</items>
+			<output>
+				<![CDATA[
+F_PRC_C_001 : k8s_master
+-----------------------------------------------------------------------------------------
+# Command : kubectl get clusterrolebindings -o jsonpath="{range.items[*]}{'Cluster Role Name: '}{.metadata.name}{'ROLE: '}{.roleRef.name}{'Kind: '}{.subjects[*].kind}{end}" | awk '/cluster-admin/'
+
+관리자 역할이 부여된 롤 바인딩:
+flag: [X]
+
+Cluster Role Name: cluster-admin
+ROLE: cluster-admin
+Kind: Group
+
+Cluster Role Name: kubeadm:cluster-admins
+ROLE: cluster-admin
+Kind: Group
+				]]>
+			</output>
+		</dump>
+F_PRC_C_001
+		<dump>
+			<items>
+				<id>PRC-C-002</id>
+				<field>k8s_master</field>
+				<name>Role(ClusterRole)의 과도한 권한 부여 제거 여부</name>
+			</items>
+			<output>
+				<![CDATA[
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get roles --all-namespaces -o jsonpath="{range .items[*]}{'Namespace: '}{.metadata.namespace}{'Pod: '}{.metadata.name}{'Verbs: '}{.rules[*].verbs}{'APIGroups: '}{.rules[*].apiGroups}{'Resources: '}{.rules[*].resources}{end}"
+
+과도한 권한('*')을 가진 Role:
+과도한 권한('*')을 가진 Role이 없습니다.
+
+Namespace: kube-public
+Pod: kubeadm:bootstrap-signer-clusterinfo
+Verbs: ["get"]
+APIGroups: [""]
+Resources: ["configmaps"]
+
+Namespace: kube-public
+Pod: system:controller:bootstrap-signer
+Verbs: ["get","list","watch"] ["update"] ["create","patch","update"]
+APIGroups: [""] [""] ["","events.k8s.io"]
+Resources: ["configmaps"] ["configmaps"] ["events"]
+
+Namespace: kube-system
+Pod: extension-apiserver-authentication-reader
+Verbs: ["get","list","watch"]
+APIGroups: [""]
+Resources: ["configmaps"]
+
+Namespace: kube-system
+Pod: kube-proxy
+Verbs: ["get"]
+APIGroups: [""]
+Resources: ["configmaps"]
+
+Namespace: kube-system
+Pod: kubeadm:kubelet-config
+Verbs: ["get"]
+APIGroups: [""]
+Resources: ["configmaps"]
+
+Namespace: kube-system
+Pod: kubeadm:nodes-kubeadm-config
+Verbs: ["get"]
+APIGroups: [""]
+Resources: ["configmaps"]
+
+Namespace: kube-system
+Pod: system::leader-locking-kube-controller-manager
+Verbs: ["create","get","list","update","watch"] ["create","get","list","update","watch"]
+APIGroups: ["coordination.k8s.io"] ["coordination.k8s.io"]
+Resources: ["leases"] ["leasecandidates"]
+
+Namespace: kube-system
+Pod: system::leader-locking-kube-scheduler
+Verbs: ["create","get","list","update","watch"] ["create","get","list","update","watch"]
+APIGroups: ["coordination.k8s.io"] ["coordination.k8s.io"]
+Resources: ["leases"] ["leasecandidates"]
+
+Namespace: kube-system
+Pod: system:controller:bootstrap-signer
+Verbs: ["get","list","watch"]
+APIGroups: [""]
+Resources: ["secrets"]
+
+Namespace: kube-system
+Pod: system:controller:cloud-provider
+Verbs: ["create","get","list","watch"]
+APIGroups: [""]
+Resources: ["configmaps"]
+
+Namespace: kube-system
+Pod: system:controller:token-cleaner
+Verbs: ["delete","get","list","watch"] ["create","patch","update"]
+APIGroups: [""] ["","events.k8s.io"]
+Resources: ["secrets"] ["events"]
+
+Namespace: local-path-storage
+Pod: local-path-provisioner-role
+Verbs: ["get","list","watch","create","patch","update","delete"]
+APIGroups: [""]
+Resources: ["pods"]
+
+
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get clusterroles -o=jsonpath="{range .items[*]}{'Pod: '}{.metadata.name}{'Verbs: '}{' - Verbs: '}{.rules[*].verbs}{'APIGroups: '}{.rules[*].apiGroups}{'Resources: '}{.rules[*].resources}{end}"
+
+과도한 권한('*')을 가진 Cluster Role:
+flag: [X]
+
+Namespace: 
+Pod: cluster-admin
+Verbs: ["*"] ["*"]
+APIGroups: ["*"]
+Resources: ["*"]
+
+Namespace: 
+Pod: system:controller:disruption-controller
+Verbs: ["get","list","watch"] ["get","list","watch"] ["get","list","watch"] ["get","list","watch"] ["get","list","watch"] ["update"] ["patch","update"] ["get"] ["create","patch","update"]
+APIGroups: ["apps","extensions"] ["apps","extensions"] [""] ["policy"] ["apps"] ["policy"] [""] ["*"] ["","events.k8s.io"]
+Resources: ["deployments"] ["replicasets"] ["replicationcontrollers"] ["poddisruptionbudgets"] ["statefulsets"] ["poddisruptionbudgets/status"] ["pods/status"] ["*/scale"] ["events"]
+
+Namespace: 
+Pod: system:controller:generic-garbage-collector
+Verbs: ["delete","get","list","patch","update","watch"] ["create","patch","update"]
+APIGroups: ["*"] ["","events.k8s.io"]
+Resources: ["*"] ["events"]
+
+Namespace: 
+Pod: system:controller:horizontal-pod-autoscaler
+Verbs: ["get","list","watch"] ["update"] ["get","update"] ["list","watch"] ["list","watch"] ["get","list","watch"] ["get","list","watch"] ["create","patch","update"]
+APIGroups: ["autoscaling"] ["autoscaling"] ["*"] [""] ["metrics.k8s.io"] ["custom.metrics.k8s.io"] ["external.metrics.k8s.io"] ["","events.k8s.io"]
+Resources: ["horizontalpodautoscalers"] ["horizontalpodautoscalers/status"] ["*/scale"] ["pods"] ["pods"] ["*"] ["*"] ["events"]
+
+Namespace: 
+Pod: system:controller:namespace-controller
+Verbs: ["delete","get","list","watch"] ["update"] ["delete","deletecollection","get","list","watch"]
+APIGroups: [""] [""] ["*"]
+Resources: ["namespaces"] ["namespaces/finalize","namespaces/status"] ["*"]
+
+Namespace: 
+Pod: system:controller:resourcequota-controller
+Verbs: ["list","watch"] ["update"] ["create","patch","update"]
+APIGroups: ["*"] [""] ["","events.k8s.io"]
+Resources: ["*"] ["resourcequotas/status"] ["events"]
+
+Namespace: 
+Pod: system:kube-controller-manager
+Verbs: ["create","patch","update"] ["create"] ["get","update"] ["create"] ["delete"] ["get"] ["update"] ["create"] ["create"] ["list","watch"] ["create"]
+APIGroups: ["","events.k8s.io"] ["coordination.k8s.io"] ["coordination.k8s.io"] [""] [""] [""] [""] ["authentication.k8s.io"] ["authorization.k8s.io"] ["*"] [""]
+Resources: ["events"] ["leases"] ["leases"] ["secrets","serviceaccounts"] ["secrets"] ["configmaps","namespaces","secrets","serviceaccounts"] ["secrets","serviceaccounts"] ["tokenreviews"] ["subjectaccessreviews"] ["*"] ["serviceaccounts/token"]
+
+Namespace: 
+Pod: system:kubelet-api-admin
+Verbs: ["get","list","watch"] ["proxy"] ["*"] ["*"]
+APIGroups: [""] [""] [""] [""]
+Resources: ["nodes"] ["nodes"] ["nodes/log","nodes/metrics","nodes/proxy","nodes/stats"] ["nodes/configz","nodes/healthz","nodes/pods"]
+				]]>
+			</output>
+		</dump>
+F_PRC_C_002
+		<dump>
+			<items>
+				<id>PRC-C-003</id>
+				<field>k8s_master</field>
+				<name>기본 서비스 계정(default) 사용 제거 여부</name>
+			</items>
+			<output>
+				<![CDATA[
+-----------------------------------------------------------------------------------------
+# Command : kubectl get pods -A -o jsonpath='{range .items[*]}{'Namespace: '}{.metadata.namespace}{'Pod: '}{.metadata.name}{'Service Account:'}{.spec.serviceAccountName}{end}'
+
+기본 서비스 계정을 사용하는 파드:
+기본 서비스 계정을 사용하는 파드가 없습니다.
+
+Namespace: kube-system
+Pod: coredns-589f44dc88-gkdzw
+ -Service Account: coredns
+
+Namespace: kube-system
+Pod: coredns-589f44dc88-sj8nb
+ -Service Account: coredns
+
+Namespace: kube-system
+Pod: etcd-fsec-control-plane
+ -Service Account: 
+
+Namespace: kube-system
+Pod: kindnet-kkx9v
+ -Service Account: kindnet
+
+Namespace: kube-system
+Pod: kube-apiserver-fsec-control-plane
+ -Service Account: 
+
+Namespace: kube-system
+Pod: kube-controller-manager-fsec-control-plane
+ -Service Account: 
+
+Namespace: kube-system
+Pod: kube-proxy-j666w
+ -Service Account: kube-proxy
+
+Namespace: kube-system
+Pod: kube-scheduler-fsec-control-plane
+ -Service Account: 
+
+Namespace: local-path-storage
+Pod: local-path-provisioner-855c7b7774-2kmq7
+ -Service Account: local-path-provisioner-service-account
+				]]>
+			</output>
+		</dump>
+F_PRC_C_003
+		<dump>
+			<items>
+				<id>PRC-C-004</id>
+				<field>k8s_master</field>
+				<name>안전한 인증 방식 사용</name>
+			</items>
+			<output>
+				<![CDATA[
+--------------------------------------------------
+## Command-line based checks for kube-apiserver token-auth-file
+$ ps -ef | grep 'apiserver' | grep -E 'token-auth-file' | grep -v grep 
+
+[Info] apiserver 내 'token-auth-file' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+
+--------------------------------------------------
+## Config-file based checks for kube-apiserver token-auth-file
+$ grep -E "token-auth-file" "/etc/kubernetes/manifests/kube-apiserver.yaml"
+
+[Info] [/etc/kubernetes/manifests/kube-apiserver.yaml] 파일 내 'token-auth-file' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+--------------------------------------------------
+## kubectl based checks for kube-apiserver
+$ kubectl get pods -n kube-system -l component=kube-apiserver -o jsonpath="{range .items[]}{.spec.containers[].command} {'
+'}{end}" | grep -E "token-auth-file" 
+
+[Info] 'kubectl get pods -n kube-system -l component=kube-apiserver' 결과에 'token-auth-file' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+				]]>
+			</output>
+		</dump>
+F_PRC_C_004
+		<dump>
+			<items>
+				<id>PRC-C-005</id>
+				<field>k8s_master</field>
+				<name>컨트롤러 별 서비스 계정 자격 증명 사용</name>
+			</items>
+			<output>
+				<![CDATA[
+--------------------------------------------------
+## Command-line based checks for kube-controller-manager use-service-account-credentials
+$ ps -ef | grep 'controller-manager' | grep -E 'use-service-account-credentials' | grep -v grep 
+
+[Info] controller-manager 내 'use-service-account-credentials' 키가 존재(판단기준 확인 필요)
+root         591     333  1 09:57 ?        00:00:01 kube-controller-manager --allocate-node-cidrs=true --authentication-kubeconfig=/etc/kubernetes/controller-manager.conf --authorization-kubeconfig=/etc/kubernetes/controller-manager.conf --bind-address=127.0.0.1 --client-ca-file=/etc/kubernetes/pki/ca.crt --cluster-cidr=10.244.0.0/16 --cluster-name=fsec --cluster-signing-cert-file=/etc/kubernetes/pki/ca.crt --cluster-signing-key-file=/etc/kubernetes/pki/ca.key --controllers=*,bootstrapsigner,tokencleaner --kubeconfig=/etc/kubernetes/controller-manager.conf --leader-elect=true --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt --root-ca-file=/etc/kubernetes/pki/ca.crt --service-account-private-key-file=/etc/kubernetes/pki/sa.key --service-cluster-ip-range=10.96.0.0/16 --use-service-account-credentials=true --enable-hostpath-provisioner=true
+--------------------------------------------------
+
+--------------------------------------------------
+## Config-file based checks for kube-controller-manager use-service-account-credentials
+$ grep -E "use-service-account-credentials" "/etc/kubernetes/manifests/kube-controller-manager.yaml"
+
+[Info] [/etc/kubernetes/manifests/kube-controller-manager.yaml] 파일 내 'use-service-account-credentials' 키가 존재(판단기준 확인 필요)
+    - --use-service-account-credentials=true
+--------------------------------------------------
+				]]>
+			</output>
+		</dump>
+F_PRC_C_005
+		<dump>
+			<items>
+				<id>PRC-C-006</id>
+				<field>k8s_master</field>
+				<name>서비스 계정 토큰 자동 마운트 제한 설정 여부</name>
+			</items>
+			<output>
+				<![CDATA[
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{'Namespace: '}{.metadata.namespace}{'Pod: '}{.metadata.name}{' -automountServiceAccountToken: '}{.spec.automountServiceAccountToken}{end}'
+
+automountServiceAccountToken이 true인 파드 목록:
+flag: [X]
+
+Namespace: local-path-storage
+Pod: local-path-provisioner-855c7b7774-2kmq7
+ -automountServiceAccountToken: 
+
+
+###전체 실행 결과###
+
+Namespace: kube-system
+Pod: coredns-589f44dc88-gkdzw
+ -automountServiceAccountToken: 
+
+Namespace: kube-system
+Pod: coredns-589f44dc88-sj8nb
+ -automountServiceAccountToken: 
+
+Namespace: kube-system
+Pod: etcd-fsec-control-plane
+ -automountServiceAccountToken: 
+
+Namespace: kube-system
+Pod: kindnet-kkx9v
+ -automountServiceAccountToken: 
+
+Namespace: kube-system
+Pod: kube-apiserver-fsec-control-plane
+ -automountServiceAccountToken: 
+
+Namespace: kube-system
+Pod: kube-controller-manager-fsec-control-plane
+ -automountServiceAccountToken: 
+
+Namespace: kube-system
+Pod: kube-proxy-j666w
+ -automountServiceAccountToken: 
+
+Namespace: kube-system
+Pod: kube-scheduler-fsec-control-plane
+ -automountServiceAccountToken: 
+
+Namespace: local-path-storage
+Pod: local-path-provisioner-855c7b7774-2kmq7
+ -automountServiceAccountToken: 
+				]]>
+			</output>
+		</dump>
+F_PRC_C_006
+		<dump>
+			<items>
+				<id>PRC-C-007</id>
+				<field>k8s_master</field>
+				<name>시스템 주요 설정파일(디렉터리)의 권한 설정</name>
+			</items>
+			<output>
+				<![CDATA[
+600 root:root [/etc/kubernetes/manifests/kube-apiserver.yaml]
+600 root:root [/etc/kubernetes/manifests/kube-scheduler.yaml]
+600 root:root [/etc/kubernetes/scheduler.conf]
+600 root:root [/etc/kubernetes/manifests/kube-controller-manager.yaml]
+600 root:root [/etc/kubernetes/controller-manager.conf]
+600 root:root [/etc/kubernetes/manifests/etcd.yaml]
+644 root:root [/var/lib/kubelet/config.yaml]
+644 root:root [/etc/default/kubelet]
+644 root:root [/etc/systemd/system/kubelet.service.d/10-kubeadm.conf]
+644 root:root [/etc/systemd/system/kubelet.service]
+644 root:root [/var/lib/kubelet/config.yaml]
+600 root:root [/etc/kubernetes/kubelet.conf]
+644 root:root [/var/lib/kubelet/config.yaml]
+644 root:root [/etc/systemd/system/kubelet.service.d/10-kubeadm.conf]
+600 root:root [/etc/kubernetes/manifests/etcd.yaml]
+644 root:root [/etc/containerd/config.toml]
+				]]>
+			</output>
+		</dump>
+F_PRC_C_007
+		<dump>
+			<items>
+				<id>PRC-C-008</id>
+				<field>k8s_master</field>
+				<name>서비스 바인딩 주소 제한 여부</name>
+			</items>
+			<output>
+				<![CDATA[
+--------------------------------------------------
+## Command-line based checks for kube-scheduler bind-address
+$ ps -ef | grep 'scheduler' | grep -E 'bind-address' | grep -v grep 
+
+[Info] scheduler 내 'bind-address' 키가 존재(판단기준 확인 필요)
+root         599     352  0 09:57 ?        00:00:00 kube-scheduler --authentication-kubeconfig=/etc/kubernetes/scheduler.conf --authorization-kubeconfig=/etc/kubernetes/scheduler.conf --bind-address=127.0.0.1 --kubeconfig=/etc/kubernetes/scheduler.conf --leader-elect=true
+--------------------------------------------------
+
+--------------------------------------------------
+## Config-file based checks for kube-scheduler bind-address
+$ grep -E "bind-address" "/etc/kubernetes/manifests/kube-scheduler.yaml"
+
+[Info] [/etc/kubernetes/manifests/kube-scheduler.yaml] 파일 내 'bind-address' 키가 존재(판단기준 확인 필요)
+    - --bind-address=127.0.0.1
+--------------------------------------------------
+--------------------------------------------------
+## kubectl based checks for kube-scheduler
+$ kubectl get pods -n kube-system -l component=kube-scheduler -o jsonpath="{range .items[]}{.spec.containers[].command} {'
+'}{end}" | grep -E "bind-address" 
+
+[Info] 'kubectl get pods -n kube-system -l component=kube-scheduler' 결과에 'bind-address' 키가 존재(판단기준 확인 필요)
+["kube-scheduler","--authentication-kubeconfig=/etc/kubernetes/scheduler.conf","--authorization-kubeconfig=/etc/kubernetes/scheduler.conf","--bind-address=127.0.0.1","--kubeconfig=/etc/kubernetes/scheduler.conf","--leader-elect=true"] 
+--------------------------------------------------
+--------------------------------------------------
+## Command-line based checks for kube-controller-manager bind-address
+$ ps -ef | grep 'controller-manager' | grep -E 'bind-address' | grep -v grep 
+
+[Info] controller-manager 내 'bind-address' 키가 존재(판단기준 확인 필요)
+root         591     333  1 09:57 ?        00:00:01 kube-controller-manager --allocate-node-cidrs=true --authentication-kubeconfig=/etc/kubernetes/controller-manager.conf --authorization-kubeconfig=/etc/kubernetes/controller-manager.conf --bind-address=127.0.0.1 --client-ca-file=/etc/kubernetes/pki/ca.crt --cluster-cidr=10.244.0.0/16 --cluster-name=fsec --cluster-signing-cert-file=/etc/kubernetes/pki/ca.crt --cluster-signing-key-file=/etc/kubernetes/pki/ca.key --controllers=*,bootstrapsigner,tokencleaner --kubeconfig=/etc/kubernetes/controller-manager.conf --leader-elect=true --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt --root-ca-file=/etc/kubernetes/pki/ca.crt --service-account-private-key-file=/etc/kubernetes/pki/sa.key --service-cluster-ip-range=10.96.0.0/16 --use-service-account-credentials=true --enable-hostpath-provisioner=true
+--------------------------------------------------
+
+--------------------------------------------------
+## Config-file based checks for kube-controller-manager bind-address
+$ grep -E "bind-address" "/etc/kubernetes/manifests/kube-controller-manager.yaml"
+
+[Info] [/etc/kubernetes/manifests/kube-controller-manager.yaml] 파일 내 'bind-address' 키가 존재(판단기준 확인 필요)
+    - --bind-address=127.0.0.1
+--------------------------------------------------
+--------------------------------------------------
+## kubectl based checks for kube-controller-manager
+$ kubectl get pods -n kube-system -l component=kube-controller-manager -o jsonpath="{range .items[]}{.spec.containers[].command} {'
+'}{end}" | grep -E "bind-address" 
+
+[Info] 'kubectl get pods -n kube-system -l component=kube-controller-manager' 결과에 'bind-address' 키가 존재(판단기준 확인 필요)
+["kube-controller-manager","--allocate-node-cidrs=true","--authentication-kubeconfig=/etc/kubernetes/controller-manager.conf","--authorization-kubeconfig=/etc/kubernetes/controller-manager.conf","--bind-address=127.0.0.1","--client-ca-file=/etc/kubernetes/pki/ca.crt","--cluster-cidr=10.244.0.0/16","--cluster-name=fsec","--cluster-signing-cert-file=/etc/kubernetes/pki/ca.crt","--cluster-signing-key-file=/etc/kubernetes/pki/ca.key","--controllers=*,bootstrapsigner,tokencleaner","--kubeconfig=/etc/kubernetes/controller-manager.conf","--leader-elect=true","--requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt","--root-ca-file=/etc/kubernetes/pki/ca.crt","--service-account-private-key-file=/etc/kubernetes/pki/sa.key","--service-cluster-ip-range=10.96.0.0/16","--use-service-account-credentials=true","--enable-hostpath-provisioner=true"] 
+--------------------------------------------------
+				]]>
+			</output>
+		</dump>
+F_PRC_C_008
+		<dump>
+			<items>
+				<id>PRC-C-009</id>
+				<field>k8s_master</field>
+				<name>시스템 주요 이벤트 로그 설정</name>
+			</items>
+			<output>
+				<![CDATA[
+--------------------------------------------------
+## Command-line based checks for kube-apiserver audit-log-path
+$ ps -ef | grep 'apiserver' | grep -E 'audit-log-path' | grep -v grep 
+
+[Info] apiserver 내 'audit-log-path' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+
+--------------------------------------------------
+## Config-file based checks for kube-apiserver audit-log-path
+$ grep -E "audit-log-path" "/etc/kubernetes/manifests/kube-apiserver.yaml"
+
+[Info] [/etc/kubernetes/manifests/kube-apiserver.yaml] 파일 내 'audit-log-path' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+--------------------------------------------------
+## kubectl based checks for kube-apiserver
+$ kubectl get pods -n kube-system -l component=kube-apiserver -o jsonpath="{range .items[]}{.spec.containers[].command} {'
+'}{end}" | grep -E "audit-log-path" 
+
+[Info] 'kubectl get pods -n kube-system -l component=kube-apiserver' 결과에 'audit-log-path' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+--------------------------------------------------
+## Command-line based checks for kube-apiserver audit-policy-file
+$ ps -ef | grep 'apiserver' | grep -E 'audit-policy-file' | grep -v grep 
+
+[Info] apiserver 내 'audit-policy-file' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+
+--------------------------------------------------
+## Config-file based checks for kube-apiserver audit-policy-file
+$ grep -E "audit-policy-file" "/etc/kubernetes/manifests/kube-apiserver.yaml"
+
+[Info] [/etc/kubernetes/manifests/kube-apiserver.yaml] 파일 내 'audit-policy-file' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+--------------------------------------------------
+## kubectl based checks for kube-apiserver
+$ kubectl get pods -n kube-system -l component=kube-apiserver -o jsonpath="{range .items[]}{.spec.containers[].command} {'
+'}{end}" | grep -E "audit-policy-file" 
+
+[Info] 'kubectl get pods -n kube-system -l component=kube-apiserver' 결과에 'audit-policy-file' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+				]]>
+			</output>
+		</dump>
+F_PRC_C_009
+		<dump>
+			<items>
+				<id>PRC-C-010</id>
+				<field>k8s_master</field>
+				<name>비휘발성 경로 내 로그 파일 저장</name>
+			</items>
+			<output>
+				<![CDATA[
+--------------------------------------------------
+## Command-line based checks for kube-apiserver audit-log-path
+$ ps -ef | grep 'apiserver' | grep -E 'audit-log-path' | grep -v grep 
+
+[Info] apiserver 내 'audit-log-path' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+
+--------------------------------------------------
+## Config-file based checks for kube-apiserver audit-log-path
+$ grep -E "audit-log-path" "/etc/kubernetes/manifests/kube-apiserver.yaml"
+
+[Info] [/etc/kubernetes/manifests/kube-apiserver.yaml] 파일 내 'audit-log-path' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+--------------------------------------------------
+## kubectl based checks for kube-apiserver
+$ kubectl get pods -n kube-system -l component=kube-apiserver -o jsonpath="{range .items[]}{.spec.containers[].command} {'
+'}{end}" | grep -E "audit-log-path" 
+
+[Info] 'kubectl get pods -n kube-system -l component=kube-apiserver' 결과에 'audit-log-path' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+				]]>
+			</output>
+		</dump>
+F_PRC_C_010
+		<dump>
+			<items>
+				<id>PRC-C-012</id>
+				<field>k8s_master</field>
+				<name>API 통신에 대한 보안 프로토콜 사용</name>
+			</items>
+			<output>
+				<![CDATA[
+--------------------------------------------------
+## Command-line based checks for kube-apiserver tls-cert-file|tls-private-key-file
+$ ps -ef | grep 'apiserver' | grep -E 'tls-cert-file|tls-private-key-file' | grep -v grep 
+
+[Info] apiserver 내 'tls-cert-file|tls-private-key-file' 키가 존재(판단기준 확인 필요)
+root         608     298  5 09:57 ?        00:00:05 kube-apiserver --advertise-address=172.21.0.2 --allow-privileged=true --authorization-mode=Node,RBAC --client-ca-file=/etc/kubernetes/pki/ca.crt --enable-admission-plugins=NodeRestriction --enable-bootstrap-token-auth=true --etcd-cafile=/etc/kubernetes/pki/etcd/ca.crt --etcd-certfile=/etc/kubernetes/pki/apiserver-etcd-client.crt --etcd-keyfile=/etc/kubernetes/pki/apiserver-etcd-client.key --etcd-servers=https://127.0.0.1:2379 --kubelet-client-certificate=/etc/kubernetes/pki/apiserver-kubelet-client.crt --kubelet-client-key=/etc/kubernetes/pki/apiserver-kubelet-client.key --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname --proxy-client-cert-file=/etc/kubernetes/pki/front-proxy-client.crt --proxy-client-key-file=/etc/kubernetes/pki/front-proxy-client.key --requestheader-allowed-names=front-proxy-client --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt --requestheader-extra-headers-prefix=X-Remote-Extra- --requestheader-group-headers=X-Remote-Group --requestheader-username-headers=X-Remote-User --secure-port=6443 --service-account-issuer=https://kubernetes.default.svc.cluster.local --service-account-key-file=/etc/kubernetes/pki/sa.pub --service-account-signing-key-file=/etc/kubernetes/pki/sa.key --service-cluster-ip-range=10.96.0.0/16 --tls-cert-file=/etc/kubernetes/pki/apiserver.crt --tls-private-key-file=/etc/kubernetes/pki/apiserver.key --runtime-config=
+--------------------------------------------------
+
+--------------------------------------------------
+## Config-file based checks for kube-apiserver tls-cert-file|tls-private-key-file
+$ grep -E "tls-cert-file|tls-private-key-file" "/etc/kubernetes/manifests/kube-apiserver.yaml"
+
+[Info] [/etc/kubernetes/manifests/kube-apiserver.yaml] 파일 내 'tls-cert-file|tls-private-key-file' 키가 존재(판단기준 확인 필요)
+    - --tls-cert-file=/etc/kubernetes/pki/apiserver.crt
+    - --tls-private-key-file=/etc/kubernetes/pki/apiserver.key
+--------------------------------------------------
+--------------------------------------------------
+## kubectl based checks for kube-apiserver
+$ kubectl get pods -n kube-system -l component=kube-apiserver -o jsonpath="{range .items[]}{.spec.containers[].command}{'
+'}{end}" | grep -E "tls-cert-file|tls-private-key-file" 
+
+[Info] 'kubectl get pods -n kube-system -l component=kube-apiserver' 결과에 'tls-cert-file|tls-private-key-file' 키가 존재(판단기준 확인 필요)
+["kube-apiserver","--advertise-address=172.21.0.2","--allow-privileged=true","--authorization-mode=Node,RBAC","--client-ca-file=/etc/kubernetes/pki/ca.crt","--enable-admission-plugins=NodeRestriction","--enable-bootstrap-token-auth=true","--etcd-cafile=/etc/kubernetes/pki/etcd/ca.crt","--etcd-certfile=/etc/kubernetes/pki/apiserver-etcd-client.crt","--etcd-keyfile=/etc/kubernetes/pki/apiserver-etcd-client.key","--etcd-servers=https://127.0.0.1:2379","--kubelet-client-certificate=/etc/kubernetes/pki/apiserver-kubelet-client.crt","--kubelet-client-key=/etc/kubernetes/pki/apiserver-kubelet-client.key","--kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname","--proxy-client-cert-file=/etc/kubernetes/pki/front-proxy-client.crt","--proxy-client-key-file=/etc/kubernetes/pki/front-proxy-client.key","--requestheader-allowed-names=front-proxy-client","--requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt","--requestheader-extra-headers-prefix=X-Remote-Extra-","--requestheader-group-headers=X-Remote-Group","--requestheader-username-headers=X-Remote-User","--secure-port=6443","--service-account-issuer=https://kubernetes.default.svc.cluster.local","--service-account-key-file=/etc/kubernetes/pki/sa.pub","--service-account-signing-key-file=/etc/kubernetes/pki/sa.key","--service-cluster-ip-range=10.96.0.0/16","--tls-cert-file=/etc/kubernetes/pki/apiserver.crt","--tls-private-key-file=/etc/kubernetes/pki/apiserver.key","--runtime-config="]
+--------------------------------------------------
+				]]>
+			</output>
+		</dump>
+F_PRC_C_012
+		<dump>
+			<items>
+				<id>PRC-C-013</id>
+				<field>k8s_master</field>
+				<name>Anonymous 계정의 API 접속 제한 여부</name>
+			</items>
+			<output>
+				<![CDATA[
+--------------------------------------------------
+## Command-line based checks for kube-apiserver anonymous-auth
+$ ps -ef | grep 'apiserver' | grep -E 'anonymous-auth' | grep -v grep 
+
+[Info] apiserver 내 'anonymous-auth' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+
+--------------------------------------------------
+## Config-file based checks for kube-apiserver anonymous-auth
+$ grep -E "anonymous-auth" "/etc/kubernetes/manifests/kube-apiserver.yaml"
+
+[Info] [/etc/kubernetes/manifests/kube-apiserver.yaml] 파일 내 'anonymous-auth' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+				]]>
+			</output>
+		</dump>
+F_PRC_C_013
+		<dump>
+			<items>
+				<id>PRC-C-014</id>
+				<field>k8s_master</field>
+				<name>API 요청 타임아웃 설정</name>
+			</items>
+			<output>
+				<![CDATA[
+--------------------------------------------------
+## Command-line based checks for kube-apiserver request-timeout
+$ ps -ef | grep 'apiserver' | grep -E 'request-timeout' | grep -v grep 
+
+[Info] apiserver 내 'request-timeout' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+
+--------------------------------------------------
+## Config-file based checks for kube-apiserver request-timeout
+$ grep -E "request-timeout" "/etc/kubernetes/manifests/kube-apiserver.yaml"
+
+[Info] [/etc/kubernetes/manifests/kube-apiserver.yaml] 파일 내 'request-timeout' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+--------------------------------------------------
+## kubectl based checks for kube-apiserver
+$ kubectl get pods -n kube-system -l component=kube-apiserver -o jsonpath="{range .items[]}{.spec.containers[].command} {'
+'}{end}" | grep -E "request-timeout" 
+
+[Info] 'kubectl get pods -n kube-system -l component=kube-apiserver' 결과에 'request-timeout' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+				]]>
+			</output>
+		</dump>
+F_PRC_C_014
+		<dump>
+			<items>
+				<id>PRC-C-015</id>
+				<field>k8s_master</field>
+				<name>API 사용에 대한 안전한 인증 모드 적용</name>
+			</items>
+			<output>
+				<![CDATA[
+--------------------------------------------------
+## Command-line based checks for kube-apiserver authorization-mode
+$ ps -ef | grep 'apiserver' | grep -E 'authorization-mode' | grep -v grep 
+
+[Info] apiserver 내 'authorization-mode' 키가 존재(판단기준 확인 필요)
+root         608     298  5 09:57 ?        00:00:05 kube-apiserver --advertise-address=172.21.0.2 --allow-privileged=true --authorization-mode=Node,RBAC --client-ca-file=/etc/kubernetes/pki/ca.crt --enable-admission-plugins=NodeRestriction --enable-bootstrap-token-auth=true --etcd-cafile=/etc/kubernetes/pki/etcd/ca.crt --etcd-certfile=/etc/kubernetes/pki/apiserver-etcd-client.crt --etcd-keyfile=/etc/kubernetes/pki/apiserver-etcd-client.key --etcd-servers=https://127.0.0.1:2379 --kubelet-client-certificate=/etc/kubernetes/pki/apiserver-kubelet-client.crt --kubelet-client-key=/etc/kubernetes/pki/apiserver-kubelet-client.key --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname --proxy-client-cert-file=/etc/kubernetes/pki/front-proxy-client.crt --proxy-client-key-file=/etc/kubernetes/pki/front-proxy-client.key --requestheader-allowed-names=front-proxy-client --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt --requestheader-extra-headers-prefix=X-Remote-Extra- --requestheader-group-headers=X-Remote-Group --requestheader-username-headers=X-Remote-User --secure-port=6443 --service-account-issuer=https://kubernetes.default.svc.cluster.local --service-account-key-file=/etc/kubernetes/pki/sa.pub --service-account-signing-key-file=/etc/kubernetes/pki/sa.key --service-cluster-ip-range=10.96.0.0/16 --tls-cert-file=/etc/kubernetes/pki/apiserver.crt --tls-private-key-file=/etc/kubernetes/pki/apiserver.key --runtime-config=
+--------------------------------------------------
+
+--------------------------------------------------
+## Config-file based checks for kube-apiserver authorization-mode
+$ grep -E "authorization-mode" "/etc/kubernetes/manifests/kube-apiserver.yaml"
+
+[Info] [/etc/kubernetes/manifests/kube-apiserver.yaml] 파일 내 'authorization-mode' 키가 존재(판단기준 확인 필요)
+    - --authorization-mode=Node,RBAC
+--------------------------------------------------
+--------------------------------------------------
+## kubectl based checks for kube-apiserver
+$ kubectl get pods -n kube-system -l component=kube-apiserver -o jsonpath="{range .items[]}{.spec.containers[].command} {'
+'}{end}" | grep -E "authorization-mode" 
+
+[Info] 'kubectl get pods -n kube-system -l component=kube-apiserver' 결과에 'authorization-mode' 키가 존재(판단기준 확인 필요)
+["kube-apiserver","--advertise-address=172.21.0.2","--allow-privileged=true","--authorization-mode=Node,RBAC","--client-ca-file=/etc/kubernetes/pki/ca.crt","--enable-admission-plugins=NodeRestriction","--enable-bootstrap-token-auth=true","--etcd-cafile=/etc/kubernetes/pki/etcd/ca.crt","--etcd-certfile=/etc/kubernetes/pki/apiserver-etcd-client.crt","--etcd-keyfile=/etc/kubernetes/pki/apiserver-etcd-client.key","--etcd-servers=https://127.0.0.1:2379","--kubelet-client-certificate=/etc/kubernetes/pki/apiserver-kubelet-client.crt","--kubelet-client-key=/etc/kubernetes/pki/apiserver-kubelet-client.key","--kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname","--proxy-client-cert-file=/etc/kubernetes/pki/front-proxy-client.crt","--proxy-client-key-file=/etc/kubernetes/pki/front-proxy-client.key","--requestheader-allowed-names=front-proxy-client","--requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt","--requestheader-extra-headers-prefix=X-Remote-Extra-","--requestheader-group-headers=X-Remote-Group","--requestheader-username-headers=X-Remote-User","--secure-port=6443","--service-account-issuer=https://kubernetes.default.svc.cluster.local","--service-account-key-file=/etc/kubernetes/pki/sa.pub","--service-account-signing-key-file=/etc/kubernetes/pki/sa.key","--service-cluster-ip-range=10.96.0.0/16","--tls-cert-file=/etc/kubernetes/pki/apiserver.crt","--tls-private-key-file=/etc/kubernetes/pki/apiserver.key","--runtime-config="] 
+--------------------------------------------------
+				]]>
+			</output>
+		</dump>
+F_PRC_C_015
+		<dump>
+			<items>
+				<id>PRC-C-016</id>
+				<field>k8s_master</field>
+				<name>API 사용시 서비스 계정 토큰 검증 여부</name>
+			</items>
+			<output>
+				<![CDATA[
+--------------------------------------------------
+## Command-line based checks for kube-apiserver service-account-lookup
+$ ps -ef | grep 'apiserver' | grep -E 'service-account-lookup' | grep -v grep 
+
+[Info] apiserver 내 'service-account-lookup' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+
+--------------------------------------------------
+## Config-file based checks for kube-apiserver service-account-lookup
+$ grep -E "service-account-lookup" "/etc/kubernetes/manifests/kube-apiserver.yaml"
+
+[Info] [/etc/kubernetes/manifests/kube-apiserver.yaml] 파일 내 'service-account-lookup' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+--------------------------------------------------
+## kubectl based checks for kube-apiserver
+$ kubectl get pods -n kube-system -l component=kube-apiserver -o jsonpath="{range .items[]}{.spec.containers[].command} {'
+'}{end}" | grep -E "service-account-lookup" 
+
+[Info] 'kubectl get pods -n kube-system -l component=kube-apiserver' 결과에 'service-account-lookup' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+-----------------------------------------------------------------------------------------
+				]]>
+			</output>
+		</dump>
+F_PRC_C_016
+		<dump>
+			<items>
+				<id>PRC-C-022</id>
+				<field>k8s_master</field>
+				<name>레지스트리 연결 구간에 대한 보안 프로토콜 사용</name>
+			</items>
+			<output>
+				<![CDATA[
+insecure registry list in config.toml:
+config file not exist
+				]]>
+			</output>
+		</dump>
+F_PRC_C_022
+		<dump>
+			<items>
+				<id>PRC-C-024</id>
+				<field>k8s_master</field>
+				<name>컨테이너간 불필요한 통신 제한 설정</name>
+			</items>
+			<output>
+				<![CDATA[
+No resources found
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get ns
+
+NAME                 STATUS   AGE
+default              Active   107s
+kube-node-lease      Active   107s
+kube-public          Active   107s
+kube-system          Active   107s
+local-path-storage   Active   103s
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get networkpolicy --all-namespaces
+				]]>
+			</output>
+		</dump>
+F_PRC_C_024
+		<dump>
+			<items>
+				<id>PRC-C-025</id>
+				<field>k8s_master</field>
+				<name>불필요한 프로파일링 기능 비활성화 여부</name>
+			</items>
+			<output>
+				<![CDATA[
+--------------------------------------------------
+## Command-line based checks for kube-apiserver profiling
+$ ps -ef | grep 'apiserver' | grep -E 'profiling' | grep -v grep 
+
+[Info] apiserver 내 'profiling' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+
+--------------------------------------------------
+## Config-file based checks for kube-apiserver profiling
+$ grep -E "profiling" "/etc/kubernetes/manifests/kube-apiserver.yaml"
+
+[Info] [/etc/kubernetes/manifests/kube-apiserver.yaml] 파일 내 'profiling' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+--------------------------------------------------
+## kubectl based checks for kube-apiserver
+$ kubectl get pods -n kube-system -l component=kube-apiserver -o jsonpath="{range .items[]}{.spec.containers[].command} {'
+'}{end}" | grep -E "profiling" 
+
+[Info] 'kubectl get pods -n kube-system -l component=kube-apiserver' 결과에 'profiling' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+--------------------------------------------------
+## Command-line based checks for kube-scheduler profiling
+$ ps -ef | grep 'scheduler' | grep -E 'profiling' | grep -v grep 
+
+[Info] scheduler 내 'profiling' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+
+--------------------------------------------------
+## Config-file based checks for kube-scheduler profiling
+$ grep -E "profiling" "/etc/kubernetes/manifests/kube-scheduler.yaml"
+
+[Info] [/etc/kubernetes/manifests/kube-scheduler.yaml] 파일 내 'profiling' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+--------------------------------------------------
+## kubectl based checks for kube-scheduler
+$ kubectl get pods -n kube-system -l component=kube-scheduler -o jsonpath="{range .items[]}{.spec.containers[].command} {'
+'}{end}" | grep -E "profiling" 
+
+[Info] 'kubectl get pods -n kube-system -l component=kube-scheduler' 결과에 'profiling' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+--------------------------------------------------
+## Command-line based checks for kube-controller-manager profiling
+$ ps -ef | grep 'controller-manager' | grep -E 'profiling' | grep -v grep 
+
+[Info] controller-manager 내 'profiling' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+
+--------------------------------------------------
+## Config-file based checks for kube-controller-manager profiling
+$ grep -E "profiling" "/etc/kubernetes/manifests/kube-controller-manager.yaml"
+
+[Info] [/etc/kubernetes/manifests/kube-controller-manager.yaml] 파일 내 'profiling' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+--------------------------------------------------
+## kubectl based checks for kube-controller-manager
+$ kubectl get pods -n kube-system -l component=kube-controller-manager -o jsonpath="{range .items[]}{.spec.containers[].command} {'
+'}{end}" | grep -E "profiling" 
+
+[Info] 'kubectl get pods -n kube-system -l component=kube-controller-manager' 결과에 'profiling' 키가 미존재(판단기준 확인 필요)
+--------------------------------------------------
+-----------------------------------------------------------------------------------------
+				]]>
+			</output>
+		</dump>
+F_PRC_C_025
+		<dump>
+			<items>
+				<id>PRC-C-026</id>
+				<field>k8s_master</field>
+				<name>컨테이너의 privileged 플래그 제거</name>
+			</items>
+			<output>
+				<![CDATA[
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get pod [POD] -n [namespaces] -o jsonpath="{range .spec.containers[*]}Container: {.name} | -securityContext.privileged:'{.securityContext.privileged}'{'
+'}{end}"
+
+privileged 모드가 설정된 컨테이너 목록:
+[not exist]
+
+
+###전체 실행 결과###
+				]]>
+			</output>
+		</dump>
+F_PRC_C_026
+		<dump>
+			<items>
+				<id>PRC-C-027</id>
+				<field>k8s_master</field>
+				<name>과도한 커널 접근 권한 제거</name>
+			</items>
+			<output>
+				<![CDATA[
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get pod [POD] -n [namespaces] -o jsonpath="{range .spec.containers[*]}Container: {.name}| -securityContext.capabilities.add:'{.securityContext.capabilities.add}'{'
+'}{end}"
+
+capabilities.add에 값이 존재하는 컨테이너 목록:
+[not exist]
+
+
+###전체 실행 결과###
+				]]>
+			</output>
+		</dump>
+F_PRC_C_027
+		<dump>
+			<items>
+				<id>PRC-C-028</id>
+				<field>k8s_master</field>
+				<name>불필요한 커널 접근 권한 제거</name>
+			</items>
+			<output>
+				<![CDATA[
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get pod [POD] -n [namespaces] -o jsonpath="{range .spec.containers[*]}Container: {.name}| -securityContext.capabilities.drop:'{.securityContext.capabilities.drop}'{'
+'}{end}"
+
+capabilities.drop 값이 존재하지 않는 컨테이너 목록:
+[not exist]
+
+
+###전체 실행 결과###
+				]]>
+			</output>
+		</dump>
+F_PRC_C_028
+		<dump>
+			<items>
+				<id>PRC-C-029</id>
+				<field>k8s_master</field>
+				<name>컨테이너의 권한 통제 설정</name>
+			</items>
+			<output>
+				<![CDATA[
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get pod [POD] -n [namespaces] -o jsonpath="{range .spec.containers[*]}Container: {.name}| -securityContext.allowPrivilegeEscalation:'{.securityContext.allowPrivilegeEscalation}'{'
+'}{end}"
+
+allowPrivilegeEscalation 값이 존재하지 않거나 true인 컨테이너 목록:
+[not exist]
+
+
+###전체 실행 결과###
+				]]>
+			</output>
+		</dump>
+F_PRC_C_029
+		<dump>
+			<items>
+				<id>PRC-C-030</id>
+				<field>k8s_master</field>
+				<name>컨테이너 및 POD에 seccomp 활성화 및 적용</name>
+			</items>
+			<output>
+				<![CDATA[
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get pod [POD] -n [namespaces] -o jsonpath="{range .spec.containers[*]}Container: {.name}| -securityContext.seccompProfile.type:'{.securityContext.seccompProfile.type}'| -securityContext.seccompProfile.localhostProfile:'{.securityContext.seccompProfile.localhostProfile}'{'
+'}{end}"
+
+seccomp profile이 존재하지 않는 컨테이너 목록:
+[not exist]
+
+
+###전체 실행 결과###
+				]]>
+			</output>
+		</dump>
+F_PRC_C_030
+		<dump>
+			<items>
+				<id>PRC-C-031</id>
+				<field>k8s_master</field>
+				<name>컨테이너의 관리자 권한 실행</name>
+			</items>
+			<output>
+				<![CDATA[
+
+				]]>
+			</output>
+		</dump>
+F_PRC_C_031
+		<dump>
+			<items>
+				<id>PRC-C-033</id>
+				<field>k8s_master</field>
+				<name>컨테이너의 재시작 정책 설정</name>
+			</items>
+			<output>
+				<![CDATA[
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get pod [POD] -n [namespaces] -o jsonpath=" -spec.restartPolicy:{.spec.restartPolicy}"
+
+재시작 설정이 Never인 파드 목록:
+[not exist]
+
+
+###전체 실행 결과###
+				]]>
+			</output>
+		</dump>
+F_PRC_C_033
+		<dump>
+			<items>
+				<id>PRC-C-035</id>
+				<field>k8s_master</field>
+				<name>컨테이너 내 시스템 디렉터리 마운트 제거</name>
+			</items>
+			<output>
+				<![CDATA[
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get pod [POD] -n [namespaces] -o jsonpath="{range .spec.containers[*]}Container: {.name}| -VolumeMounts: [{range .volumeMounts[*]}{.name}:{.mountPath};{end}]|{end}Volumes: [{range .spec.volumes[*]}{.name}:{.hostPath.path}:{.hostPath.type};{end}]"
+
+시스템 디렉터리가 마운트된 컨테이너 목록:
+[not exist]
+
+
+###전체 실행 결과###
+				]]>
+			</output>
+		</dump>
+F_PRC_C_035
+		<dump>
+			<items>
+				<id>PRC-C-036</id>
+				<field>k8s_master</field>
+				<name>컨테이너 내 CRI socket 불륨 마운트 제거</name>
+			</items>
+			<output>
+				<![CDATA[
+CRI Socket 볼륨이. 마운트된 컨테이너 목록:
+[not exist]
+
+
+###전체 실행 결과###
+				]]>
+			</output>
+		</dump>
+F_PRC_C_036
+		<dump>
+			<items>
+				<id>PRC-C-037</id>
+				<field>k8s_master</field>
+				<name>읽기 전용 모드로 컨테이너 루트 파일 시스템 마운트 여부</name>
+			</items>
+			<output>
+				<![CDATA[
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get pod [POD] -n [namespaces] -o jsonpath="{range .spec.containers[*]}Container: {.name}| -securityContext.readOnlyRootFilesystem:{.securityContext.readOnlyRootFilesystem}{'
+'}{end}"
+
+읽기 전용 모드가 아닌 컨테이너 목록:
+[not exist]
+
+
+###전체 실행 결과###
+				]]>
+			</output>
+		</dump>
+F_PRC_C_037
+		<dump>
+			<items>
+				<id>PRC-C-038</id>
+				<field>k8s_master</field>
+				<name>마운트 전파 모드(Mount Propagation Mode) 공유 설정 제한 여부</name>
+			</items>
+			<output>
+				<![CDATA[
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get pod [POD] -n [namespaces] -o jsonpath="{range .spec.containers[*]}Container: {.name}| -mountPropagation: {range .volumeMounts[*]}{.mountPropagation}{'
+'}{end}{end}"
+
+마운트 전파 모드(mountPropagation)가 Bidirectional인 컨테이너 목록:
+[not exist]
+
+
+###전체 실행 결과###
+				]]>
+			</output>
+		</dump>
+F_PRC_C_038
+		<dump>
+			<items>
+				<id>PRC-C-039</id>
+				<field>k8s_master</field>
+				<name>컨테이너의 불필요한 외부 장치 제거</name>
+			</items>
+			<output>
+				<![CDATA[
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get pod [POD] -n [namespaces] -o jsonpath="{range .spec.containers[*]}Container: {.name}| -VolumeMounts: [{range .volumeMounts[*]}{.name}:{.mountPath};{end}]|{end}Volumes: [{range .spec.volumes[*]}{.name}:{.hostPath.path}:{.hostPath.type};{end}]"
+
+VolumeMounts 값이 존재하는 컨테이너 목록:
+[not exist]
+				]]>
+			</output>
+		</dump>
+F_PRC_C_039
+		<dump>
+			<items>
+				<id>PRC-C-042</id>
+				<field>k8s_master</field>
+				<name>컨테이너의 호스트 PID 네임스페이스 공유 제한 설정</name>
+			</items>
+			<output>
+				<![CDATA[
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get pod [POD] -n [namespaces] -o jsonpath=" -spec.hostPID:'{.spec.hostPID}'"
+
+호스트 PID 네임스페이스(hostPID)가 true인 파드 목록:
+[not exist]
+
+
+###전체 실행 결과###
+				]]>
+			</output>
+		</dump>
+F_PRC_C_042
+		<dump>
+			<items>
+				<id>PRC-C-043</id>
+				<field>k8s_master</field>
+				<name>컨테이너의 호스트 IPC 네임스페이스 공유 제한 설정</name>
+			</items>
+			<output>
+				<![CDATA[
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get pod [POD] -n [namespaces] -o jsonpath=" -spec.hostIPC:'{.spec.hostIPC}'"
+
+호스트 IPC 네임스페이스(hostIPC)가 true인 파드 목록:
+[not exist]
+
+
+###전체 실행 결과###
+				]]>
+			</output>
+		</dump>
+F_PRC_C_043
+		<dump>
+			<items>
+				<id>PRC-C-044</id>
+				<field>k8s_master</field>
+				<name>컨테이너의 호스트 네트워크 네임스페이스 공유 제한 설정</name>
+			</items>
+			<output>
+				<![CDATA[
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get pod [POD] -n [namespaces] -o jsonpath=" -spec.hostNetwork:'{.spec.hostNetwork}'"
+
+호스트 네트워크 네임스페이스(hostNetwork)가 true인 파드 목록:
+[not exist]
+
+
+###전체 실행 결과###
+				]]>
+			</output>
+		</dump>
+F_PRC_C_044
+		<dump>
+			<items>
+				<id>PRC-C-045</id>
+				<field>k8s_master</field>
+				<name>컨테이너의 호스트 UTS 네임스페이스 공유 제한 설정</name>
+			</items>
+			<output>
+				<![CDATA[
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get pod [POD] -n [namespaces] -o jsonpath=" -securityContext.hostUTS:'{.securityContext.hostUTS}'"
+
+호스트 UTS 네임스페이스(hostUTS)가 true인 파드 목록:
+[not exist]
+
+
+###전체 실행 결과###
+				]]>
+			</output>
+		</dump>
+F_PRC_C_045
+		<dump>
+			<items>
+				<id>PRC-C-046</id>
+				<field>k8s_master</field>
+				<name>불필요한 HostPort 제거</name>
+			</items>
+			<output>
+				<![CDATA[
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get pod [POD] -n [namespaces] -o jsonpath="{range .spec.containers[*]}Container: {.name}|{range .ports[*]} -containerPort: {.containerPort}| -hostPort: {.hostPort}| -protocol:{.protocol};{'
+'}{end}{end}"
+
+hostPort를 사용하는 컨테이너 목록:
+[not exist]
+
+
+###전체 실행 결과###
+				]]>
+			</output>
+		</dump>
+F_PRC_C_046
+		<dump>
+			<items>
+				<id>PRC-C-047</id>
+				<field>k8s_master</field>
+				<name>컨테이너의 메모리 사용 제한 설정</name>
+			</items>
+			<output>
+				<![CDATA[
+-----------------------------------------------------------------------------------------
+# Command : $ kubectl get pod [POD] -n [namespaces] -o jsonpath="{range .spec.containers[*]}Container: {.name}| -resources.limits.memory:'{.resources.limits.memory}'{'
+'}{end}"
+
+컨테이너의 메모리 사용 제한 미설정 컨테이너 목록:
+[not exist]
+
+
+###전체 실행 결과###
+				]]>
+			</output>
+		</dump>
+F_PRC_C_047
+		<dump>
+			<items>
+				<id>PRC-C-GETALL</id>
+				<field>k8s_master</field>
+				<name>-</name>
+			</items>
+			<output>
+				<![CDATA[
+
+				]]>
+			</output>
+		</dump>
+F_PRC_C_GETALL
+		<dump>
+			<items>
+				<id>PRC-C-GETALLconf</id>
+				<field>k8s_master</field>
+				<name>-</name>
+			</items>
+			<output>
+				<![CDATA[
+########################################################
+[/etc/kubernetes/manifests/kube-scheduler.yaml]
+########################################################
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    component: kube-scheduler
+    tier: control-plane
+  name: kube-scheduler
+  namespace: kube-system
+spec:
+  containers:
+  - command:
+    - kube-scheduler
+    - --authentication-kubeconfig=/etc/kubernetes/scheduler.conf
+    - --authorization-kubeconfig=/etc/kubernetes/scheduler.conf
+    - --bind-address=127.0.0.1
+    - --kubeconfig=/etc/kubernetes/scheduler.conf
+    - --leader-elect=true
+    image: registry.k8s.io/kube-scheduler:v1.36.1
+    imagePullPolicy: IfNotPresent
+    livenessProbe:
+      failureThreshold: 8
+      httpGet:
+        host: 127.0.0.1
+        path: /livez
+        port: probe-port
+        scheme: HTTPS
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 15
+    name: kube-scheduler
+    ports:
+    - containerPort: 10259
+      name: probe-port
+      protocol: TCP
+    readinessProbe:
+      failureThreshold: 3
+      httpGet:
+        host: 127.0.0.1
+        path: /readyz
+        port: probe-port
+        scheme: HTTPS
+      periodSeconds: 1
+      timeoutSeconds: 15
+    resources:
+      requests:
+        cpu: 100m
+    startupProbe:
+      failureThreshold: 24
+      httpGet:
+        host: 127.0.0.1
+        path: /livez
+        port: probe-port
+        scheme: HTTPS
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 15
+    volumeMounts:
+    - mountPath: /etc/kubernetes/scheduler.conf
+      name: kubeconfig
+      readOnly: true
+  hostNetwork: true
+  priority: 2000001000
+  priorityClassName: system-node-critical
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  volumes:
+  - hostPath:
+      path: /etc/kubernetes/scheduler.conf
+      type: FileOrCreate
+    name: kubeconfig
+status: {}
+########################################################
+[/etc/kubernetes/scheduler.conf]
+########################################################
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURCVENDQWUyZ0F3SUJBZ0lJUXhZWHJvd1dyRDh3RFFZSktvWklodmNOQVFFTEJRQXdGVEVUTUJFR0ExVUUKQXhNS2EzVmlaWEp1WlhSbGN6QWVGdzB5TmpBMk1UVXdPVFV5TURWYUZ3MHpOakEyTVRJd09UVTNNRFZhTUJVeApFekFSQmdOVkJBTVRDbXQxWW1WeWJtVjBaWE13Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXdnZ0VLCkFvSUJBUURGbDkyc1duLzBkNXVFTFdKMVN6bG1EMGN2OE5CK1ZJRTJVbVlWa2lKbXlDWDRLWmY0ZzJZZllXZWgKTWx0UlRMVG52WVJ1dDd3eFZNelFKbTYwcW53Sng4QS8wUm5VVHFjSVJuM2MwUFdsTFR5ekd3LzBjS1cxV2trcQo4T2xVMjZkSkcya1UxWFBwSytSN0pPN3ZnYnBSaFpmU1VHKzMwWDBYNFN4eTVGYy9IY3ZIOEhKVVRaRlhSV0RaCmhjQTJkZjdvNkZZTzJGU1FUQlpTS0pZd1k0NmtoYXNYT1BlR1YvTjRJQkgvcTJrdEF3WENSREphcXMrRSs5eC8KM3p4ZVlFTTczbDF3bEUrazBHVWVaNlRqUWhGMnlJcVp2WWJsKzVUdTMyRUM1V1BzUElnclY1VHFvNUkzTUJjWgp2Q0gxZEZFTGFoWVFGYXJNa0FFK2hFOW0yekV4QWdNQkFBR2pXVEJYTUE0R0ExVWREd0VCL3dRRUF3SUNwREFQCkJnTlZIUk1CQWY4RUJUQURBUUgvTUIwR0ExVWREZ1FXQkJRNnAvZFlLKzkxRE5VRkRKQjRXUWF2V1JxSmt6QVYKQmdOVkhSRUVEakFNZ2dwcmRXSmxjbTVsZEdWek1BMEdDU3FHU0liM0RRRUJDd1VBQTRJQkFRQTdqM3B0UW4vbwo3eVcrRDRqVElpNjQvRnMvSHhKc0hUbW1LVTJsV28raWVjaGFHVXB1c2Z1dEZoQ0NwVENYRGdLampIcHk2SEFDCmxESktYc2xPZVhUQVdiMURRMHIzeXdaWVNkK1BoY0hlZ0ZhT3RMSVdidUZlcFgrNmNwL1ZNcy9QNXprR3dWaFUKdVcwSDFkQ3BJSTVUWEM4SWRINkllUmduQndsc3NJTHFxN28rWHdmT0NVcklrTDFoaURCNVhVdGlaOU00Z25mTworZVI1blVWeU5SRncxSlB6b2IyZUxxK1BFbWI3N3dBaDJWRXBPOUxGVmxabVFBcWJlajdLVHJRK2I5ZTJUSlovCm53SXQzM1dEL1NYQVdjNksxaGdkcFlOaFJPQWlRa3JwM3hwRnF6N0NmaUwrUmN1cTVFWU1XdU9TUWpIdG9ERHYKRkZKL204UGdLTE5xCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+    server: https://172.21.0.2:6443
+  name: fsec
+contexts:
+- context:
+    cluster: fsec
+    user: system:kube-scheduler
+  name: system:kube-scheduler@fsec
+current-context: system:kube-scheduler@fsec
+kind: Config
+users:
+- name: system:kube-scheduler
+  user:
+    client-certificate-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUREVENDQWZXZ0F3SUJBZ0lJZDMrWFpSYW03UTh3RFFZSktvWklodmNOQVFFTEJRQXdGVEVUTUJFR0ExVUUKQXhNS2EzVmlaWEp1WlhSbGN6QWVGdzB5TmpBMk1UVXdPVFV5TURWYUZ3MHlOekEyTVRVd09UVTNNRFZhTUNBeApIakFjQmdOVkJBTVRGWE41YzNSbGJUcHJkV0psTFhOamFHVmtkV3hsY2pDQ0FTSXdEUVlKS29aSWh2Y05BUUVCCkJRQURnZ0VQQURDQ0FRb0NnZ0VCQUpSR1R1SUpDSWkyNUwySDlXUUdGNlkvNGZwNW1LY2VEOFNWVGo1VjVnTEoKOE5JdmpYTnpvdTN5NW9CQ0loVUVWOVFiSWxxVWF0QU5xQ0hYRGpOUkU0VjZkQnJqMk8zMzZvcFhwNFdoV2F2QgpGbmJNWjljWmh6UEZRLzM4Njd0dTBCNVlGM1EzN0RxZTdZU2praVlyZGhIMDRHZkRxeGxpYmFrVXlDcXlNekhJCnhFQmtYRGJJQnZvQjE2SGN6bFREYkxSWHU0ZjU4THNXWU5jY2NZbzk3NGdlZlJlRVN3UDJZTjdKbWF2R0ZqSHQKOUpsK1dodjBoK0xHUTdaL0Q0NVNDREhXV1NsWktOVlg5d0JHL0s3MVFhWXF0Tkpka3RwK25TTkFEM09aSjkxaQphTFBjS2xNakFVZXJnT21FbUNNb3F0a2VsOXJWZ3pUcTFEZTVmNDlmcjFNQ0F3RUFBYU5XTUZRd0RnWURWUjBQCkFRSC9CQVFEQWdXZ01CTUdBMVVkSlFRTU1Bb0dDQ3NHQVFVRkJ3TUNNQXdHQTFVZEV3RUIvd1FDTUFBd0h3WUQKVlIwakJCZ3dGb0FVT3FmM1dDdnZkUXpWQlF5UWVGa0dyMWthaVpNd0RRWUpLb1pJaHZjTkFRRUxCUUFEZ2dFQgpBSmhncjNkYUo3Y09KR01XWStmNER3RUJJODJiMVRsMFhWNUZYQUlMOU1DNWlWQnlvaHZiUXUxOWhsUTBqSTlaCnNqUGl1WGVlTUtEeU8zUnZsRVd5U09SUFdXcVcrMWZSZUVBNi9mZStielpXUTArQTZRU21JTmNBU1UybUwyMXoKcFZCVnBjaDFPWnUyU0dJNHJxZHB1Wk1NOFBjOFZnWnE1M0V6VzlLeUxFV2dQSGlLZUE1QkdQbnAvczFtVzB0YwpNWFZFdEF0dlJmQk9LV1p3NktyZldrTFlnKzVFaXRna3BhaTk0elh4QVFaR0FwNFpHN2dZRWdLMlFGWHhNVGc0CnFzdmlBQnlCdHBmWG5JakVqQmR4OVJadjZGMThoUUhLcFpNQVBMYzhScFJjYlUycmhnU3BKVUVFa0xBSm9vc3kKTVZYUFhTYjlrM3J4OEFyRTdYQkF2WWs9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+    client-key-data: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb3dJQkFBS0NBUUVBbEVaTzRna0lpTGJrdllmMVpBWVhwai9oK25tWXB4NFB4SlZPUGxYbUFzbncwaStOCmMzT2k3ZkxtZ0VJaUZRUlgxQnNpV3BScTBBMm9JZGNPTTFFVGhYcDBHdVBZN2ZmcWlsZW5oYUZacThFV2RzeG4KMXhtSE04VkQvZnpydTI3UUhsZ1hkRGZzT3A3dGhLT1NKaXQyRWZUZ1o4T3JHV0p0cVJUSUtySXpNY2pFUUdSYwpOc2dHK2dIWG9kek9WTU5zdEZlN2gvbnd1eFpnMXh4eGlqM3ZpQjU5RjRSTEEvWmczc21acThZV01lMzBtWDVhCkcvU0g0c1pEdG44UGpsSUlNZFpaS1ZrbzFWZjNBRWI4cnZWQnBpcTAwbDJTMm42ZEkwQVBjNWtuM1dKb3M5d3EKVXlNQlI2dUE2WVNZSXlpcTJSNlgydFdETk9yVU43bC9qMSt2VXdJREFRQUJBb0lCQUFXeTRXanVRdk0wNEZGcApMbnB1Z2kzWmFsOHlSRGFNRm1hNC9GTUlySGlkVFZHdXZUSXc3QlFCZXNWMjJwRFI1QlJGWDEvTzIzOXRQdkhmCldPN2ZwZ1NYelJXVUtKYkExQXF4ZUJhbE9iNlFXRzR1eUt1V1BNR0xIK1FIcFZjYUE3VmUybUUvbmFjdnk0amIKc1RiTUF5amVoSzl5OEVVSi9qLzZOS3FiYmJ5ZDMvUjBxQmhla2orelg5TGI2cWJNRlVqQUN5cUlwRDJHMWswegpWNW9kSnNNYkNNMnlzNE9qWWVXamdNRnh3SG1kaWZDMUN3K1ZYalpNN2szSjEwTG9kTWE2OFlDRjRibWpRYi9VCjllRy9MK01hblJoQkdWRDloRms4bzF2WWdsRnM1M1ZGMFNGRzc4VjhRVDc0a09OSHRlUVBJa2JPeWI5aFhKMkgKZ3hDb1puRUNnWUVBdzdzTDE1OUwvV25UQ1lCamRrYlFoU2VoVmZkczFvRTZHSnpUV0RYQVpZUHFWRXlMeW45Uwp5T2xPNCtiVVRhcXozQWtSWG5Rdjd4c3pnRjR0ektiMnRaQlRZWVhJYzlvZS82THRxa3V0akJwbkgwUGFJMnhiCm5zL3FUa0JjWDd1Q3RFS2NUZFgyemwyWG1xa2RNeG9qQ2FxdytYRU9KU2FoaEE0OTFseHJtZEVDZ1lFQXdlNXMKb3VqMkgwQmUwekJTYzJnQnhNcHNDdk1qbkt4dHE2eE4vMW1ZMzlxNVJwVDhSbGxKR2Y5M2M1Z0JIeEVDQVV4OApIY0g2MnorT0dCNmdEb2xvVklhc3UzM2pQaUtLTjZ4WktpTHdSZWVvaDM1bTBXbmlqb1RWRHhacnExd0pkRnhpCjcxM1B5cGc1dkJXUk1wczYzbDhveTQvTTVwNUtpSDdYek1ENVcrTUNnWUJuUytDdEZCSExsTHplaDlaMkJsdG4KMm9sbjBDT3RkUmZQQTN6NlVhdlBKM1pVdE8wVm1tcDdRNzN4d3RHS2g2dFNWYXJIK1hPT3NnRlZIdDcyNGFyVQpHVzRYeXI0R2ZqZmIzQVduMlRhbStRd3hVT0xmelFEeGFITVVoeHo1SFFHVzFveWMrMjI4YldKa0tob1I3UnBPCnNMbWplMG5teTJOMFNQdlRsSVRvOFFLQmdDekFLdnR3ekpLcmxQWWcyWFhlRTBKby80T0xWYlZxcUtnTHk3ZlgKNGdvTisrRUlzaW85b2p2SWtyVHU1NXRXbm1MVVZuTzdkbnF2Y01lcUVYOHBRQlQ1T3RUTkdPb1dxRlJ1aGVqTwpSU21zYWx4UjA4SVJNQUY1TDMwYXpGK3ZqbEwybXJIbnNQSnNMQzUxdjVxdzdXV3hDY1huZWYzaG13dGlVY1BpCjUrZkhBb0dCQUk0NTYyMHc4SkdTdnp4QWVaL0t6bGNvZEpqUHZROTI2cTljcXBGL29TL1RZS0phck1nc2hEQzQKZ3plZWlhQ0V6eTNTaGV5THd0TjdYdmFWZ215cVM2SGYrUUVQeThPdmI0bmFyR2dnSHFqVXFoZllMWU9odElLQwpZQ3plZjdRODh3ajc0ZCtGd1IzRlFsTGQ2VTgwaWNSY0ZYVzRSeHg5dzhBeFZDRFMxaGRoCi0tLS0tRU5EIFJTQSBQUklWQVRFIEtFWS0tLS0tCg==
+########################################################
+[/etc/kubernetes/manifests/kube-controller-manager.yaml]
+########################################################
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    component: kube-controller-manager
+    tier: control-plane
+  name: kube-controller-manager
+  namespace: kube-system
+spec:
+  containers:
+  - command:
+    - kube-controller-manager
+    - --allocate-node-cidrs=true
+    - --authentication-kubeconfig=/etc/kubernetes/controller-manager.conf
+    - --authorization-kubeconfig=/etc/kubernetes/controller-manager.conf
+    - --bind-address=127.0.0.1
+    - --client-ca-file=/etc/kubernetes/pki/ca.crt
+    - --cluster-cidr=10.244.0.0/16
+    - --cluster-name=fsec
+    - --cluster-signing-cert-file=/etc/kubernetes/pki/ca.crt
+    - --cluster-signing-key-file=/etc/kubernetes/pki/ca.key
+    - --controllers=*,bootstrapsigner,tokencleaner
+    - --kubeconfig=/etc/kubernetes/controller-manager.conf
+    - --leader-elect=true
+    - --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt
+    - --root-ca-file=/etc/kubernetes/pki/ca.crt
+    - --service-account-private-key-file=/etc/kubernetes/pki/sa.key
+    - --service-cluster-ip-range=10.96.0.0/16
+    - --use-service-account-credentials=true
+    - --enable-hostpath-provisioner=true
+    image: registry.k8s.io/kube-controller-manager:v1.36.1
+    imagePullPolicy: IfNotPresent
+    livenessProbe:
+      failureThreshold: 8
+      httpGet:
+        host: 127.0.0.1
+        path: /healthz
+        port: probe-port
+        scheme: HTTPS
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 15
+    name: kube-controller-manager
+    ports:
+    - containerPort: 10257
+      name: probe-port
+      protocol: TCP
+    resources:
+      requests:
+        cpu: 200m
+    startupProbe:
+      failureThreshold: 24
+      httpGet:
+        host: 127.0.0.1
+        path: /healthz
+        port: probe-port
+        scheme: HTTPS
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 15
+    volumeMounts:
+    - mountPath: /etc/ssl/certs
+      name: ca-certs
+      readOnly: true
+    - mountPath: /etc/ca-certificates
+      name: etc-ca-certificates
+      readOnly: true
+    - mountPath: /etc/kubernetes/pki
+      name: k8s-certs
+      readOnly: true
+    - mountPath: /etc/kubernetes/controller-manager.conf
+      name: kubeconfig
+      readOnly: true
+    - mountPath: /usr/local/share/ca-certificates
+      name: usr-local-share-ca-certificates
+      readOnly: true
+    - mountPath: /usr/share/ca-certificates
+      name: usr-share-ca-certificates
+      readOnly: true
+  hostNetwork: true
+  priority: 2000001000
+  priorityClassName: system-node-critical
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  volumes:
+  - hostPath:
+      path: /etc/ssl/certs
+      type: DirectoryOrCreate
+    name: ca-certs
+  - hostPath:
+      path: /etc/ca-certificates
+      type: DirectoryOrCreate
+    name: etc-ca-certificates
+  - hostPath:
+      path: /etc/kubernetes/pki
+      type: DirectoryOrCreate
+    name: k8s-certs
+  - hostPath:
+      path: /etc/kubernetes/controller-manager.conf
+      type: FileOrCreate
+    name: kubeconfig
+  - hostPath:
+      path: /usr/local/share/ca-certificates
+      type: DirectoryOrCreate
+    name: usr-local-share-ca-certificates
+  - hostPath:
+      path: /usr/share/ca-certificates
+      type: DirectoryOrCreate
+    name: usr-share-ca-certificates
+status: {}
+########################################################
+[/etc/kubernetes/controller-manager.conf]
+########################################################
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURCVENDQWUyZ0F3SUJBZ0lJUXhZWHJvd1dyRDh3RFFZSktvWklodmNOQVFFTEJRQXdGVEVUTUJFR0ExVUUKQXhNS2EzVmlaWEp1WlhSbGN6QWVGdzB5TmpBMk1UVXdPVFV5TURWYUZ3MHpOakEyTVRJd09UVTNNRFZhTUJVeApFekFSQmdOVkJBTVRDbXQxWW1WeWJtVjBaWE13Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXdnZ0VLCkFvSUJBUURGbDkyc1duLzBkNXVFTFdKMVN6bG1EMGN2OE5CK1ZJRTJVbVlWa2lKbXlDWDRLWmY0ZzJZZllXZWgKTWx0UlRMVG52WVJ1dDd3eFZNelFKbTYwcW53Sng4QS8wUm5VVHFjSVJuM2MwUFdsTFR5ekd3LzBjS1cxV2trcQo4T2xVMjZkSkcya1UxWFBwSytSN0pPN3ZnYnBSaFpmU1VHKzMwWDBYNFN4eTVGYy9IY3ZIOEhKVVRaRlhSV0RaCmhjQTJkZjdvNkZZTzJGU1FUQlpTS0pZd1k0NmtoYXNYT1BlR1YvTjRJQkgvcTJrdEF3WENSREphcXMrRSs5eC8KM3p4ZVlFTTczbDF3bEUrazBHVWVaNlRqUWhGMnlJcVp2WWJsKzVUdTMyRUM1V1BzUElnclY1VHFvNUkzTUJjWgp2Q0gxZEZFTGFoWVFGYXJNa0FFK2hFOW0yekV4QWdNQkFBR2pXVEJYTUE0R0ExVWREd0VCL3dRRUF3SUNwREFQCkJnTlZIUk1CQWY4RUJUQURBUUgvTUIwR0ExVWREZ1FXQkJRNnAvZFlLKzkxRE5VRkRKQjRXUWF2V1JxSmt6QVYKQmdOVkhSRUVEakFNZ2dwcmRXSmxjbTVsZEdWek1BMEdDU3FHU0liM0RRRUJDd1VBQTRJQkFRQTdqM3B0UW4vbwo3eVcrRDRqVElpNjQvRnMvSHhKc0hUbW1LVTJsV28raWVjaGFHVXB1c2Z1dEZoQ0NwVENYRGdLampIcHk2SEFDCmxESktYc2xPZVhUQVdiMURRMHIzeXdaWVNkK1BoY0hlZ0ZhT3RMSVdidUZlcFgrNmNwL1ZNcy9QNXprR3dWaFUKdVcwSDFkQ3BJSTVUWEM4SWRINkllUmduQndsc3NJTHFxN28rWHdmT0NVcklrTDFoaURCNVhVdGlaOU00Z25mTworZVI1blVWeU5SRncxSlB6b2IyZUxxK1BFbWI3N3dBaDJWRXBPOUxGVmxabVFBcWJlajdLVHJRK2I5ZTJUSlovCm53SXQzM1dEL1NYQVdjNksxaGdkcFlOaFJPQWlRa3JwM3hwRnF6N0NmaUwrUmN1cTVFWU1XdU9TUWpIdG9ERHYKRkZKL204UGdLTE5xCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+    server: https://172.21.0.2:6443
+  name: fsec
+contexts:
+- context:
+    cluster: fsec
+    user: system:kube-controller-manager
+  name: system:kube-controller-manager@fsec
+current-context: system:kube-controller-manager@fsec
+kind: Config
+users:
+- name: system:kube-controller-manager
+  user:
+    client-certificate-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURGakNDQWY2Z0F3SUJBZ0lJRVI3WUNqSlVjcXd3RFFZSktvWklodmNOQVFFTEJRQXdGVEVUTUJFR0ExVUUKQXhNS2EzVmlaWEp1WlhSbGN6QWVGdzB5TmpBMk1UVXdPVFV5TURWYUZ3MHlOekEyTVRVd09UVTNNRFZhTUNreApKekFsQmdOVkJBTVRIbk41YzNSbGJUcHJkV0psTFdOdmJuUnliMnhzWlhJdGJXRnVZV2RsY2pDQ0FTSXdEUVlKCktvWklodmNOQVFFQkJRQURnZ0VQQURDQ0FRb0NnZ0VCQU5KUVVrNkJlNlR2RW9XSUtvUGtqMWtjRTZmZGRuRkUKcmhKTkxFeXlhb1BmT2sweHFyWmdLekY4aThvaWpxMVB6R2QwWCtjV3U3UkVHbENxTVBFbDZSUDBJZFRneXFxMQppd0Mzdkd5U0JRY1hDRWdHd213WGdTZzZxM1RNWHh1TDVEL3NZaUY1a0Z5RytyTDlyMm5tNkZmaWFZWit0MGJpCjBJaXlTalpNbzI0Qk9mTmJEYk5JaWt2V0lrVENhQllMUW1xT3VOTVFSQ0VzekdHTGllTTloak1GUitDazBQTzEKYnI2UFNVNU5pN0xpNDBFQWd4K2UzL0JVQ1BIWnQrdlRWcWp3WnFsVDZ5MEloUkhPVVBsRGRRdXRRUitzN2ZqRwphczBlMENOUTNoRVVoeTN6K1dEckMzTXhHb1k3Z0dsNUFTY1VBWVdJVVcwWkk0ZXdzdi9OZHFrQ0F3RUFBYU5XCk1GUXdEZ1lEVlIwUEFRSC9CQVFEQWdXZ01CTUdBMVVkSlFRTU1Bb0dDQ3NHQVFVRkJ3TUNNQXdHQTFVZEV3RUIKL3dRQ01BQXdId1lEVlIwakJCZ3dGb0FVT3FmM1dDdnZkUXpWQlF5UWVGa0dyMWthaVpNd0RRWUpLb1pJaHZjTgpBUUVMQlFBRGdnRUJBSTd3ZDZvZEtuYlZTRTBMOVhmYTNybmhzZTdzZnRkazFjTXBqK3htSHBaWUR4OFlqUDFHCklyTzFJV3NwU3Ewdy9mUm4ycU0vYzRnUjlXOElPWkdvSUorQkM0M0hrSW1GQldJVGZjQXpraStiSkgraXg2QVYKTTBaakVkbmRCc28vc1Y0dlNieGQ4Mk80U0czcks0QnR0T1R3bnBVRDZMZml5b1YxamlPdE1yL3c0MlJqK0tLcgpkajlmNTBNQnM1S2VCeVpVWEJUSHdrdG8vNjhWaVNGYi9MMngya3B2eWJMaHphZ1FyOWFrbndIWGVSQlErc0NWCk80Sm15NjlwVVBwY2xqS29mc21HUzRIclpuYWYvVUtkWm1sZkM4ZXpnWnNvWlBqSFlFcG5LU1lETnRqOFJ5ZUcKalVtMFdaOUtUUmdyWUk0RGZjMURnT3R6cHpldTNtMnp0VGM9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+    client-key-data: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFcEFJQkFBS0NBUUVBMGxCU1RvRjdwTzhTaFlncWcrU1BXUndUcDkxMmNVU3VFazBzVExKcWc5ODZUVEdxCnRtQXJNWHlMeWlLT3JVL01aM1JmNXhhN3RFUWFVS293OFNYcEUvUWgxT0RLcXJXTEFMZThiSklGQnhjSVNBYkMKYkJlQktEcXJkTXhmRzR2a1AreGlJWG1RWEliNnN2MnZhZWJvVitKcGhuNjNSdUxRaUxKS05reWpiZ0U1ODFzTgpzMGlLUzlZaVJNSm9GZ3RDYW82NDB4QkVJU3pNWVl1SjR6MkdNd1ZINEtUUTg3VnV2bzlKVGsyTHN1TGpRUUNECkg1N2Y4RlFJOGRtMzY5TldxUEJtcVZQckxRaUZFYzVRK1VOMUM2MUJINnp0K01acXpSN1FJMURlRVJTSExmUDUKWU9zTGN6RWFoanVBYVhrQkp4UUJoWWhSYlJramg3Q3kvODEycVFJREFRQUJBb0lCQUJYRTlLVmxwN3ZCeks2cQpaK1F4R0s3R1JqaytVT1ZCTzZ6RW40enMwWWtHNW8wRHFCZXFvQU5HVUxOQ25TRjVaMm9KLzJkTWUyOXZDOTVFCitqM3IzbEs2RnNwbk01M2ZTWEp3a2xOcit6M3BvaFRQMjZOcFVoZ3M3U25HTEhpNGVUbURWQUVDWHB3RlBoYWcKUmJPZzVYU1FzMldWaTQ1aktlZGh0UkY3eTFXTHk1RXUxdnRSOHlyUVZZOHlrOTdvVXEyb2s4NVcwSGVoLy9JUgorWnlWWEU2Mitydi9OZDRRQzRiSzN4akFOTEdDcTBUbVM5REtLT2hScmg0WUxpYnZzR3ByMmpTejEvUWY5Y1Q2Ckd6azU0NGZNSHNiUjducnliTGJTQVNTSDFsY05DRmIySzBUYzFTMVN3SnJHVmVDbjBpRGtUZ3h0Vm04UVFzQlAKaHQxUFZ4VUNnWUVBNG1lRDJCb0M2UTBDcHRxbkJlRWo0NER0cmdHNHZFdDlrYjR6bVgxeURvZTlvdFN5N2xYWgp4elVQSXNSQllienQ2bUZaQnRhVVhnN3NlbmdFbnRhNmlBR3R6eGRjL1UwT0RUZ0tac3JmS1ppZHMvWmpmVjZoCkpiNms3NXl3NmNDMURsd29RdVkyZzlaLzk4QlQvVXpHMkR3azdkeHNxUzQxTFBEZTZ5djVHUk1DZ1lFQTdjNVkKSStzNmNPekhLbDhld0pVNmJ6cUVOK0Uwd1o2UjMxa1E3YjljS0czN3BqRTRIc1hXa0JJRlJLZldHQnZsRVZnTgp6WnRaRUVKa3RiR2ludXZLN2JIYXM2QkhJb0h6cmVzbmpCMGR3bkxDYTBack4ySS9QdjhuRWNEZUVCc1BoMXlBCkZ4L1hiNFJYV1JVMysyaGIzS0t3QlBQM0RwQUdobi9KK1k4d2hOTUNnWUEwY2NBVHRlcklxMC9hOExsUjNsWWUKNUFXcWtoR0Y1SUxBMk90QStkTUsxSnl6OUV0Q2REYVBNNVkrK25FZXY5SG93Z1lLVkhobjFWTW9CMWNpcUNEcgpVbUE5b1c3VDZoNkFKMlFaYlpNR0lxa2RQOHpLQkxxVmNMVHFJRVRHMFBIZjBxOHMyQUQyeHlBN2RweStCeVBrCmdRSVk2ejlzYlJ5NlBVMlY4a2l3YXdLQmdRRGVHUkdJdW5EaWRzR3NlUm9ua3pmNEdoYlNlYXJrQ2swQzVCUkQKZDYyQ3RQV0t5ZjA0QUYzY1FIaGJIc1Y5enMrcDJ5dEpGQVdpZ2QrOU1pSkhlc0VVTGorcjg4MThGUktaSkQ3VApSWDQ5MVNCdlFGMXlaSGZkUmtBZS9KcHBRRnpJZDBQS1ZScklORG5BSVdrZmpOLyt1SkxjalYzNFk5czBVclU0Ck50dUJzUUtCZ1FDYWFxL3VmcTc5N2dkeGVUbCtoQ1FHVW1xVStSUWhqdTg5SmhDenVjQWQyc1R6UWV1OG9OakgKcFlRemRuMUJOR2VvT1hZNG5TaEljcnUxN0o5L29TVXUzRlF5dE1ZY2M4ZDBuVVpsMzJMaVFCVFZLTmVNV3BmZQpUQXpmalhML1FMYzZFL3JTZzF3NTJINWw0aS9YNzJleC93VllOcjZ5bFp5aU9DWGRjcDVoQ0E9PQotLS0tLUVORCBSU0EgUFJJVkFURSBLRVktLS0tLQo=
+########################################################
+[/etc/kubernetes/controller-manager.conf]
+########################################################
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURCVENDQWUyZ0F3SUJBZ0lJUXhZWHJvd1dyRDh3RFFZSktvWklodmNOQVFFTEJRQXdGVEVUTUJFR0ExVUUKQXhNS2EzVmlaWEp1WlhSbGN6QWVGdzB5TmpBMk1UVXdPVFV5TURWYUZ3MHpOakEyTVRJd09UVTNNRFZhTUJVeApFekFSQmdOVkJBTVRDbXQxWW1WeWJtVjBaWE13Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXdnZ0VLCkFvSUJBUURGbDkyc1duLzBkNXVFTFdKMVN6bG1EMGN2OE5CK1ZJRTJVbVlWa2lKbXlDWDRLWmY0ZzJZZllXZWgKTWx0UlRMVG52WVJ1dDd3eFZNelFKbTYwcW53Sng4QS8wUm5VVHFjSVJuM2MwUFdsTFR5ekd3LzBjS1cxV2trcQo4T2xVMjZkSkcya1UxWFBwSytSN0pPN3ZnYnBSaFpmU1VHKzMwWDBYNFN4eTVGYy9IY3ZIOEhKVVRaRlhSV0RaCmhjQTJkZjdvNkZZTzJGU1FUQlpTS0pZd1k0NmtoYXNYT1BlR1YvTjRJQkgvcTJrdEF3WENSREphcXMrRSs5eC8KM3p4ZVlFTTczbDF3bEUrazBHVWVaNlRqUWhGMnlJcVp2WWJsKzVUdTMyRUM1V1BzUElnclY1VHFvNUkzTUJjWgp2Q0gxZEZFTGFoWVFGYXJNa0FFK2hFOW0yekV4QWdNQkFBR2pXVEJYTUE0R0ExVWREd0VCL3dRRUF3SUNwREFQCkJnTlZIUk1CQWY4RUJUQURBUUgvTUIwR0ExVWREZ1FXQkJRNnAvZFlLKzkxRE5VRkRKQjRXUWF2V1JxSmt6QVYKQmdOVkhSRUVEakFNZ2dwcmRXSmxjbTVsZEdWek1BMEdDU3FHU0liM0RRRUJDd1VBQTRJQkFRQTdqM3B0UW4vbwo3eVcrRDRqVElpNjQvRnMvSHhKc0hUbW1LVTJsV28raWVjaGFHVXB1c2Z1dEZoQ0NwVENYRGdLampIcHk2SEFDCmxESktYc2xPZVhUQVdiMURRMHIzeXdaWVNkK1BoY0hlZ0ZhT3RMSVdidUZlcFgrNmNwL1ZNcy9QNXprR3dWaFUKdVcwSDFkQ3BJSTVUWEM4SWRINkllUmduQndsc3NJTHFxN28rWHdmT0NVcklrTDFoaURCNVhVdGlaOU00Z25mTworZVI1blVWeU5SRncxSlB6b2IyZUxxK1BFbWI3N3dBaDJWRXBPOUxGVmxabVFBcWJlajdLVHJRK2I5ZTJUSlovCm53SXQzM1dEL1NYQVdjNksxaGdkcFlOaFJPQWlRa3JwM3hwRnF6N0NmaUwrUmN1cTVFWU1XdU9TUWpIdG9ERHYKRkZKL204UGdLTE5xCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+    server: https://172.21.0.2:6443
+  name: fsec
+contexts:
+- context:
+    cluster: fsec
+    user: system:kube-controller-manager
+  name: system:kube-controller-manager@fsec
+current-context: system:kube-controller-manager@fsec
+kind: Config
+users:
+- name: system:kube-controller-manager
+  user:
+    client-certificate-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURGakNDQWY2Z0F3SUJBZ0lJRVI3WUNqSlVjcXd3RFFZSktvWklodmNOQVFFTEJRQXdGVEVUTUJFR0ExVUUKQXhNS2EzVmlaWEp1WlhSbGN6QWVGdzB5TmpBMk1UVXdPVFV5TURWYUZ3MHlOekEyTVRVd09UVTNNRFZhTUNreApKekFsQmdOVkJBTVRIbk41YzNSbGJUcHJkV0psTFdOdmJuUnliMnhzWlhJdGJXRnVZV2RsY2pDQ0FTSXdEUVlKCktvWklodmNOQVFFQkJRQURnZ0VQQURDQ0FRb0NnZ0VCQU5KUVVrNkJlNlR2RW9XSUtvUGtqMWtjRTZmZGRuRkUKcmhKTkxFeXlhb1BmT2sweHFyWmdLekY4aThvaWpxMVB6R2QwWCtjV3U3UkVHbENxTVBFbDZSUDBJZFRneXFxMQppd0Mzdkd5U0JRY1hDRWdHd213WGdTZzZxM1RNWHh1TDVEL3NZaUY1a0Z5RytyTDlyMm5tNkZmaWFZWit0MGJpCjBJaXlTalpNbzI0Qk9mTmJEYk5JaWt2V0lrVENhQllMUW1xT3VOTVFSQ0VzekdHTGllTTloak1GUitDazBQTzEKYnI2UFNVNU5pN0xpNDBFQWd4K2UzL0JVQ1BIWnQrdlRWcWp3WnFsVDZ5MEloUkhPVVBsRGRRdXRRUitzN2ZqRwphczBlMENOUTNoRVVoeTN6K1dEckMzTXhHb1k3Z0dsNUFTY1VBWVdJVVcwWkk0ZXdzdi9OZHFrQ0F3RUFBYU5XCk1GUXdEZ1lEVlIwUEFRSC9CQVFEQWdXZ01CTUdBMVVkSlFRTU1Bb0dDQ3NHQVFVRkJ3TUNNQXdHQTFVZEV3RUIKL3dRQ01BQXdId1lEVlIwakJCZ3dGb0FVT3FmM1dDdnZkUXpWQlF5UWVGa0dyMWthaVpNd0RRWUpLb1pJaHZjTgpBUUVMQlFBRGdnRUJBSTd3ZDZvZEtuYlZTRTBMOVhmYTNybmhzZTdzZnRkazFjTXBqK3htSHBaWUR4OFlqUDFHCklyTzFJV3NwU3Ewdy9mUm4ycU0vYzRnUjlXOElPWkdvSUorQkM0M0hrSW1GQldJVGZjQXpraStiSkgraXg2QVYKTTBaakVkbmRCc28vc1Y0dlNieGQ4Mk80U0czcks0QnR0T1R3bnBVRDZMZml5b1YxamlPdE1yL3c0MlJqK0tLcgpkajlmNTBNQnM1S2VCeVpVWEJUSHdrdG8vNjhWaVNGYi9MMngya3B2eWJMaHphZ1FyOWFrbndIWGVSQlErc0NWCk80Sm15NjlwVVBwY2xqS29mc21HUzRIclpuYWYvVUtkWm1sZkM4ZXpnWnNvWlBqSFlFcG5LU1lETnRqOFJ5ZUcKalVtMFdaOUtUUmdyWUk0RGZjMURnT3R6cHpldTNtMnp0VGM9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+    client-key-data: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFcEFJQkFBS0NBUUVBMGxCU1RvRjdwTzhTaFlncWcrU1BXUndUcDkxMmNVU3VFazBzVExKcWc5ODZUVEdxCnRtQXJNWHlMeWlLT3JVL01aM1JmNXhhN3RFUWFVS293OFNYcEUvUWgxT0RLcXJXTEFMZThiSklGQnhjSVNBYkMKYkJlQktEcXJkTXhmRzR2a1AreGlJWG1RWEliNnN2MnZhZWJvVitKcGhuNjNSdUxRaUxKS05reWpiZ0U1ODFzTgpzMGlLUzlZaVJNSm9GZ3RDYW82NDB4QkVJU3pNWVl1SjR6MkdNd1ZINEtUUTg3VnV2bzlKVGsyTHN1TGpRUUNECkg1N2Y4RlFJOGRtMzY5TldxUEJtcVZQckxRaUZFYzVRK1VOMUM2MUJINnp0K01acXpSN1FJMURlRVJTSExmUDUKWU9zTGN6RWFoanVBYVhrQkp4UUJoWWhSYlJramg3Q3kvODEycVFJREFRQUJBb0lCQUJYRTlLVmxwN3ZCeks2cQpaK1F4R0s3R1JqaytVT1ZCTzZ6RW40enMwWWtHNW8wRHFCZXFvQU5HVUxOQ25TRjVaMm9KLzJkTWUyOXZDOTVFCitqM3IzbEs2RnNwbk01M2ZTWEp3a2xOcit6M3BvaFRQMjZOcFVoZ3M3U25HTEhpNGVUbURWQUVDWHB3RlBoYWcKUmJPZzVYU1FzMldWaTQ1aktlZGh0UkY3eTFXTHk1RXUxdnRSOHlyUVZZOHlrOTdvVXEyb2s4NVcwSGVoLy9JUgorWnlWWEU2Mitydi9OZDRRQzRiSzN4akFOTEdDcTBUbVM5REtLT2hScmg0WUxpYnZzR3ByMmpTejEvUWY5Y1Q2Ckd6azU0NGZNSHNiUjducnliTGJTQVNTSDFsY05DRmIySzBUYzFTMVN3SnJHVmVDbjBpRGtUZ3h0Vm04UVFzQlAKaHQxUFZ4VUNnWUVBNG1lRDJCb0M2UTBDcHRxbkJlRWo0NER0cmdHNHZFdDlrYjR6bVgxeURvZTlvdFN5N2xYWgp4elVQSXNSQllienQ2bUZaQnRhVVhnN3NlbmdFbnRhNmlBR3R6eGRjL1UwT0RUZ0tac3JmS1ppZHMvWmpmVjZoCkpiNms3NXl3NmNDMURsd29RdVkyZzlaLzk4QlQvVXpHMkR3azdkeHNxUzQxTFBEZTZ5djVHUk1DZ1lFQTdjNVkKSStzNmNPekhLbDhld0pVNmJ6cUVOK0Uwd1o2UjMxa1E3YjljS0czN3BqRTRIc1hXa0JJRlJLZldHQnZsRVZnTgp6WnRaRUVKa3RiR2ludXZLN2JIYXM2QkhJb0h6cmVzbmpCMGR3bkxDYTBack4ySS9QdjhuRWNEZUVCc1BoMXlBCkZ4L1hiNFJYV1JVMysyaGIzS0t3QlBQM0RwQUdobi9KK1k4d2hOTUNnWUEwY2NBVHRlcklxMC9hOExsUjNsWWUKNUFXcWtoR0Y1SUxBMk90QStkTUsxSnl6OUV0Q2REYVBNNVkrK25FZXY5SG93Z1lLVkhobjFWTW9CMWNpcUNEcgpVbUE5b1c3VDZoNkFKMlFaYlpNR0lxa2RQOHpLQkxxVmNMVHFJRVRHMFBIZjBxOHMyQUQyeHlBN2RweStCeVBrCmdRSVk2ejlzYlJ5NlBVMlY4a2l3YXdLQmdRRGVHUkdJdW5EaWRzR3NlUm9ua3pmNEdoYlNlYXJrQ2swQzVCUkQKZDYyQ3RQV0t5ZjA0QUYzY1FIaGJIc1Y5enMrcDJ5dEpGQVdpZ2QrOU1pSkhlc0VVTGorcjg4MThGUktaSkQ3VApSWDQ5MVNCdlFGMXlaSGZkUmtBZS9KcHBRRnpJZDBQS1ZScklORG5BSVdrZmpOLyt1SkxjalYzNFk5czBVclU0Ck50dUJzUUtCZ1FDYWFxL3VmcTc5N2dkeGVUbCtoQ1FHVW1xVStSUWhqdTg5SmhDenVjQWQyc1R6UWV1OG9OakgKcFlRemRuMUJOR2VvT1hZNG5TaEljcnUxN0o5L29TVXUzRlF5dE1ZY2M4ZDBuVVpsMzJMaVFCVFZLTmVNV3BmZQpUQXpmalhML1FMYzZFL3JTZzF3NTJINWw0aS9YNzJleC93VllOcjZ5bFp5aU9DWGRjcDVoQ0E9PQotLS0tLUVORCBSU0EgUFJJVkFURSBLRVktLS0tLQo=
+########################################################
+[/etc/kubernetes/manifests/etcd.yaml]
+########################################################
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    kubeadm.kubernetes.io/etcd.advertise-client-urls: https://172.21.0.2:2379
+  labels:
+    component: etcd
+    tier: control-plane
+  name: etcd
+  namespace: kube-system
+spec:
+  containers:
+  - command:
+    - etcd
+    - --advertise-client-urls=https://172.21.0.2:2379
+    - --cert-file=/etc/kubernetes/pki/etcd/server.crt
+    - --client-cert-auth=true
+    - --data-dir=/var/lib/etcd
+    - --feature-gates=InitialCorruptCheck=true
+    - --initial-advertise-peer-urls=https://172.21.0.2:2380
+    - --initial-cluster=fsec-control-plane=https://172.21.0.2:2380
+    - --key-file=/etc/kubernetes/pki/etcd/server.key
+    - --listen-client-urls=https://127.0.0.1:2379,https://172.21.0.2:2379
+    - --listen-metrics-urls=http://127.0.0.1:2381
+    - --listen-peer-urls=https://172.21.0.2:2380
+    - --name=fsec-control-plane
+    - --peer-cert-file=/etc/kubernetes/pki/etcd/peer.crt
+    - --peer-client-cert-auth=true
+    - --peer-key-file=/etc/kubernetes/pki/etcd/peer.key
+    - --peer-trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
+    - --snapshot-count=10000
+    - --trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
+    - --watch-progress-notify-interval=5s
+    image: registry.k8s.io/etcd:3.6.8-0
+    imagePullPolicy: IfNotPresent
+    livenessProbe:
+      failureThreshold: 8
+      httpGet:
+        host: 127.0.0.1
+        path: /livez
+        port: probe-port
+        scheme: HTTP
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 15
+    name: etcd
+    ports:
+    - containerPort: 2381
+      name: probe-port
+      protocol: TCP
+    readinessProbe:
+      failureThreshold: 3
+      httpGet:
+        host: 127.0.0.1
+        path: /readyz
+        port: probe-port
+        scheme: HTTP
+      periodSeconds: 1
+      timeoutSeconds: 15
+    resources:
+      requests:
+        cpu: 100m
+        memory: 100Mi
+    startupProbe:
+      failureThreshold: 24
+      httpGet:
+        host: 127.0.0.1
+        path: /readyz
+        port: probe-port
+        scheme: HTTP
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 15
+    volumeMounts:
+    - mountPath: /var/lib/etcd
+      name: etcd-data
+    - mountPath: /etc/kubernetes/pki/etcd
+      name: etcd-certs
+  hostNetwork: true
+  priority: 2000001000
+  priorityClassName: system-node-critical
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  volumes:
+  - hostPath:
+      path: /etc/kubernetes/pki/etcd
+      type: DirectoryOrCreate
+    name: etcd-certs
+  - hostPath:
+      path: /var/lib/etcd
+      type: DirectoryOrCreate
+    name: etcd-data
+status: {}
+				]]>
+			</output>
+		</dump>
+F_PRC_C_GETALLconf
+		<dump>
+			<items>
+				<id>PRC-C-GetPS</id>
+				<field>k8s_master</field>
+				<name>-</name>
+			</items>
+			<output>
+				<![CDATA[
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root           1  0.2  0.1  27324 15416 ?        Ss   09:57   0:00 /sbin/init
+root          87  0.0  0.1  26532  9336 ?        Ss   09:57   0:00 /usr/lib/systemd/systemd-journald
+root         129  2.1  0.8 3513288 70556 ?       Ssl  09:57   0:02 /usr/local/bin/containerd
+root         298  0.1  0.1 1267796 15984 ?       Sl   09:57   0:00 /usr/local/bin/containerd-shim-runc-v2 -namespace k8s.io -id 9dfa8904a8e90fe4cc69fa9589ef74f4312c429ebd218c4e3b624fe459fa9957 -address /run/containerd/containerd.sock
+root         307  0.1  0.1 1267796 13968 ?       Sl   09:57   0:00 /usr/local/bin/containerd-shim-runc-v2 -namespace k8s.io -id db4297cb292e4306216c6125ebe9e23de5bb7e1b40bbbf528f0326229c01cee9 -address /run/containerd/containerd.sock
+root         333  0.1  0.1 1267796 14088 ?       Sl   09:57   0:00 /usr/local/bin/containerd-shim-runc-v2 -namespace k8s.io -id c4d9eccf3024ed717395be99a0b4f196727dee901f3075ca7a17c12cd860f7d8 -address /run/containerd/containerd.sock
+root         352  0.1  0.1 1267796 13664 ?       Sl   09:57   0:00 /usr/local/bin/containerd-shim-runc-v2 -namespace k8s.io -id a6456cc2431eb786cd687acd4c579e0a1219d73c67ee4a70ca4b1b15101e9bf5 -address /run/containerd/containerd.sock
+65535        411  0.0  0.0    792   460 ?        Ss   09:57   0:00 /pause
+65535        418  0.0  0.0    792   460 ?        Ss   09:57   0:00 /pause
+65535        425  0.0  0.0    792   460 ?        Ss   09:57   0:00 /pause
+65535        432  0.0  0.0    792   460 ?        Ss   09:57   0:00 /pause
+root         591  1.4  1.4 1396720 115056 ?      Ssl  09:57   0:01 kube-controller-manager --allocate-node-cidrs=true --authentication-kubeconfig=/etc/kubernetes/controller-manager.conf --authorization-kubeconfig=/etc/kubernetes/controller-manager.conf --bind-address=127.0.0.1 --client-ca-file=/etc/kubernetes/pki/ca.crt --cluster-cidr=10.244.0.0/16 --cluster-name=fsec --cluster-signing-cert-file=/etc/kubernetes/pki/ca.crt --cluster-signing-key-file=/etc/kubernetes/pki/ca.key --controllers=*,bootstrapsigner,tokencleaner --kubeconfig=/etc/kubernetes/controller-manager.conf --leader-elect=true --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt --root-ca-file=/etc/kubernetes/pki/ca.crt --service-account-private-key-file=/etc/kubernetes/pki/sa.key --service-cluster-ip-range=10.96.0.0/16 --use-service-account-credentials=true --enable-hostpath-provisioner=true
+root         599  0.8  0.7 1308432 60168 ?       Ssl  09:57   0:01 kube-scheduler --authentication-kubeconfig=/etc/kubernetes/scheduler.conf --authorization-kubeconfig=/etc/kubernetes/scheduler.conf --bind-address=127.0.0.1 --kubeconfig=/etc/kubernetes/scheduler.conf --leader-elect=true
+root         601  1.9  0.7 11740196 58308 ?      Ssl  09:57   0:02 etcd --advertise-client-urls=https://172.21.0.2:2379 --cert-file=/etc/kubernetes/pki/etcd/server.crt --client-cert-auth=true --data-dir=/var/lib/etcd --feature-gates=InitialCorruptCheck=true --initial-advertise-peer-urls=https://172.21.0.2:2380 --initial-cluster=fsec-control-plane=https://172.21.0.2:2380 --key-file=/etc/kubernetes/pki/etcd/server.key --listen-client-urls=https://127.0.0.1:2379,https://172.21.0.2:2379 --listen-metrics-urls=http://127.0.0.1:2381 --listen-peer-urls=https://172.21.0.2:2380 --name=fsec-control-plane --peer-cert-file=/etc/kubernetes/pki/etcd/peer.crt --peer-client-cert-auth=true --peer-key-file=/etc/kubernetes/pki/etcd/peer.key --peer-trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt --snapshot-count=10000 --trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt --watch-progress-notify-interval=5s
+root         608  4.7  3.4 1544500 280108 ?      Ssl  09:57   0:06 kube-apiserver --advertise-address=172.21.0.2 --allow-privileged=true --authorization-mode=Node,RBAC --client-ca-file=/etc/kubernetes/pki/ca.crt --enable-admission-plugins=NodeRestriction --enable-bootstrap-token-auth=true --etcd-cafile=/etc/kubernetes/pki/etcd/ca.crt --etcd-certfile=/etc/kubernetes/pki/apiserver-etcd-client.crt --etcd-keyfile=/etc/kubernetes/pki/apiserver-etcd-client.key --etcd-servers=https://127.0.0.1:2379 --kubelet-client-certificate=/etc/kubernetes/pki/apiserver-kubelet-client.crt --kubelet-client-key=/etc/kubernetes/pki/apiserver-kubelet-client.key --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname --proxy-client-cert-file=/etc/kubernetes/pki/front-proxy-client.crt --proxy-client-key-file=/etc/kubernetes/pki/front-proxy-client.key --requestheader-allowed-names=front-proxy-client --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt --requestheader-extra-headers-prefix=X-Remote-Extra- --requestheader-group-headers=X-Remote-Group --requestheader-username-headers=X-Remote-User --secure-port=6443 --service-account-issuer=https://kubernetes.default.svc.cluster.local --service-account-key-file=/etc/kubernetes/pki/sa.pub --service-account-signing-key-file=/etc/kubernetes/pki/sa.key --service-cluster-ip-range=10.96.0.0/16 --tls-cert-file=/etc/kubernetes/pki/apiserver.crt --tls-private-key-file=/etc/kubernetes/pki/apiserver.key --runtime-config=
+root         752  2.1  1.1 2788944 89660 ?       Ssl  09:57   0:02 /usr/bin/kubelet --bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --kubeconfig=/etc/kubernetes/kubelet.conf --config=/var/lib/kubelet/config.yaml --node-ip=172.21.0.2 --provider-id=kind://docker/fsec/fsec-control-plane --node-labels= --runtime-cgroups=/system.slice/containerd.service
+root         906  0.1  0.1 1333404 13796 ?       Sl   09:57   0:00 /usr/local/bin/containerd-shim-runc-v2 -namespace k8s.io -id feb8b195e8a783be0a9440703791cac742a790f1649b885d6a7f33c940bccbdf -address /run/containerd/containerd.sock
+root         919  0.1  0.1 1333404 13904 ?       Sl   09:57   0:00 /usr/local/bin/containerd-shim-runc-v2 -namespace k8s.io -id 39f5b90cd89b6c0f817944f1d04b6919f233c56d77d179849afc8da8777a3ff8 -address /run/containerd/containerd.sock
+65535        959  0.0  0.0    792   460 ?        Ss   09:57   0:00 /pause
+65535        964  0.0  0.0    792   460 ?        Ss   09:57   0:00 /pause
+root         992  0.0  0.6 1303080 50284 ?       Ssl  09:57   0:00 /usr/local/bin/kube-proxy --config=/var/lib/kube-proxy/config.conf --hostname-override=fsec-control-plane
+root        1059  0.0  0.4 1305016 39676 ?       Ssl  09:57   0:00 /bin/kindnetd
+root        1343  0.1  0.1 1268052 13276 ?       Sl   09:57   0:00 /usr/local/bin/containerd-shim-runc-v2 -namespace k8s.io -id ad9ef31a3dc826b0f9e9597ae54a6c34ef15a90c0413eb9e141a6164bea1d975 -address /run/containerd/containerd.sock
+root        1345  0.1  0.1 1267796 13876 ?       Sl   09:57   0:00 /usr/local/bin/containerd-shim-runc-v2 -namespace k8s.io -id e56a16df629a392bde5f9a9c52e66d6441dfaed0716a00830ce5689be3c3f68f -address /run/containerd/containerd.sock
+root        1356  0.1  0.1 1267796 14268 ?       Sl   09:57   0:00 /usr/local/bin/containerd-shim-runc-v2 -namespace k8s.io -id b59a53d35192e03061d6bb8f10d82bf9a27d90172bd7ce3e7250c357082f31ef -address /run/containerd/containerd.sock
+65535       1417  0.0  0.0    792   460 ?        Ss   09:57   0:00 /pause
+65535       1424  0.0  0.0    792   460 ?        Ss   09:57   0:00 /pause
+65535       1428  0.0  0.0    792   460 ?        Ss   09:57   0:00 /pause
+root        1539  0.0  0.5 1309640 43736 ?       Ssl  09:57   0:00 local-path-provisioner --debug start --helper-image docker.io/kindest/local-path-helper:v20260131-7181c60a --config /etc/config/config.json
+65532       1564  0.2  0.7 1328944 59740 ?       Ssl  09:57   0:00 /coredns -conf /etc/coredns/Corefile
+65532       1581  0.1  0.7 1329200 59900 ?       Ssl  09:57   0:00 /coredns -conf /etc/coredns/Corefile
+root        1687  0.0  0.0   3900  2768 ?        Ss   09:58   0:00 bash -c    cd /root; tr -d '' < c_raw.sh > c.sh   export KUBECONFIG=/etc/kubernetes/admin.conf   timeout 180 sh c.sh k8s 2>&1 | tail -5   echo '--- ????????? xml ---'   ls -la /root/*.xml 2>/dev/null 
+root        1694  0.0  0.0   2308  1168 ?        S    09:58   0:00 timeout 180 sh c.sh k8s
+root        1695  0.0  0.0   2340  1188 ?        S    09:58   0:00 tail -5
+root        1696  0.2  0.0   3184  2208 ?        S    09:58   0:00 sh c.sh k8s
+root        6802  0.0  0.0   3184  1632 ?        S    09:59   0:00 sh c.sh k8s
+root        6803  0.0  0.0   6004  3208 ?        R    09:59   0:00 ps auxwww
+				]]>
+			</output>
+		</dump>
+F_PRC_C_GetPS
+	</results>
+	<runtime>Mon Jun 15 09:58:38 UTC 2026 ~ </runtime>
+</script>

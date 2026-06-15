@@ -37,11 +37,18 @@ class Profile:
     excluded: bool = False                          # True면 구조만 정의·판정 배제(Tibero)
 
     def normalize_id(self, raw: str) -> str:
-        """'pism_037_1' -> 'PISM-037'. 접두어+첫 숫자만 사용, 하위 인덱스 제거."""
-        m = re.match(r"\s*([A-Za-z]+)[_-](\d+)", raw)
+        """'pism_037_1' -> 'PISM-037'. 접두어+첫 숫자만 사용, 하위 인덱스 제거.
+
+        접두어가 글자그룹 사이에 구분자를 갖는 형태('PRC-C-001')도 흡수해
+        구분자를 제거하고 합친다('PRCC-001'). 실수집 컨테이너 스크립트
+        (fsec_container_script.sh) 출력이 'PRC-C-NNN' 표기이기 때문.
+        단일 글자그룹(SRV/DBM/PISM/PRCV 등)은 동작 불변.
+        """
+        m = re.match(r"\s*([A-Za-z]+(?:[_-][A-Za-z]+)*)[_-](\d+)", raw)
         if not m:
             return raw.strip().upper()
-        return f"{m.group(1).upper()}-{int(m.group(2)):03d}"
+        prefix = re.sub(r"[_-]", "", m.group(1)).upper()
+        return f"{prefix}-{int(m.group(2)):03d}"
 
     def variant_from_filename(self, filename: str) -> Optional[str]:
         """파일명에서 변형을 식별한다. 여러 변형의 마커가 동시에 매칭되면

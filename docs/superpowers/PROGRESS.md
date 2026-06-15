@@ -1,10 +1,21 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-15 (sanitize 제어문자 정규화 — 서버 실데이터 Docker 검증, 660 tests). 다음 세션에서 이 파일부터 읽고 이어서 진행할 것.
+> 마지막 업데이트: 2026-06-15 (Docker 실수집 7건 + collected/ 정리 + 폴더 재배치). 다음 세션에서 이 파일부터 읽고 이어서 진행할 것.
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. commit/push 안 함 — 문서로만 이어받음.
 >  "개발진행해" 트리거는 CLAUDE.md 참조. 이 파일이 단일 진실원천.)
 
 ## ▶ 다음 세션 즉시 시작점 (TL;DR)
+- **★다음 작업 = 획득 결과파일의 local LLM 판정 유효성 검토** (사용자 지정).
+  Docker/제공으로 결과파일 획득한 대상에 대해 스크립트 결과를 local LLM(Ollama)이
+  얼마나 잘 판단하는지 평가. 획득 현황은 `collected/INDEX.md` 참조.
+- **★Docker 실수집 완료(2026-06-15, 8건)**: 서버Linux + DB 5종 네이티브(MySQL/MariaDB/
+  PostgreSQL/MS-SQL/Oracle) + 웹Apache + 컨테이너 k8s_master(kind). 전부 파서 검증 통과.
+  `collected/{server,db,web,container}/`에 저장. 폴더 재배치: 제공 점검스크립트→`scripts/check_scripts/`,
+  신규수집→`collected/`, 기존실샘플→`results/`·`ref/FW/`(불변). 분류표 `collected/INDEX.md`.
+  수집 갭(처리): 제어문자 sanitize(수정), **컨테이너 PRC-C↔PRCC normalize_id(수정, 매칭 0→36/39)**,
+  MySQL/MariaDB 환경변수 주입, MS-SQL sqlcmd prefix 정제, Oracle 23c 권한차. (661 tests)
+- **다음 후보**: ①획득 결과의 local LLM 판정 유효성 검토(아래 ★), ②취약 환경 구성으로
+  취약 판정 샘플 다양화(점검 기준의 취약조건 역주입 — 사용자 요청, 미착수).
 - **로드맵 실행순서: ① → ③ → ④ → ② → ⑤ → ⑥** (아래 "도메인 로드맵" 참조)
 - **★실데이터 검증 시작(2026-06-15)**: fsi_unix.sh(서버 스크립트)를 Docker(ubuntu:22.04)에서
   실제 실행 → 출력 XML이 server_xml/webwas_xml 파서 가정과 **구조 완전 일치** 확인
@@ -121,9 +132,15 @@ profile.OS_VIRT에 반영됨(standard_col=16/18/20, method_col=15/17/19, app_col
 구조/단위테스트+Opus재리뷰 완료(557 tests). [L]잔존: JWT alg:none 미탐(k8s SA토큰 실영향 없음),
 EUC-KR 테스트 마스킹검증 보강(기능결함 없음). 아래는 **실제 컨테이너 결과로 판정을 켜기 전** 처리.
 
-1. **수집 포맷 확정(선행조건)** — kubectl 결과를 수집·저장하는 스크립트가 없음. 현재
-   파서(container_xml)는 server_xml과 동일 PROVISIONAL XML 엔벨로프 가정. 실수집 방식
-   확정 후 포맷 변경 시 Profile.parser 1줄 교체.
+0. **★ID 표기 정규화 갭(2026-06-15 발견)** — 제공 스크립트(fsec_container_script.sh)는
+   항목을 `PRC-C-001` 표기, 기준/파서는 `PRCC-001`. profile.normalize_id가 `PRC-C-001`을
+   정규화 못 해(`([A-Za-z]+)[_-](\d+)` 패턴 불일치) 매칭 실패→전건 누락. 컨테이너 활성화
+   전 normalize_id에 `PRC-C-NNN`→`PRCC-NNN` 변환 보강 필수. (단 스크립트 출력 XML의
+   실제 <id> 표기는 미확인 — fsec_container_script.sh는 docker+kubectl 의존이라 kind 클러스터
+   구축 후 실행 필요. 스크립트 체크리스트 표기 기준 추정.)
+1. **수집 포맷 확정(선행조건)** — fsec_container_script.sh 존재(scripts/check_scripts/
+   virtualization/). docker+kubectl 의존 → kind/minikube로 k8s 클러스터 구축 후 실행 가능.
+   현재 파서(container_xml)는 server_xml과 동일 PROVISIONAL XML 엔벨로프 가정.
 2. **item_configs/container.yaml 전수 라벨분류** — 50항목 전부 기본 A(LLM). 샘플 확보
    + 판단기준 정독 후 C(기술한계)/D(버전·패치)/B(인터뷰) 분류.
 3. **detect_variant 실데이터 검증** — 수집 스크립트가 `<asset><variant>` 또는

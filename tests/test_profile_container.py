@@ -93,6 +93,14 @@ def test_container_normalize_id():
     assert CONTAINER.normalize_id("prcc_050_1") == "PRCC-050"  # 하위 인덱스 제거
 
 
+def test_container_normalize_id_prc_c_form():
+    """실수집 스크립트(fsec_container_script.sh) 출력은 'PRC-C-001' 표기.
+    기준/파서 키 'PRCC-001'로 정규화해야 매칭된다(글자그룹 중간 하이픈 제거)."""
+    assert CONTAINER.normalize_id("PRC-C-001") == "PRCC-001"
+    assert CONTAINER.normalize_id("PRC-C-050") == "PRCC-050"
+    assert CONTAINER.normalize_id("prc-c-007") == "PRCC-007"
+
+
 def test_container_key():
     assert CONTAINER.key == "container"
 

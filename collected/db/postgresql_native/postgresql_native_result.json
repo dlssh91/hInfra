@@ -1,0 +1,234 @@
+[
+{"DBM-001_1":{
+"QUERY": "SELECT name, setting FROM pg_settings WHERE name='password_encryption';",
+"RESULT": [
+{"setting_name": "password_encryption", "value" : "scram-sha-256"},
+]}},
+{"DBM-001_2":{
+
+"QUERY": "SELECT rolname, rolpassword FROM pg_authid WHERE rolcanlogin='t'",
+
+"RESULT": [
+
+{"rolname": 'postgres', "rolpassword" : 'SCRAM-SHA-256$4096:fewu1rJ5b14RCg64DkgtEw==$BBaimehDBv5jaWGLIKE7oxbzjtX/Vu8jm9z/siArpxI=:WqE21gd0mb72h8l0Yzr3p6cY4MSyJXMbB3SxHL2zl0M='},
+
+]}},
+
+{"DBM-003":{
+
+"QUERY": "SELECT rolname, rolcanlogin, rolvaliduntil FROM pg_authid WHERE rolname NOT IN ('pg_monitor', 'pg_read_all_settings', 'pg_read_all_stats', 'pg_stat_scan_tables', 'pg_signal_backend', 'postgres')",
+
+"RESULT": [
+
+{"rolname": 'pg_database_owner', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_read_all_data', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_write_all_data', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_read_server_files', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_write_server_files', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_execute_server_program', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_checkpoint', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_use_reserved_connections', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_create_subscription', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+
+]}},
+
+{"DBM-004":{
+
+"QUERY": "SELECT rolname, rolsuper, rolcreatedb, rolcreaterole FROM pg_authid WHERE rolname NOT IN ('pg_monitor', 'pg_read_all_settings', 'pg_read_all_stats', 'pg_stat_scan_tables', 'pg_signal_backend', 'postgres')",
+
+"RESULT": [
+
+{"rolname": 'pg_database_owner', "rolsuper": 'f', "rolcreatedb": 'f', "rolcreaterole": 'f'},
+{"rolname": 'pg_read_all_data', "rolsuper": 'f', "rolcreatedb": 'f', "rolcreaterole": 'f'},
+{"rolname": 'pg_write_all_data', "rolsuper": 'f', "rolcreatedb": 'f', "rolcreaterole": 'f'},
+{"rolname": 'pg_read_server_files', "rolsuper": 'f', "rolcreatedb": 'f', "rolcreaterole": 'f'},
+{"rolname": 'pg_write_server_files', "rolsuper": 'f', "rolcreatedb": 'f', "rolcreaterole": 'f'},
+{"rolname": 'pg_execute_server_program', "rolsuper": 'f', "rolcreatedb": 'f', "rolcreaterole": 'f'},
+{"rolname": 'pg_checkpoint', "rolsuper": 'f', "rolcreatedb": 'f', "rolcreaterole": 'f'},
+{"rolname": 'pg_use_reserved_connections', "rolsuper": 'f', "rolcreatedb": 'f', "rolcreaterole": 'f'},
+{"rolname": 'pg_create_subscription', "rolsuper": 'f', "rolcreatedb": 'f', "rolcreaterole": 'f'},
+
+]}},
+
+{"DBM-007":{
+
+"QUERY": "SELECT name, setting FROM pg_settings WHERE name='shared_preload_libraries';",
+"RESULT": [
+
+
+"passwordcheck.so is not loaded."
+
+]}},
+
+{"DBM-008":{
+
+"QUERY": "SELECT rolname, rolcanlogin, rolvaliduntil FROM pg_authid WHERE rolname NOT IN ('pg_monitor', 'pg_read_all_settings', 'pg_read_all_stats', 'pg_stat_scan_tables', 'pg_signal_backend', 'postgres')",
+
+"RESULT": [
+
+{"rolname": 'pg_database_owner', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_read_all_data', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_write_all_data', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_read_server_files', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_write_server_files', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_execute_server_program', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_checkpoint', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_use_reserved_connections', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_create_subscription', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+
+]}},
+
+{"DBM-009":{
+"QUERY": "SELECT name, setting FROM pg_settings WHERE name='idle_in_transaction_session_timeout';",
+"RESULT": [
+{"setting_name": "idle_in_transaction_session_timeout", "value" : "0"},
+]}},
+{"DBM-011":{
+
+"QUERY": "SELECT name, setting FROM pg_settings WHERE name='shared_preload_libraries';",
+
+"RESULT": [
+
+{"setting_name": 'shared_preload_libraries', "value": '', "pgaudit_settings": []},
+
+]}},
+
+{"DBM-015_1":{
+"QUERY": "SELECT table_catalog, table_schema, table_name, privilege_type FROM information_schema.table_privileges WHERE grantee='PUBLIC' AND (table_schema='pg_catalog' and privilege_type != 'SELECT');",
+"RESULT": [
+
+{"table_catalog": 'postgres', "table_schema" : 'pg_catalog', "table_name" : 'pg_settings', "privilege_type" : 'UPDATE'},
+
+]}},
+
+{"DBM-015_2":{
+"QUERY": "SELECT routine_catalog, routine_schema, routine_name, privilege_type FROM information_schema.routine_privileges where grantee='PUBLIC' AND (specific_schema='public' OR routine_catalog='public')",
+"RESULT": [
+
+{"routine_catalog": 'postgres', "routine_schema": 'public', "routine_name": 'get_dbm_005_formatted_result', "privilege_type": 'EXECUTE'},
+{"routine_catalog": 'postgres', "routine_schema": 'public', "routine_name": 'get_dbm_015_formatted_result', "privilege_type": 'EXECUTE'},
+
+]}},
+
+{"DBM-015_3":{
+"QUERY": "SELECT table_catalog, table_schema, table_name, column_name, privilege_type FROM information_schema.column_privileges WHERE grantee='PUBLIC' AND (table_schema NOT IN ('pg_catalog', 'information_schema') AND privilege_type != 'SELECT');",
+"RESULT": [
+
+
+]}},
+
+{"DBM-016":{
+"QUERY": "SELECT VERSION();",
+"RESULT": [
+{"version": "PostgreSQL 16.14 (Debian 16.14-1.pgdg13+1) on aarch64-unknown-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit"},
+]}},
+{"DBM-017_1":{
+"QUERY": "SELECT grantee, table_catalog, table_schema, table_name, privilege_type FROM information_schema.table_privileges WHERE table_schema='pg_catalog' and grantee!='postgres' and privilege_type!= 'SELECT';",
+"RESULT": [
+
+{"grantee": 'PUBLIC', "table_catalog" : 'postgres', "table_schema" : 'pg_catalog', "table_name" : 'pg_settings', "privilege_type" : 'UPDATE'},
+
+]}},
+
+{"DBM-017_2":{
+"QUERY": "SELECT * FROM information_schema.column_privileges WHERE table_schema='pg_catalog' and grantee!='postgres' and privilege_type!= 'SELECT';",
+"RESULT": [
+
+{"grantee": 'PUBLIC', "table_catalog" : 'postgres', "table_schema" : 'pg_catalog', "table_name" : 'pg_settings', "column_name": 'sourcefile', "privilege_type" : 'UPDATE'},
+{"grantee": 'PUBLIC', "table_catalog" : 'postgres', "table_schema" : 'pg_catalog', "table_name" : 'pg_settings', "column_name": 'source', "privilege_type" : 'UPDATE'},
+{"grantee": 'PUBLIC', "table_catalog" : 'postgres', "table_schema" : 'pg_catalog', "table_name" : 'pg_settings', "column_name": 'name', "privilege_type" : 'UPDATE'},
+{"grantee": 'PUBLIC', "table_catalog" : 'postgres', "table_schema" : 'pg_catalog', "table_name" : 'pg_settings', "column_name": 'short_desc', "privilege_type" : 'UPDATE'},
+{"grantee": 'PUBLIC', "table_catalog" : 'postgres', "table_schema" : 'pg_catalog', "table_name" : 'pg_settings', "column_name": 'reset_val', "privilege_type" : 'UPDATE'},
+{"grantee": 'PUBLIC', "table_catalog" : 'postgres', "table_schema" : 'pg_catalog', "table_name" : 'pg_settings', "column_name": 'max_val', "privilege_type" : 'UPDATE'},
+{"grantee": 'PUBLIC', "table_catalog" : 'postgres', "table_schema" : 'pg_catalog', "table_name" : 'pg_settings', "column_name": 'boot_val', "privilege_type" : 'UPDATE'},
+{"grantee": 'PUBLIC', "table_catalog" : 'postgres', "table_schema" : 'pg_catalog', "table_name" : 'pg_settings', "column_name": 'context', "privilege_type" : 'UPDATE'},
+{"grantee": 'PUBLIC', "table_catalog" : 'postgres', "table_schema" : 'pg_catalog', "table_name" : 'pg_settings', "column_name": 'unit', "privilege_type" : 'UPDATE'},
+{"grantee": 'PUBLIC', "table_catalog" : 'postgres', "table_schema" : 'pg_catalog', "table_name" : 'pg_settings', "column_name": 'category', "privilege_type" : 'UPDATE'},
+{"grantee": 'PUBLIC', "table_catalog" : 'postgres', "table_schema" : 'pg_catalog', "table_name" : 'pg_settings', "column_name": 'min_val', "privilege_type" : 'UPDATE'},
+{"grantee": 'PUBLIC', "table_catalog" : 'postgres', "table_schema" : 'pg_catalog', "table_name" : 'pg_settings', "column_name": 'sourceline', "privilege_type" : 'UPDATE'},
+{"grantee": 'PUBLIC', "table_catalog" : 'postgres', "table_schema" : 'pg_catalog', "table_name" : 'pg_settings', "column_name": 'vartype', "privilege_type" : 'UPDATE'},
+{"grantee": 'PUBLIC', "table_catalog" : 'postgres', "table_schema" : 'pg_catalog', "table_name" : 'pg_settings', "column_name": 'extra_desc', "privilege_type" : 'UPDATE'},
+{"grantee": 'PUBLIC', "table_catalog" : 'postgres', "table_schema" : 'pg_catalog', "table_name" : 'pg_settings', "column_name": 'pending_restart', "privilege_type" : 'UPDATE'},
+{"grantee": 'PUBLIC', "table_catalog" : 'postgres', "table_schema" : 'pg_catalog', "table_name" : 'pg_settings', "column_name": 'enumvals', "privilege_type" : 'UPDATE'},
+{"grantee": 'PUBLIC', "table_catalog" : 'postgres', "table_schema" : 'pg_catalog', "table_name" : 'pg_settings', "column_name": 'setting', "privilege_type" : 'UPDATE'},
+
+]}},
+
+{"DBM-020":{
+
+"QUERY": "SELECT rolname, rolcanlogin, rolvaliduntil FROM pg_authid WHERE rolname NOT IN ('pg_monitor', 'pg_read_all_settings', 'pg_read_all_stats', 'pg_stat_scan_tables', 'pg_signal_backend', 'postgres')",
+
+"RESULT": [
+
+{"rolname": 'pg_database_owner', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_read_all_data', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_write_all_data', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_read_server_files', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_write_server_files', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_execute_server_program', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_checkpoint', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_use_reserved_connections', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+{"rolname": 'pg_create_subscription', "rolcanlogin": 'f', "rolvaliduntil": NULL},
+
+]}},
+
+{"DBM-024_1":{
+"QUERY": "SELECT grantee, table_catalog, table_schema, table_name, privilege_type FROM information_schema.table_privileges WHERE grantee!='postgres' and is_grantable='YES';",
+"RESULT": [
+
+
+]}},
+
+{"DBM-024_2":{
+"QUERY": "SELECT * FROM information_schema.column_privileges WHERE grantee!='postgres' and is_grantable='YES';",
+"RESULT": [
+
+
+]}},
+
+{"DBM-024_3":{
+"QUERY": "SELECT grantee, routine_catalog, routine_schema, routine_name, privilege_type FROM information_schema.routine_privileges where grantee!='postgres' and is_grantable='YES';",
+"RESULT": [
+
+
+]}},
+
+{"DBM-028_1":{
+"QUERY": "SELECT grantee, table_catalog, table_schema, table_name, privilege_type FROM information_schema.table_privileges WHERE grantee NOT IN ('postgres', 'PUBLIC', 'pg_monitor');",
+"RESULT": [
+
+{"grantee": 'pg_read_all_stats', "table_catalog": 'postgres', "table_schema": 'pg_catalog', "table_name": 'pg_backend_memory_contexts', "privilege_type": 'SELECT'},
+{"grantee": 'pg_read_all_stats', "table_catalog": 'postgres', "table_schema": 'pg_catalog', "table_name": 'pg_shmem_allocations', "privilege_type": 'SELECT'},
+
+]}},
+
+{"DBM-028_2":{
+"QUERY": "SELECT grantee, table_catalog, table_schema, table_name, column_name, privilege_type FROM information_schema.column_privileges WHERE grantee NOT IN ('postgres', 'PUBLIC', 'pg_monitor');",
+"RESULT": [
+
+{"grantee": 'pg_read_all_stats', "table_catalog": 'postgres', "table_schema": 'pg_catalog', "table_name": 'pg_shmem_allocations', "column_name": 'allocated_size', "privilege_type": 'SELECT'},
+{"grantee": 'pg_read_all_stats', "table_catalog": 'postgres', "table_schema": 'pg_catalog', "table_name": 'pg_backend_memory_contexts', "column_name": 'parent', "privilege_type": 'SELECT'},
+{"grantee": 'pg_read_all_stats', "table_catalog": 'postgres', "table_schema": 'pg_catalog', "table_name": 'pg_backend_memory_contexts', "column_name": 'level', "privilege_type": 'SELECT'},
+{"grantee": 'pg_read_all_stats', "table_catalog": 'postgres', "table_schema": 'pg_catalog', "table_name": 'pg_backend_memory_contexts', "column_name": 'total_nblocks', "privilege_type": 'SELECT'},
+{"grantee": 'pg_read_all_stats', "table_catalog": 'postgres', "table_schema": 'pg_catalog', "table_name": 'pg_backend_memory_contexts', "column_name": 'total_bytes', "privilege_type": 'SELECT'},
+{"grantee": 'pg_read_all_stats', "table_catalog": 'postgres', "table_schema": 'pg_catalog', "table_name": 'pg_shmem_allocations', "column_name": 'off', "privilege_type": 'SELECT'},
+{"grantee": 'pg_read_all_stats', "table_catalog": 'postgres', "table_schema": 'pg_catalog', "table_name": 'pg_shmem_allocations', "column_name": 'name', "privilege_type": 'SELECT'},
+{"grantee": 'pg_read_all_stats', "table_catalog": 'postgres', "table_schema": 'pg_catalog', "table_name": 'pg_backend_memory_contexts', "column_name": 'free_chunks', "privilege_type": 'SELECT'},
+{"grantee": 'pg_read_all_stats', "table_catalog": 'postgres', "table_schema": 'pg_catalog', "table_name": 'pg_backend_memory_contexts', "column_name": 'ident', "privilege_type": 'SELECT'},
+{"grantee": 'pg_read_all_stats', "table_catalog": 'postgres', "table_schema": 'pg_catalog', "table_name": 'pg_shmem_allocations', "column_name": 'size', "privilege_type": 'SELECT'},
+{"grantee": 'pg_read_all_stats', "table_catalog": 'postgres', "table_schema": 'pg_catalog', "table_name": 'pg_backend_memory_contexts', "column_name": 'free_bytes', "privilege_type": 'SELECT'},
+{"grantee": 'pg_read_all_stats', "table_catalog": 'postgres', "table_schema": 'pg_catalog', "table_name": 'pg_backend_memory_contexts', "column_name": 'name', "privilege_type": 'SELECT'},
+{"grantee": 'pg_read_all_stats', "table_catalog": 'postgres', "table_schema": 'pg_catalog', "table_name": 'pg_backend_memory_contexts', "column_name": 'used_bytes', "privilege_type": 'SELECT'},
+
+]}},
+
+{"DBM-028_3":{
+"QUERY": "SELECT routine_catalog, routine_schema, routine_name, privilege_type FROM information_schema.routine_privileges where grantee!='postgres' and is_grantable='YES';",
+"RESULT": [
+
+{"grantee": 'pg_read_all_stats', "routine_catalog": 'postgres', "routine_schema": 'pg_catalog', "routine_name": 'pg_get_shmem_allocations', "privilege_type": 'EXECUTE'},
+{"grantee": 'pg_read_all_stats', "routine_catalog": 'postgres', "routine_schema": 'pg_catalog', "routine_name": 'pg_get_backend_memory_contexts', "privilege_type": 'EXECUTE'},
+
+]}}
+
+]

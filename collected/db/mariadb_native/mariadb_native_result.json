@@ -1,0 +1,251 @@
+[INFO] 탐지된 환경: Self-Managed DB (State=0)
+[
+{"DBM-001":{
+"QUERY": "SELECT Host, User, password, plugin, password_expired FROM mysql.user", 
+"RESULT": [
+{"HOST": "localhost","USER": "mariadb.sys","PASSWORD": "","PLUGIN": "mysql_native_password","PASSWORD_EXPIRED": "Y"},
+{"HOST": "localhost","USER": "root","PASSWORD": "*3D3B92F242033365AE5BC6A8E6FC3E1679F4140A","PLUGIN": "mysql_native_password","PASSWORD_EXPIRED": "N"},
+{"HOST": "%","USER": "root","PASSWORD": "*3D3B92F242033365AE5BC6A8E6FC3E1679F4140A","PLUGIN": "mysql_native_password","PASSWORD_EXPIRED": "N"},
+{"HOST": "127.0.0.1","USER": "healthcheck","PASSWORD": "*394769A7710F5149E8613920C324AD75EA328CA5","PLUGIN": "mysql_native_password","PASSWORD_EXPIRED": "N"},
+{"HOST": "::1","USER": "healthcheck","PASSWORD": "*394769A7710F5149E8613920C324AD75EA328CA5","PLUGIN": "mysql_native_password","PASSWORD_EXPIRED": "N"},
+{"HOST": "localhost","USER": "healthcheck","PASSWORD": "*394769A7710F5149E8613920C324AD75EA328CA5","PLUGIN": "mysql_native_password","PASSWORD_EXPIRED": "N"},
+]}},
+{"DBM-003":{
+"QUERY": "SELECT Host, User, password, password_expired FROM mysql.user", 
+"RESULT": [
+{"HOST": "localhost","USER": "mariadb.sys","PLUGIN": "mysql_native_password","PASSWORD_EXPIRED": "Y"},
+{"HOST": "localhost","USER": "root","PLUGIN": "mysql_native_password","PASSWORD_EXPIRED": "N"},
+{"HOST": "%","USER": "root","PLUGIN": "mysql_native_password","PASSWORD_EXPIRED": "N"},
+{"HOST": "127.0.0.1","USER": "healthcheck","PLUGIN": "mysql_native_password","PASSWORD_EXPIRED": "N"},
+{"HOST": "::1","USER": "healthcheck","PLUGIN": "mysql_native_password","PASSWORD_EXPIRED": "N"},
+{"HOST": "localhost","USER": "healthcheck","PLUGIN": "mysql_native_password","PASSWORD_EXPIRED": "N"},
+]}},
+{"DBM-004":{
+"QUERY": "SELECT GRANTEE, PRIVILEGE_TYPE FROM INFORMATION_SCHEMA.USER_PRIVILEGES", 
+"RESULT": [
+{"GRANTEE": "'healthcheck'@'localhost'","PRIVILEGE_TYPE": "USAGE"},
+{"GRANTEE": "'healthcheck'@'::1'","PRIVILEGE_TYPE": "USAGE"},
+{"GRANTEE": "'healthcheck'@'127.0.0.1'","PRIVILEGE_TYPE": "USAGE"},
+{"GRANTEE": "'mariadb.sys'@'localhost'","PRIVILEGE_TYPE": "USAGE"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "SELECT"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "INSERT"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "UPDATE"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "DELETE"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "CREATE"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "DROP"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "RELOAD"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "SHUTDOWN"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "PROCESS"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "FILE"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "REFERENCES"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "INDEX"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "ALTER"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "SHOW DATABASES"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "SUPER"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "CREATE TEMPORARY TABLES"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "LOCK TABLES"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "EXECUTE"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "REPLICATION SLAVE"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "BINLOG MONITOR"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "CREATE VIEW"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "SHOW VIEW"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "CREATE ROUTINE"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "ALTER ROUTINE"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "CREATE USER"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "EVENT"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "TRIGGER"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "CREATE TABLESPACE"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "DELETE HISTORY"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "SET USER"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "FEDERATED ADMIN"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "CONNECTION ADMIN"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "READ_ONLY ADMIN"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "REPLICATION SLAVE ADMIN"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "REPLICATION MASTER ADMIN"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "BINLOG ADMIN"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "BINLOG REPLAY"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "SLAVE MONITOR"},
+{"GRANTEE": "'root'@'localhost'","PRIVILEGE_TYPE": "SHOW CREATE ROUTINE"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "SELECT"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "INSERT"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "UPDATE"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "DELETE"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "CREATE"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "DROP"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "RELOAD"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "SHUTDOWN"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "PROCESS"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "FILE"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "REFERENCES"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "INDEX"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "ALTER"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "SHOW DATABASES"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "SUPER"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "CREATE TEMPORARY TABLES"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "LOCK TABLES"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "EXECUTE"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "REPLICATION SLAVE"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "BINLOG MONITOR"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "CREATE VIEW"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "SHOW VIEW"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "CREATE ROUTINE"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "ALTER ROUTINE"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "CREATE USER"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "EVENT"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "TRIGGER"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "CREATE TABLESPACE"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "DELETE HISTORY"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "SET USER"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "FEDERATED ADMIN"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "CONNECTION ADMIN"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "READ_ONLY ADMIN"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "REPLICATION SLAVE ADMIN"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "REPLICATION MASTER ADMIN"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "BINLOG ADMIN"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "BINLOG REPLAY"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "SLAVE MONITOR"},
+{"GRANTEE": "'root'@'%'","PRIVILEGE_TYPE": "SHOW CREATE ROUTINE"},
+]}},
+{"DBM-005":{
+"QUERY": "----", 
+"RESULT": [
+]}},
+{"DBM-006":{
+"QUERY": "SELECT VARIABLE_NAME, VARIABLE_VALUE FROM information_schema.global_variables WHERE VARIABLE_NAME=`MAX_PASSWORD_ERRORS`", 
+"RESULT": [
+{"VARIABLE_NAME": "MAX_PASSWORD_ERRORS","VARIABLE_VALUE": "4294967295"},
+]}},
+{"DBM-007":{
+"QUERY": "SELECT VARIABLE_NAME, VARIABLE_VALUE FROM information_schema.global_variables WHERE VARIABLE_NAME LIKE `simple_password_check_%`", 
+"RESULT": [
+"simple_password_check.so plugin is not loaded!"
+]}},
+{"DBM-008":{
+"QUERY": "SELECT VARIABLE_NAME, VARIABLE_VALUE FROM information_schema.global_variables WHERE VARIABLE_NAME=`default_password_lifetime`", 
+"RESULT": [
+version>4
+{"VARIABLE_NAME": "DEFAULT_PASSWORD_LIFETIME","VARIABLE_VALUE": "0"},
+]}},
+{"DBM-009":{
+"QUERY": "SELECT VARIABLE_NAME, VARIABLE_VALUE FROM information_schema.global_variables WHERE VARIABLE_NAME IN (`wait_timeout`, `interactive_timeout`)", 
+"RESULT": [
+{"VARIABLE_NAME": "WAIT_TIMEOUT","VARIABLE_VALUE": "28800"},
+{"VARIABLE_NAME": "INTERACTIVE_TIMEOUT","VARIABLE_VALUE": "28800"},
+]}},
+{"DBM-011":{
+"QUERY": "SELECT VARIABLE_NAME, VARIABLE_VALUE FROM information_schema.global_variables WHERE VARIABLE_NAME LIKE `server_audit%`", 
+"RESULT": [
+"server_audit.so plugin is not loaded!"
+]}},
+{"DBM-013":{
+"QUERY": "SELECT Host, User FROM mysql.user", 
+"RESULT": [
+{"USER": "root","HOST": "%"},
+{"USER": "healthcheck","HOST": "127.0.0.1"},
+{"USER": "healthcheck","HOST": "::1"},
+{"USER": "healthcheck","HOST": "localhost"},
+{"USER": "mariadb.sys","HOST": "localhost"},
+{"USER": "root","HOST": "localhost"},
+]}},
+{"DBM-016":{
+"QUERY": "SELECT VARIABLE_NAME, VARIABLE_VALUE FROM information_schema.global_variables WHERE VARIABLE_NAME LIKE `%version%`", 
+"RESULT": [
+{"VARIABLE_NAME": "SYSTEM_VERSIONING_ALTER_HISTORY","VARIABLE_VALUE": "ERROR"},
+{"VARIABLE_NAME": "VERSION_COMMENT","VARIABLE_VALUE": "mariadb.org binary distribution"},
+{"VARIABLE_NAME": "SYSTEM_VERSIONING_ASOF","VARIABLE_VALUE": "DEFAULT"},
+{"VARIABLE_NAME": "SYSTEM_VERSIONING_INSERT_HISTORY","VARIABLE_VALUE": "OFF"},
+{"VARIABLE_NAME": "TLS_VERSION","VARIABLE_VALUE": "TLSv1.2,TLSv1.3"},
+{"VARIABLE_NAME": "VERSION_COMPILE_MACHINE","VARIABLE_VALUE": "aarch64"},
+{"VARIABLE_NAME": "VERSION_MALLOC_LIBRARY","VARIABLE_VALUE": "system"},
+{"VARIABLE_NAME": "PROTOCOL_VERSION","VARIABLE_VALUE": "10"},
+{"VARIABLE_NAME": "VERSION_SSL_LIBRARY","VARIABLE_VALUE": "OpenSSL 3.0.13 30 Jan 2024"},
+{"VARIABLE_NAME": "WSREP_PATCH_VERSION","VARIABLE_VALUE": "wsrep_26.22"},
+{"VARIABLE_NAME": "VERSION_SOURCE_REVISION","VARIABLE_VALUE": "46a8eb42a520193686d9a16d4cea4b3e002917e4"},
+{"VARIABLE_NAME": "VERSION_COMPILE_OS","VARIABLE_VALUE": "debian-linux-gnu"},
+{"VARIABLE_NAME": "SLAVE_TYPE_CONVERSIONS","VARIABLE_VALUE": ""},
+{"VARIABLE_NAME": "IN_PREDICATE_CONVERSION_THRESHOLD","VARIABLE_VALUE": "1000"},
+{"VARIABLE_NAME": "VERSION","VARIABLE_VALUE": "11.8.8-MariaDB-ubu2404"},
+]}},
+{"DBM-017_1":{
+"QUERY": "SELECT GRANTEE, PRIVILEGE_TYPE FROM INFORMATION_SCHEMA.USER_PRIVILEGES WHERE GRANTEE NOT LIKE %root@% AND PRIVILEGE_TYPE NOT IN (`USAGE`)", 
+"RESULT": [
+]}},
+{"DBM-017_2":{
+"QUERY": "SELECT GRANTEE, TABLE_SCHEMA, PRIVILEGE_TYPE FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES WHERE GRANTEE NOT LIKE %root@% AND GRANTEE NOT IN (mysql.infoschema@localhost, mysql.session@localhost, mysql.sys@localhost)) AND TABLE_SCHEMA IN (information_schema, performance_schema, mysql)", 
+"RESULT": [
+]}},
+{"DBM-017_3":{
+"QUERY": "SELECT GRANTEE, TABLE_SCHEMA, TABLE_NAME, PRIVILEGE_TYPE FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES WHERE GRANTEE NOT LIKE %root@% AND GRANTEE NOT IN (mariadb.infoschema@localhost) AND TABLE_SCHEMA IN (information_schema, performance_schema, mysql)", 
+"RESULT": [
+]}},
+{"DBM-017_4":{
+"QUERY": "SELECT GRANTEE, TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, PRIVILEGE_TYPE FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES WHERE GRANTEE NOT LIKE %root@%", 
+"RESULT": [
+]}},
+{"DBM-019":{
+"QUERY": "SELECT VARIABLE_NAME, VARIABLE_VALUE FROM information_schema.global_variables WHERE VARIABLE_NAME LIKE `PASSWORD_REUSE_CHECK_INTERVAL_%`"
+"RESULT": [
+"PASSWORD_REUSE_CHECK plugin is not loaded!"
+]}},
+{"DBM-020":{
+"QUERY": "SELECT Host, User, plugin FROM mysql.user", 
+"RESULT": [
+{"USER": "mariadb.sys","HOST": "localhost","PLUGIN": "mysql_native_password"},
+{"USER": "root","HOST": "localhost","PLUGIN": "mysql_native_password"},
+{"USER": "root","HOST": "%","PLUGIN": "mysql_native_password"},
+{"USER": "healthcheck","HOST": "127.0.0.1","PLUGIN": "mysql_native_password"},
+{"USER": "healthcheck","HOST": "::1","PLUGIN": "mysql_native_password"},
+{"USER": "healthcheck","HOST": "localhost","PLUGIN": "mysql_native_password"},
+]}},
+{"DBM-024_1":{
+"QUERY": "SELECT GRANTEE, PRIVILEGE_TYPE, IS_GRANTABLE FROM INFORMATION_SCHEMA.USER_PRIVILEGES WHERE IS_GRANTABLE=`YES` AND GRANTEE NOT LIKE `%root@%`", 
+"RESULT": [
+]}},
+{"DBM-024_2":{
+"QUERY": "SELECT GRANTEE, TABLE_SCHEMA, PRIVILEGE_TYPE, IS_GRANTABLE FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES WHERE IS_GRANTABLE=`YES`", 
+"RESULT": [
+]}},
+{"DBM-024_3":{
+"QUERY": "SELECT GRANTEE, TABLE_SCHEMA, TABLE_NAME, PRIVILEGE_TYPE, IS_GRANTABLE FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES WHERE IS_GRANTABLE=`YES`", 
+"RESULT": [
+]}},
+{"DBM-024_4":{
+"QUERY": "SELECT GRANTEE, TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, PRIVILEGE_TYPE, IS_GRANTABLE FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES WHERE IS_GRANTABLE=`YES`", 
+"RESULT": [
+]}},
+{"DBM-025":{
+"QUERY": "SELECT VARIABLE_NAME, VARIABLE_VALUE FROM information_schema.global_variables WHERE VARIABLE_NAME LIKE `%version%`", 
+"RESULT": [
+{"VARIABLE_NAME": "SYSTEM_VERSIONING_ALTER_HISTORY","VARIABLE_VALUE": "ERROR"},
+{"VARIABLE_NAME": "VERSION_COMMENT","VARIABLE_VALUE": "mariadb.org binary distribution"},
+{"VARIABLE_NAME": "SYSTEM_VERSIONING_ASOF","VARIABLE_VALUE": "DEFAULT"},
+{"VARIABLE_NAME": "SYSTEM_VERSIONING_INSERT_HISTORY","VARIABLE_VALUE": "OFF"},
+{"VARIABLE_NAME": "TLS_VERSION","VARIABLE_VALUE": "TLSv1.2,TLSv1.3"},
+{"VARIABLE_NAME": "VERSION_COMPILE_MACHINE","VARIABLE_VALUE": "aarch64"},
+{"VARIABLE_NAME": "VERSION_MALLOC_LIBRARY","VARIABLE_VALUE": "system"},
+{"VARIABLE_NAME": "PROTOCOL_VERSION","VARIABLE_VALUE": "10"},
+{"VARIABLE_NAME": "VERSION_SSL_LIBRARY","VARIABLE_VALUE": "OpenSSL 3.0.13 30 Jan 2024"},
+{"VARIABLE_NAME": "WSREP_PATCH_VERSION","VARIABLE_VALUE": "wsrep_26.22"},
+{"VARIABLE_NAME": "VERSION_SOURCE_REVISION","VARIABLE_VALUE": "46a8eb42a520193686d9a16d4cea4b3e002917e4"},
+{"VARIABLE_NAME": "VERSION_COMPILE_OS","VARIABLE_VALUE": "debian-linux-gnu"},
+{"VARIABLE_NAME": "SLAVE_TYPE_CONVERSIONS","VARIABLE_VALUE": ""},
+{"VARIABLE_NAME": "IN_PREDICATE_CONVERSION_THRESHOLD","VARIABLE_VALUE": "1000"},
+{"VARIABLE_NAME": "VERSION","VARIABLE_VALUE": "11.8.8-MariaDB-ubu2404"},
+]}},
+{"DBM-028_1":{
+"QUERY": "SELECT GRANTEE, PRIVILEGE_TYPE FROM INFORMATION_SCHEMA.USER_PRIVILEGES WHERE GRANTEE NOT LIKE %root@% AND GRANTEE NOT IN (mariadb.sys@localhost) AND PRIVILEGE_TYPE NOT IN (`USAGE`)", 
+"RESULT": [
+]}},
+{"DBM-028_2":{
+"QUERY": "SELECT GRANTEE, TABLE_SCHEMA, PRIVILEGE_TYPE FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES WHERE GRANTEE NOT LIKE %root@% AND GRANTEE NOT IN (mariadb.sys@localhost)", 
+"RESULT": [
+]}},
+{"DBM-028_3":{
+"QUERY": "SELECT GRANTEE, TABLE_SCHEMA, TABLE_NAME, PRIVILEGE_TYPE FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES WHERE GRANTEE NOT LIKE %root@% AND GRANTEE NOT IN (mariadb.sys@localhost)", 
+"RESULT": [
+]}},
+{"DBM-028_4":{
+"QUERY": "SELECT GRANTEE, TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, PRIVILEGE_TYPE FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES WHERE GRANTEE NOT LIKE %root@% AND GRANTEE NOT IN (mariadb.sys@localhost)", 
+"RESULT": [
+]}},
+]
