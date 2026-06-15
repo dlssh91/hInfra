@@ -1,6 +1,6 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-12 (② ISS_DEVICE VPN/IDS/IPS/DDoS/WAF+generic 구조 완료, 591 tests). 다음 세션에서 이 파일부터 읽고 이어서 진행할 것.
+> 마지막 업데이트: 2026-06-15 (⑥ OS 가상화 구조 완료, Opus 리뷰 통과, 626 tests). 다음 세션에서 이 파일부터 읽고 이어서 진행할 것.
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. commit/push 안 함 — 문서로만 이어받음.
 >  "개발진행해" 트리거는 CLAUDE.md 참조. 이 파일이 단일 진실원천.)
 
@@ -16,11 +16,15 @@
   iss(FW fw_policy_xlsx)·iss_device(비FW iss_xml). detect_variant: device_type→model→vendor
   토큰매핑(10토큰, firewall 의도적 미매핑). generic: applies_when_standard=True 폴백.
   ISS-030~041: vpn~waf는 applicability_col None→자동제외, generic은 yaml label C 자동보류.
-  Opus 리뷰 미실시 — 다음 세션에서 진행)
-- **다음 착수 = ② ISS_DEVICE Opus 리뷰** → 이후 ⑥ OS 가상화 35항목/3변형 (ESXi) 또는
-  **③·④·②·⑤ 활성화 게이트** 중 실수집 데이터 확보 시 먼저 진행.
-- **단, ③ 서버·④ 네트워크·② 방화벽은 "실수집 데이터 판정 활성화" 전 게이트 미해결** —
-  아래 "③ 서버 활성화 게이트"·"④ 네트워크 활성화 게이트"·"② 방화벽 활성화 게이트" 참조.
+  M3 firewall 미매핑 테스트 2개 추가, Opus 재리뷰 병합가능 통과.
+  잔존: M1 이중XML파싱(성능 선례일치), M2 F5 secret 과마스킹(실데이터후 확인)) /
+  **⑥ OS 가상화 구조 + Opus 리뷰 완료**(2026-06-15, **626 tests**, 3변형 vcenter/esxi/xen,
+  osvirt_xml 파서+OS_VIRT Profile+osvirt.yaml. ⚠️컬럼 역전(판단방법<판단기준) 정확 반영.
+  detect_variant: <asset><variant>직접키 > <product>토큰, 미식별 None(범주오류 방지).
+  vcenter>esxi 토큰순서로 동시등장 우선순위. 마스킹: server체이닝. Opus [H]없음 통과)
+- **다음 착수 = ⑥·③·④·②·⑤ 활성화 게이트** 중 실수집 데이터 확보 시 진행 (6개 도메인 구조 전부 완료).
+- **단, ③ 서버·④ 네트워크·② 방화벽·⑤ 컨테이너·⑥ OS가상화는 "실수집 데이터 판정 활성화" 전 게이트 미해결** —
+  아래 각 도메인 "활성화 게이트" 참조.
 - 작업 브랜치: `feat/native-db-variants`.
 - **에이전트 규칙(정정)**: 계획·설계=Fable, **구현=Sonnet**, 검토=Opus (CLAUDE.md 참조).
 
@@ -34,9 +38,28 @@
 | ① | 판단방식 5분류 정교화(cloud/DB) | **완료** | - | 코어 분류체계, 후속 도메인 라벨 기반 |
 | ③ | 서버(OS) 106항목/5변형 | **완료(구조)** | 기준O/샘플X | server_xml 파서+detect_variant seam. 활성화 게이트 미해결(아래) |
 | ④ | 네트워크 장비 45항목 | **완료(구조·CISCO+generic)** | 기준O/샘플X | network_xml 파서, cisco+generic(미해당) 변형, applies_when_standard. 활성화 게이트 미해결(아래) |
-| ② | 방화벽 이상정책 탐지(정보보호시스템) | **완료(구조·SECUI+ID70+PaloAlto+ISS_DEVICE)** | **샘플O**(정책 20건+, ≥3포맷) | fw_policy.py 결정론 엔진+3종 어댑터+ISS Profile+ISS_DEVICE(VPN/IDS/IPS/DDoS/WAF/generic). Opus리뷰 미실시. 활성화 게이트 미해결(아래) |
+| ② | 방화벽 이상정책 탐지(정보보호시스템) | **완료(구조·SECUI+ID70+PaloAlto+ISS_DEVICE·Opus재리뷰)** | **샘플O**(정책 20건+, ≥3포맷) | fw_policy.py 결정론 엔진+3종 어댑터+ISS Profile+ISS_DEVICE(VPN/IDS/IPS/DDoS/WAF/generic). 활성화 게이트 미해결(아래) |
 | ⑤ | 컨테이너 가상화 50항목/9변형 | **완료(구조·9변형·Opus재리뷰)** | 기준O/샘플X | container_xml PROVISIONAL. 마스킹 정밀화(_is_base64_like). 활성화 게이트 미해결(아래) |
-| ⑥ | OS 가상화 35항목/3변형 | 대기 | 기준O/샘플X | ESXi 수집 폐쇄적 |
+| ⑥ | OS 가상화 35항목/3변형 | **완료(구조·vcenter/esxi/xen·Opus리뷰)** | 기준O/샘플X | osvirt_xml 파서. 컬럼 역전 주의. 활성화 게이트 미해결(아래) |
+
+### ⑥ OS 가상화 활성화 게이트 (실수집 데이터 판정 활성화 전 필수)
+구조/단위테스트+Opus리뷰 완료(626 tests, osvirt 33). 3변형 vcenter/esxi/xen.
+**⚠️ 컬럼 역전**: 다른 도메인과 달리 판단방법(col15/17/19)이 판단기준(col16/18/20)보다 앞.
+profile.OS_VIRT에 반영됨(standard_col=16/18/20, method_col=15/17/19, app_col=12/13/14).
+초기 0-indexed/1-indexed 혼동으로 -1 오프셋 버그 → 실데이터 스모크로 발견·수정(현재 일치).
+아래는 **실제 하이퍼바이저 결과로 판정을 켜기 전** 처리.
+1. **수집 포맷 확정(선행조건)** — esxcli/PowerCLI/xe 결과 수집 스크립트 없음. 현재
+   파서(osvirt_xml)는 server_xml과 동일 PROVISIONAL XML 엔벨로프 가정. 실수집 방식
+   확정 후 포맷 변경 시 Profile.parser 1줄 교체.
+2. **하이퍼바이저 특화 마스킹(Opus [L1] 최우선)** — vpxuser 비밀번호·vCenter SSO/API 세션
+   토큰은 `$`-앵커 crypt 해시와 형태가 달라 현재 server_xml 체이닝(crypt/PEM/hex)으로 미포착.
+   실데이터 1차 확보 시 osvirt_xml에 패턴 추가(최우선 보강 대상).
+3. **item_configs/osvirt.yaml 전수 라벨분류** — 35항목 전부 기본 A(LLM). 샘플 확보 후
+   C(기술한계)/D(EOL·패치)/B(인터뷰) 분류. 후보: PRCV-003/022(B 인터뷰), 패치성(D).
+4. **detect_variant 실데이터 검증** — 수집 스크립트가 `<asset><variant>`(vcenter/esxi/xen) 또는
+   `<asset><product>`(VMware ESXi/vCenter, Citrix XenServer) 어느 방식인지 확인. 미식별 시
+   None 반환→--variant 유도(vCenter ⊂ ESXi 범주오류 방지). vsphere 단독은 esxi 폴백.
+5. **empty_means_good 식별** — esxcli 위반필터형 명령 분석. 현재 frozenset().
 
 ### ⑤ 컨테이너 가상화 활성화 게이트 (실수집 데이터 판정 활성화 전 필수)
 구조/단위테스트+Opus재리뷰 완료(557 tests). [L]잔존: JWT alg:none 미탐(k8s SA토큰 실영향 없음),

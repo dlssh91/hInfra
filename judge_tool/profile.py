@@ -327,8 +327,8 @@ NETWORK = Profile(
     },
 )
 
-# 정보보호시스템 장비 (ISS) — FW 변형 1개 + 나머지 5개 TODO.
-# 이번 구현 범위: FW 변형 + ISS-030~041 정책-이상 항목.
+# 정보보호시스템 장비(FW) — FW 변형 단일, fw_policy_xlsx 파서(정책 xlsx 입력).
+# 비-FW 5종(VPN/IDS/IPS/DDoS/WAF/generic)은 iss_device 프로파일 참조(XML 입력).
 # 파일명에 변형 마커 없음 → detect_variant 폴백("fw" 고정 반환, fw_policy_xlsx 참조).
 # status_available=False → 전 판정 script_status=None → needs_review=True(자동).
 ISS = Profile(
@@ -441,6 +441,42 @@ CONTAINER = Profile(
     },
 )
 
+# OS 가상화 시스템 — 하이퍼바이저 3변형(vcenter/esxi/xen).
+# 원시증거(esxcli/PowerCLI/xe raw 출력). 파일명 마커 없음 →
+# osvirt_xml.detect_variant(<asset><variant> 또는 <product>)로 식별.
+# ⚠️ 컬럼 순서 주의: 다른 도메인과 달리 '판단방법'이 '판단기준'보다 앞에 온다
+#   (1-indexed, openpyxl ws.cell 기준):
+#   col12=평가대상(vCenter) col13=평가대상(ESXi)   col14=평가대상(Xen)
+#   col15=판단방법(vCenter) col16=판단기준(vCenter)
+#   col17=판단방법(ESXi)    col18=판단기준(ESXi)
+#   col19=판단방법(Xen)     col20=판단기준(Xen)
+# → standard_col(판단기준)=16/18/20, method_col(판단방법)=15/17/19.
+# 변형별 적용 차이 큼: ESXi 35항목 전부 'o'(슈퍼셋), vCenter·Xen은 부분집합
+# (PRCV-008 등 21개 항목이 변형마다 다름) → 변형별 applicability_col 분리 필수.
+# status_available=False → 전 판정 needs_review=True 자동.
+OS_VIRT = Profile(
+    key="osvirt",
+    sheet_name="OS 가상화 시스템",
+    header_row=4,
+    data_start_row=5,
+    id_col=2,
+    name_col=7,
+    risk_col=8,
+    parser="osvirt_xml",
+    evidence_mode="raw",
+    status_available=False,
+    flag_vulnerable_for_review=True,
+    empty_means_good=frozenset(),
+    variants={
+        "vcenter": VariantSpec("vcenter", standard_col=16, method_col=15,
+                               applicability_col=12, filename_markers=()),
+        "esxi":    VariantSpec("esxi", standard_col=18, method_col=17,
+                               applicability_col=13, filename_markers=()),
+        "xen":     VariantSpec("xen", standard_col=20, method_col=19,
+                               applicability_col=14, filename_markers=()),
+    },
+)
+
 _PROFILES = {
     CLOUD.key: CLOUD,
     DB_MYSQL.key: DB_MYSQL,
@@ -454,6 +490,7 @@ _PROFILES = {
     ISS.key: ISS,
     ISS_DEVICE.key: ISS_DEVICE,
     CONTAINER.key: CONTAINER,
+    OS_VIRT.key: OS_VIRT,
 }
 
 

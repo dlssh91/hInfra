@@ -1,0 +1,23 @@
+# osvirt(OS 가상화 시스템) 항목 라벨 & LLM 지시 — 스캐폴드(구조 단계)
+# label A: 기술 증거로 판정 가능 (LLM)
+# label B: 담당자 인터뷰 필수 — verdict=판단보류 고정, LLM은 summary_instruction으로 증거 요약만
+# label C: 기술적 한계 — 자동 판단보류, canned_message 출력 (LLM 호출 없음)
+# label D: 외부지식 필요(EOL·패치 등) — 자동 판단보류, canned_message 출력 (LLM 호출 없음)
+#
+# 현재 상태: 항목 미등재 → 전 항목(35개 PRCV) 기본 label A(LLM 판정).
+# variant 키: vcenter / esxi / xen (variants: 오버라이드 가능).
+#
+# 변형별 적용 차이: ESXi가 35항목 전부 'o'(슈퍼셋), vCenter·Xen은 부분집합
+# (PRCV-008/010/014~021/024/026~031/033~036 등 21개 항목이 변형마다 다름).
+# 적용 차이는 평가기준 시트 평가대상 컬럼('o')으로 criteria_loader가 자동 처리.
+#
+# TODO(후속 과제 — 실수집 샘플 데이터 확보 후):
+# - 평가기준 'OS 가상화 시스템' 시트의 판단기준/판단방법을 변형별로 정독하여
+#   C(기술한계)/D(EOL·패치 결정론)/B(인터뷰) 항목을 분류·등재한다.
+# - 후보 메모(추정, 샘플 확보 전 미확정):
+#     PRCV-003 (계정 정기점검): B 인터뷰 후보 (분기별 점검 절차)
+#     PRCV-022 (원격 로그 서버): B 인터뷰 후보
+#     하이퍼바이저 패치/버전성 항목: D patch_check 후보 (eol.yaml 확장 선행)
+# - empty_means_good(빈 출력=양호) 후보도 수집 스크립트 분석 후 profile.OS_VIRT에 보강.
+# - 하이퍼바이저 특화 민감 마스킹(vpxuser 비밀번호·API 세션 토큰)은 실데이터 확인 후
+#   osvirt_xml에 패턴 추가(현재 server_xml crypt/PEM/hex 체이닝만).
