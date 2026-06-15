@@ -1,11 +1,18 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-15 (⑦ 웹서버-WAS 구조 완료, Opus 리뷰 통과, 658 tests). 다음 세션에서 이 파일부터 읽고 이어서 진행할 것.
+> 마지막 업데이트: 2026-06-15 (sanitize 제어문자 정규화 — 서버 실데이터 Docker 검증, 660 tests). 다음 세션에서 이 파일부터 읽고 이어서 진행할 것.
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. commit/push 안 함 — 문서로만 이어받음.
 >  "개발진행해" 트리거는 CLAUDE.md 참조. 이 파일이 단일 진실원천.)
 
 ## ▶ 다음 세션 즉시 시작점 (TL;DR)
 - **로드맵 실행순서: ① → ③ → ④ → ② → ⑤ → ⑥** (아래 "도메인 로드맵" 참조)
+- **★실데이터 검증 시작(2026-06-15)**: fsi_unix.sh(서버 스크립트)를 Docker(ubuntu:22.04)에서
+  실제 실행 → 출력 XML이 server_xml/webwas_xml 파서 가정과 **구조 완전 일치** 확인
+  (한 실행에 SRV 67종+WST 7종 동시 점검, detect_variant=linux). **어댑터 불필요.**
+  단 실데이터 갭 1종 발견·수정: CDATA 본문의 ANSI escape(\x1b 등 XML 1.0 불법 C0 제어문자)가
+  ElementTree 파싱을 깨뜨림 → `cloud_xml.sanitize`에 불법 제어문자 제거 추가(tab/LF/CR 보존).
+  **전 XML 파서(cloud/server/webwas/osvirt/network/iss/container) 공통 적용** = 모든 도메인
+  실데이터 활성화의 공통 선결조건 해결. 660 tests. 메모리 [[domain-script-sample-status]].
 - **완료**: 네이티브 DB 5종 + Tibero 스텁 / **① 판단방식 5분류 + 디스패치 seam** /
   **③ 서버(OS) 자동판정 구조 + 단위테스트**(2026-06-12, 244 tests) /
   **④ 네트워크 장비 자동판정 구조 + 단위테스트**(2026-06-12, 348 tests, CISCO+generic) /

@@ -9,11 +9,19 @@ from judge_tool.models import ResourceEvidence
 _BARE_AMP = re.compile(r"&(?!(amp|lt|gt|quot|apos|#\d+|#x[0-9A-Fa-f]+);)")
 # CDATA 구간 (내부 '&'는 이미 유효한 리터럴이므로 건드리지 않음)
 _CDATA = re.compile(r"<!\[CDATA\[.*?\]\]>", re.DOTALL)
+# XML 1.0 불법 C0 제어문자(tab #x09·LF #x0a·CR #x0d 제외). CDATA 안에서도 불법이라
+# ElementTree(expat)가 거부한다. 실수집 명령출력의 ANSI escape(\x1b[..m) 등이
+# CDATA로 섞여 들어오는 경우를 보정한다(제거). 증거 의미 없는 터미널 제어용 바이트.
+_XML_ILLEGAL_CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
 def sanitize(raw: str) -> str:
-    """스크립트가 이스케이프하지 않은 '&'로 인해 well-formed가 아닌 XML을 보정.
-    단, CDATA 내부의 '&'는 이미 유효하므로 그대로 둔다."""
+    """well-formed가 아닌 XML을 보정한다.
+    1) XML 1.0 불법 제어문자(ANSI escape 등) 제거 — CDATA 포함 전체 선적용.
+    2) 스크립트가 이스케이프하지 않은 단독 '&'를 escape (CDATA 내부는 그대로)."""
+    # 1) 불법 제어문자는 CDATA 안에서도 금지 → 전체 텍스트에 먼저 적용
+    raw = _XML_ILLEGAL_CTRL.sub("", raw)
+    # 2) CDATA 밖 단독 '&'만 escape
     parts = []
     last = 0
     for m in _CDATA.finditer(raw):

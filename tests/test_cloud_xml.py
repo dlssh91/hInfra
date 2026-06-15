@@ -27,6 +27,33 @@ def test_sanitize_leaves_cdata_ampersand_untouched():
     assert "<R>C &amp; D</R>" in out           # 일반 텍스트 '&' 는 escape
 
 
+def test_sanitize_strips_xml_illegal_control_chars():
+    """XML 1.0 불법 C0 제어문자(ANSI escape 등) 제거 — CDATA 안에서도 불법.
+
+    실수집 데이터(예: fsi_unix.sh의 PS1 환경변수 덤프)에 ANSI 컬러 코드
+    \\x1b[01;32m 가 CDATA로 들어와 ElementTree 파싱을 깨뜨리던 갭을 보정한다.
+    tab/LF/CR(\\x09/\\x0a/\\x0d)는 유효 문자이므로 보존한다.
+    """
+    raw = "<E><![CDATA[PS1='\x1b[01;32m'\nok\ttab]]></E>"
+    out = sanitize(raw)
+    assert "\x1b" not in out                    # ESC 제거
+    assert "\x00" not in out
+    assert "\n" in out and "\t" in out          # 유효 공백류 보존
+    # 제거 후 well-formed → ElementTree 파싱 성공
+    import xml.etree.ElementTree as ET
+    root = ET.fromstring(out)
+    assert "ok" in root.text
+
+
+def test_sanitize_strips_control_chars_outside_cdata():
+    """CDATA 밖 일반 텍스트의 불법 제어문자도 제거."""
+    raw = "<R>val\x07ue\x1bX</R>"   # BEL, ESC
+    out = sanitize(raw)
+    assert "\x07" not in out and "\x1b" not in out
+    import xml.etree.ElementTree as ET
+    assert ET.fromstring(out).text == "valueX"
+
+
 def test_parse_fixture_structure():
     checks = parse(FIXTURE)
     ids = [cid for cid, _ in checks]
