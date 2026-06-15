@@ -33,7 +33,27 @@
 - 작업 브랜치: `feat/native-db-variants`.
 - **에이전트 규칙(정정)**: 계획·설계=Fable, **구현=Sonnet**, 검토=Opus (CLAUDE.md 참조).
 
-## 도메인 로드맵 (6개 + 실행순서, Fable 우선순위/아키텍처 리뷰 반영)
+## 자동판정 대상 = 8개 도메인 확정 (2026-06-15)
+관리체계 계열(정보보호 관리체계·가상화 시스템 관리체계)·네트워크 인프라·웹_모바일_HTS
+시트는 **범위 외**. 아래 8개만 자동판정 대상으로 확정. 메모리 [[domain-script-sample-status]].
+
+### 점검 스크립트·실수집 샘플 제공 현황 (활성화 게이트 진행 순서 기준)
+| 도메인 | 점검 스크립트 | 실수집 샘플 | 위치 |
+|---|---|---|---|
+| 클라우드 | ✅ | ✅ | scripts/fsi_pism_tools(script)/fsec_aws·azure_script.sh / results/Public Cloud/ |
+| 데이터베이스 | ✅ | ✅ | scripts/DB/*.sql+unix_*.sh / results/DB/ |
+| 방화벽(ISS FW) | ※정책export | ✅ | ref/FW/보안장비 결과/ P02~P34_정책(20+건) |
+| 서버 | ✅ | ❌ | scripts/서버/ fsi_unix.sh+fsi_win.bat |
+| 웹서버-WAS | ✅(서버스크립트 공유) | ❌ | **fsi_unix.sh가 SRV+WST 둘 다 점검** |
+| OS 가상화 | ✅ | ❌ | scripts/가상화시스템/ fsec_vmware_script.ps1+fsec_xen_script.sh |
+| 컨테이너 | ✅ | ❌ | scripts/가상화시스템/ fsec_container_script.sh |
+| 네트워크 장비 | ❌ | ❌ | 미제공 |
+| 정보보호시스템(VPN/IDS/IPS/DDoS/WAF) | ❌ | ❌ | 미제공(방화벽 정책 샘플만 존재) |
+- 스크립트+샘플 모두 있는 것: **클라우드·DB·방화벽 3개** → 활성화 우선.
+- 스크립트만 있고 샘플 없는 것: 서버·웹서버-WAS·OS가상화·컨테이너 → 샘플 수집 후.
+- 둘 다 없는 것: 네트워크·정보보호시스템(비FW) → 수집 방식 확정부터.
+
+## 도메인 로드맵 (실행순서, Fable 우선순위/아키텍처 리뷰 반영)
 평가기준 xlsx에 6개 도메인 시트 모두 존재(기존 Profile/VariantSpec 패턴과 동형).
 신규 도메인 추가 실비용 = 파서 1 + Profile 1 + item_configs 라벨. 병목은 코드가 아니라
 **도메인별 수집 스크립트·골드라벨 데이터 확보**.
