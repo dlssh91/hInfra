@@ -101,6 +101,23 @@ def test_detect_variant_unknown_to_generic(tmp_path):
     assert detect_variant(p) == "generic"
 
 
+def test_detect_variant_firewall_alone_to_generic(tmp_path):
+    """설계 계약: 'Firewall' 단독 → generic.
+
+    FW는 --profile iss(정책 xlsx) 전용이므로 firewall 토큰은 의도적으로 미매핑.
+    iss_device.xml에 FW XML이 들어오면 generic 폴백으로 처리된다.
+    """
+    p = _write(tmp_path, _xml(device_type="Firewall"))
+    assert detect_variant(p) == "generic"
+
+
+def test_detect_variant_next_gen_fw_to_generic(tmp_path):
+    """'Next-Generation Firewall' / 'NGFW' → generic (firewall 토큰 포함해도 미매핑)."""
+    for dtype in ("Next-Generation Firewall", "NGFW"):
+        p = _write(tmp_path, _xml(device_type=dtype))
+        assert detect_variant(p) == "generic", f"{dtype!r} should map to generic"
+
+
 def test_detect_variant_missing_tags_to_generic(tmp_path):
     """asset/device_type 태그 부재 → generic (오류 없이 폴백)."""
     p = _write(tmp_path, _xml())
