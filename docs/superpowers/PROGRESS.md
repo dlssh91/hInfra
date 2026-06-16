@@ -7,7 +7,8 @@
 ## ▶ 다음 세션 즉시 시작점 (TL;DR)
 - **★다음 착수 = Phase 4 DB(DBM) 결정론 통합** (로드맵 §9 다음 도메인). "다음에 진행해줘" → 여기부터.
   **방법 = Phase 1/2/3에서 검증된 패턴 그대로**(vendor → DET_SOURCE 분류 → 어댑터 → gate{DET,DET-PARTIAL} → Low-1+증거존재 가드 → 5-way 라벨 → 실데이터 검증 → 듀얼런 불변확인 → Opus 적대리뷰 → 미듐이상 shift-left). 설계는 Fable 불가 시 Opus 대체.
-  **DB 특이주의(§17.4)**: ⚠️**엔진별 STUB 산재** — `flus-main/app/common/DatabaseConfigLoader/modules/database/{mysql,oracle,mssql,mariadb,postgresql}/analysis.py`를 벤더링하되 **DBM-005(mysql/oracle/mariadb/pg=STUB·mssql만 DET) 등 엔진별 DET/STUB를 DET_SOURCE에 정확히**(STUB→handled=False, 거짓양호 금지). DBM-034/035/036 전엔진 ABSENT. **DB는 기존 검증된 LLM 산출물 존재 → 듀얼런으로 전환 후 불변확인 필수**(Q4). 임계값은 JSON config(rules)에서 읽으므로 yaml thresholds 매핑 깔끔(§6). 실데이터: `collected/db/` 5엔진 네이티브 샘플.
+  **⚠️벤더링 소스 위치(2026-06-16 이동)**: `flus-main/`(Django 원본·`.env` secret 보유, 948M)을 **프로젝트 밖 `../flus-main/`(= `/Users/fsat/Documents/saptweb/flus-main/`)** 으로 이동(git 미추적·미push). 벤더링 시 이 외부 경로에서 복사. 런타임은 `judge_tool/vendor/common/`(자족 복사본)만 사용.
+  **DB 특이주의(§17.4)**: ⚠️**엔진별 STUB 산재** — `../flus-main/app/common/DatabaseConfigLoader/modules/database/{mysql,oracle,mssql,mariadb,postgresql}/analysis.py`를 벤더링하되 **DBM-005(mysql/oracle/mariadb/pg=STUB·mssql만 DET) 등 엔진별 DET/STUB를 DET_SOURCE에 정확히**(STUB→handled=False, 거짓양호 금지). DBM-034/035/036 전엔진 ABSENT. **DB는 기존 검증된 LLM 산출물 존재 → 듀얼런으로 전환 후 불변확인 필수**(Q4). 임계값은 JSON config(rules)에서 읽으므로 yaml thresholds 매핑 깔끔(§6). 실데이터: `collected/db/` 5엔진 네이티브 샘플.
   **착수 0번**: criteria '데이터베이스' 시트 ID 체계 확인(DBM-NNN) + DET_SOURCE에 DBM 엔진별 분류 작성(autoAnalysis 아닌 각 analysis.py 코드 근거).
   - **(병행 가능, 비차단) LLM 품질 트랙**: 인코딩 교정·프롬프트 튜닝(빈출력클래스) 안전레버 **소진 완료**. 남은 레버=**골드라벨 확보**(사용자 정답 → 30b/결정론 진짜 측정, 현재 Opus 대용 N=10). 30b는 label-A에 보수적 충분(거짓양호 0) 확인됨.
 
