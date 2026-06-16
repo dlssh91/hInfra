@@ -52,7 +52,9 @@ DBM-009:
   needs_review: true
   label: A
 DBM-011:
-  # det_common 제거 (R3 보수처리): mariadb 수집형식 {"*": python_repr} → analysis KeyError → 거짓양호
+  # Phase 4d: DET 복원 — "not loaded" 탐지 확인, DETECT_VULN_ELSE_HOLD 모드 적용
+  # 취약(미수집) → 취약 확정, 위반0(수집됨) → 판단보류(백업주기 미검증)
+  judgment_method: det_common
   needs_review: true
   label: A
 DBM-013:

@@ -1334,3 +1334,217 @@ class TestBatch1Classification:
         raw = _make_raw_ev({"DBM-005": {"RESULT": [{"sample": "x"}]}})
         fv = judge("DBM-005", raw, "mssql_native", {})
         assert fv.handled is False  # gate STUB 차단 → LLM 폴백
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DBM-011 Phase 4d: detect-vuln-else-hold 모드(모드 C)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestDBM011DetectVulnElseHold:
+    """DBM-011 모드C(detect-vuln-else-hold): 취약 탐지→취약 확정, 위반0→판단보류, 양호 자동판정 0건.
+
+    설계 계약:
+      - 벤더 결정론이 미수집(violations>0) 탐지 → 취약 확정(handled=True, verdict=취약).
+      - 위반0(수집됨) → 판단보류 강제(handled=True, verdict=판단보류). 양호 절대 금지.
+      - mysql/oracle/mariadb native DET 엔진 적용.
+      - mssql: STUB → gate 차단(handled=False) → LLM 폴백.
+      - pg: STUB → gate 차단(handled=False) → LLM 폴백.
+    """
+
+    def setup_method(self):
+        """각 테스트 전 캐시 초기화."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        reload_det_source()
+
+    # ── mysql DBM-011: 취약(미수집) ─────────────────────────────────────────
+
+    def test_mysql_dbm011_not_loaded_is_vuln(self):
+        """mysql DBM-011: 'not loaded' 문자열 → 취약(미수집 탐지)."""
+        raw = _make_raw_ev({
+            "DBM-011": {"RESULT": ["audit_log.so plugin is not loaded!"]}
+        })
+        fv = judge("DBM-011", raw, "mysql_native", {})
+        assert fv.handled is True, f"handled=False (취약 탐지인데 미처리): {fv}"
+        assert fv.verdict == "취약", f"미수집인데 취약 아님: {fv.verdict}"
+        assert fv.ev_status == "bad"
+        assert fv.confidence == 0.9
+
+    def test_mysql_dbm011_loaded_no_violations_is_hold(self):
+        """mysql DBM-011: 위반0(수집됨) → 판단보류(양호 절대 금지)."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        # RESULT 비어 있어 위반 없음 → 판단보류
+        raw = _make_raw_ev({"DBM-011": {"RESULT": []}})
+        fv = judge("DBM-011", raw, "mysql_native", {})
+        assert fv.handled is True, f"handled=False (위반0인데 미처리): {fv}"
+        assert fv.verdict == "판단보류", (
+            f"수집됨(위반0)인데 판단보류 아님: verdict={fv.verdict} — 거짓양호 위험"
+        )
+        assert fv.verdict != "양호", f"거짓양호 발생: verdict={fv.verdict}"
+        assert "백업" in fv.rationale or "인터뷰" in fv.rationale, (
+            f"rationale에 백업/인터뷰 사유 없음: {fv.rationale}"
+        )
+
+    def test_mysql_dbm011_no_false_good_ever(self):
+        """mysql DBM-011: 양호 자동판정 절대 금지 — 빈 RESULT도 판단보류."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-011": {"RESULT": []}})
+        fv = judge("DBM-011", raw, "mysql_native", {})
+        assert fv.verdict != "양호", f"거짓양호: verdict={fv.verdict}"
+
+    # ── oracle DBM-011: DET 분류 + 결정론 경로 실검증 ──────────────────────
+    # oracle analysis.py는 dateutil(python-dateutil)·packaging 의존(requirements.txt 선언).
+    # dateutil 설치 환경에서는 audit_trail=NONE→취약(DET), 수집됨→판단보류(모드C)를
+    # 분리 단정한다(Opus 리뷰: 양분 수용 마스킹 제거). dateutil 부재 환경은 importorskip.
+
+    def test_oracle_dbm011_det_classify(self):
+        """oracle DBM-011: classify=DET 확인."""
+        reload_det_source()
+        assert classify("DBM-011", "oracle") == "DET", (
+            "oracle DBM-011 classify가 DET 아님"
+        )
+
+    def test_oracle_dbm011_unaudited_is_vuln_det(self):
+        """oracle DBM-011: audit_trail=NONE(미수집) → 취약(결정론). dateutil 필요."""
+        import pytest
+        pytest.importorskip("dateutil")  # 미설치 환경(요구사항 미설치)은 skip
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-011": {"RESULT": [{"name": "audit_trail", "value": "NONE"}]}
+        })
+        fv = judge("DBM-011", raw, "oracle_native", {})
+        assert fv.verdict == "취약", (
+            f"oracle DBM-011 미수집(NONE) → 취약(DET) 기대인데 {fv.verdict} "
+            f"(handled={fv.handled}) — DET 경로 미작동(dateutil import 실패?)"
+        )
+        assert fv.handled is True
+
+    def test_oracle_dbm011_loaded_is_hold_det(self):
+        """oracle DBM-011: 수집됨(audit_trail≠NONE, 위반0) → 판단보류(모드C). 양호 자동 금지."""
+        import pytest
+        pytest.importorskip("dateutil")
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-011": {"RESULT": [{"name": "audit_trail", "value": "DB"}]}
+        })
+        fv = judge("DBM-011", raw, "oracle_native", {})
+        assert fv.verdict == "판단보류", (
+            f"oracle DBM-011 수집됨(위반0) → 판단보류(백업 인터뷰) 기대인데 {fv.verdict} "
+            f"— 양호 자동판정이면 거짓양호"
+        )
+
+    # ── mariadb DBM-011: DET 복원 ────────────────────────────────────────────
+
+    def test_mariadb_dbm011_det_restored_classify(self):
+        """mariadb DBM-011: DET_SOURCE에서 DET 분류 확인(STUB→DET 복원)."""
+        reload_det_source()
+        assert classify("DBM-011", "mariadb") == "DET", (
+            "mariadb DBM-011 classify가 DET 아님 — DET_SOURCE 갱신 미반영"
+        )
+
+    def test_mariadb_dbm011_not_loaded_is_vuln(self):
+        """mariadb DBM-011: 'not loaded' 문자열 → 취약(미수집 탐지, DET 복원 후)."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-011": {"RESULT": ["server_audit.so plugin is not loaded!"]}
+        })
+        fv = judge("DBM-011", raw, "mariadb_native", {})
+        assert fv.handled is True, f"mariadb DBM-011 handled=False: {fv}"
+        assert fv.verdict == "취약", (
+            f"mariadb 미수집인데 취약 아님: verdict={fv.verdict}"
+        )
+
+    def test_mariadb_dbm011_loaded_is_hold(self):
+        """mariadb DBM-011: 위반0(수집됨) → 판단보류(양호 절대 금지)."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-011": {"RESULT": []}})
+        fv = judge("DBM-011", raw, "mariadb_native", {})
+        assert fv.handled is True, f"mariadb DBM-011 위반0 handled=False: {fv}"
+        assert fv.verdict == "판단보류", (
+            f"mariadb 수집됨(위반0)인데 판단보류 아님: verdict={fv.verdict}"
+        )
+        assert fv.verdict != "양호", f"mariadb 거짓양호 발생: verdict={fv.verdict}"
+
+    # ── mssql DBM-011: STUB → gate 차단 ─────────────────────────────────────
+
+    def test_mssql_dbm011_stub_gate_blocked(self):
+        """mssql DBM-011: STUB(빈 본문) → gate 차단 → handled=False → LLM 폴백."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-011": {"RESULT": []}})
+        fv = judge("DBM-011", raw, "mssql_native", {})
+        assert fv.handled is False, (
+            f"mssql DBM-011: STUB인데 handled=True — LLM 폴백 불가: {fv}"
+        )
+        assert fv.verdict != "양호", f"mssql DBM-011 거짓양호: verdict={fv.verdict}"
+
+    def test_mssql_dbm011_classify_stub(self):
+        """mssql DBM-011: classify=STUB 확인."""
+        reload_det_source()
+        assert classify("DBM-011", "mssql") == "STUB", (
+            "mssql DBM-011 classify가 STUB 아님"
+        )
+
+    # ── pg DBM-011: STUB 유지(수집형식 불일치) ──────────────────────────────
+
+    def test_pg_dbm011_stub_gate_blocked(self):
+        """pg DBM-011: STUB 유지(수집형식 불일치) → gate 차단 → handled=False."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-011": {"RESULT": [
+                {"setting_name": "shared_preload_libraries", "value": "", "pgaudit_settings": []}
+            ]}
+        })
+        fv = judge("DBM-011", raw, "pg_native", {})
+        assert fv.handled is False, (
+            f"pg DBM-011: STUB인데 handled=True — 거짓양호 위험: {fv}"
+        )
+        assert fv.verdict != "양호", f"pg DBM-011 거짓양호: verdict={fv.verdict}"
+
+    def test_pg_dbm011_classify_stub(self):
+        """pg DBM-011: classify=STUB 유지 확인."""
+        reload_det_source()
+        assert classify("DBM-011", "pg") == "STUB", (
+            "pg DBM-011 classify가 STUB 아님 — 수집형식 불일치로 STUB 유지 필요"
+        )
+
+    # ── cloud variants: DET 항목은 모드C 동작, STUB은 gate 차단 ─────────────
+
+    def test_mysql_rds_dbm011_det_classify(self):
+        """mysql_rds DBM-011: DET → classify=DET."""
+        reload_det_source()
+        assert classify("DBM-011", "mysql_rds") == "DET"
+
+    def test_mssql_rds_dbm011_stub_blocked(self):
+        """mssql_rds DBM-011: STUB → gate 차단."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-011": {"RESULT": []}})
+        fv = judge("DBM-011", raw, "mssql_rds", {})
+        assert fv.handled is False
+        assert fv.verdict != "양호"
+
+    # ── 거짓양호 전수 확인 ───────────────────────────────────────────────────
+
+    def test_no_false_good_all_det_engines_empty_result(self):
+        """DBM-011: 빈 RESULT로 DET 엔진 전수 호출 시 양호 자동판정 0건."""
+        import judge_tool.det_adapters.db as _db
+        det_variants = [
+            ("mysql_native", "mysql"),
+            ("oracle_native", "oracle"),
+            ("mariadb_native", "mariadb"),
+        ]
+        for variant, _eng in det_variants:
+            _db._RUN_CACHE.clear()
+            raw = _make_raw_ev({"DBM-011": {"RESULT": []}})
+            fv = judge("DBM-011", raw, variant, {})
+            assert fv.verdict != "양호", (
+                f"거짓양호 발생: DBM-011/{variant} 빈RESULT인데 양호 판정: {fv}"
+            )

@@ -1,4 +1,4 @@
-"""DB(DBM) 결정론 어댑터 — Phase 4 / Phase 4b / Phase 4c (§3/§18, class-based analysis 브리지).
+"""DB(DBM) 결정론 어댑터 — Phase 4 / Phase 4b / Phase 4c / Phase 4d (§3/§18, class-based analysis 브리지).
 
 설계 계약:
   - judge() 시그니처: (item_id, raw_output, variant, thresholds, *, context=None) → ForcedVerdict
@@ -8,6 +8,8 @@
   - 결정3: _DET_ADAPTERS에 db_mysql/db_oracle/db_mssql/db_mariadb/db_postgresql 5개 동시 등록
   - 결정4(Phase 4b): variant suffix로 클래스 선택 — _native→{Engine}Analysis, _rds/_aurora/_azure→{Engine}CloudAnalysis
   - 결정5(Phase 4c): base=="DBM-001"이면 db_pwcrack.crack_judge로 라우팅 (사전공격 어댑터)
+  - 결정6(Phase 4d): _DETECT_VULN_ELSE_HOLD 모드(DBM-011) — 취약 탐지 → 취약 확정,
+    위반0(수집됨) → 판단보류 강제(양호 자동판정 절대 금지). 적용: mysql/oracle/mariadb.
   - 증거존재 가드(D3): base의 data_key 없으면 handled=False (거짓양호 구조 차단)
   - 예외내성(R3): vendor dbm_process_data 예외 삼킴 감지 — stdout "[!] Exception Occurred" 캡처 후
     exc_keys 추출, 빈 위반이면서 exc_keys에 포함된 base → handled=False (거짓양호 방지)
@@ -284,6 +286,15 @@ _STRUCTURAL_VULN: dict = {
     ("DBM-007", "pg_native"): "네이티브 비밀번호 복잡도 강제",
 }
 
+# ── 모드 C: detect-vuln-else-hold (DBM-011 — 감사로그 수집 및 백업 여부) ───
+# 판단기준 양호 = "감사로그 수집 중 AND 주기적 백업". 벤더 로직은 수집(플러그인 로드) 여부만
+# 판정하고 백업 주기는 점검 안 함(인터뷰 영역).
+# 동작: 벤더 결정론 취약 탐지(violations 비어있지 않음) → 취약 확정.
+#       위반0(수집됨)이면 양호 주지 말고 판단보류.
+#       사유: "감사로그 수집 확인됨, 주기적 백업 여부는 인터뷰/증적 확인 필요"
+# 적용 엔진: mysql/oracle/mariadb(DET 복원 후) — pg/mssql 제외(pg=STUB 유지, mssql=LLM).
+_DETECT_VULN_ELSE_HOLD: frozenset = frozenset({"DBM-011"})
+
 
 def judge(
     item_id: str,
@@ -484,6 +495,35 @@ def judge(
                 "업무상 필요성 담당자 확인 필요 (자동 취약 판정 보류)"
             ),
             citations=_mask_violations(violations),
+            ev_status="review",
+            handled=True,
+        )
+
+    # ── 모드 C: detect-vuln-else-hold (DBM-011 — 감사로그 수집 및 백업) ──────
+    # 벤더 로직은 수집(플러그인 로드) 여부만 판정. 백업 주기는 인터뷰 영역.
+    # 취약(미수집) 탐지 → 취약 확정, 위반0(수집됨) → 판단보류(양호 자동판정 절대 금지).
+    if base in _DETECT_VULN_ELSE_HOLD:
+        if violations:
+            citations = _mask_violations(violations)
+            return ForcedVerdict(
+                verdict="취약",
+                confidence=0.9,
+                rationale=(
+                    f"(-) 결정론 판정: 감사로그 미수집 {len(violations)}건 (engine={engine})"
+                ),
+                citations=citations,
+                ev_status="bad",
+                handled=True,
+            )
+        # 위반0: 수집은 확인됐으나 백업 주기 미검증 → 판단보류 강제
+        return ForcedVerdict(
+            verdict="판단보류",
+            confidence=0.0,
+            rationale=(
+                f"감사로그 수집 확인됨 (engine={engine}), "
+                "주기적 백업 여부는 인터뷰/증적 확인 필요 — 자동 양호 판정 불가"
+            ),
+            citations=[],
             ev_status="review",
             handled=True,
         )

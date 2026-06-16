@@ -1,12 +1,29 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-17 (**상태저장. 이번 세션 완료: DBM-001 완전 결정론화(b+a SHIP) + DBM 분류검토 Batch1(003~009) 구현 SHIP(Opus적대리뷰 SHIP·Critical0). 1176 passed, 9 skipped. 거짓판정0·§7 불변.**). **"다음에 진행해줘" → 아래 ★다음 착수(DBM-011~ 분류 검토 재개)부터.**
+> 마지막 업데이트: 2026-06-17 (**상태저장. 이번 세션 완료: DBM-011 detect-vuln-else-hold 모드C 구현 SHIP. 1197 passed, 4 skipped. 양호자동판정 0건 확인.**). **"다음에 진행해줘" → 아래 ★다음 착수(DBM-013~ 분류 검토 재개)부터.**
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. 이 파일이 단일 진실원천.
 >  재개 트리거: "개발진행해"/"개발해줘"/"이어서 진행"/"다음 작업"/**"다음에 진행해"** → 아래 TL;DR ★다음 착수부터.)
 
 ## ▶ 다음 세션 즉시 시작점 (TL;DR)
-- **★다음 착수 = DBM-011~ 분류 검토 재개** (사용자와 항목별 1:1 검토 중. 001~009 완료, 다음=DBM-011)
-  **검토 진행 방식**: 항목별로 [항목명/상세설명/판단기준/엔진별 벤더 결정론 로직(현행 동작)/내 분류 권고] 제시 → 사용자 결정. 남은 항목: 011/013/014/015/016/017/019/020/021/022/024/025/026/028/029/030/031/032/033/034/035/036.
+- **★다음 착수 = DBM-013~ 분류 검토 재개** (사용자와 항목별 1:1 검토 중. 001~009·011 완료, 다음=DBM-013)
+  **검토 진행 방식**: 항목별로 [항목명/상세설명/판단기준/엔진별 벤더 결정론 로직(현행 동작)/내 분류 권고] 제시 → 사용자 결정. 남은 항목: 013/014/015/016/017/019/020/021/022/024/025/026/028/029/030/031/032/033/034/035/036.
+
+  **✅ DBM-011 detect-vuln-else-hold (모드C) 구현 SHIP (2026-06-17, 1197 passed, 양호자동판정 0건)**:
+  - **새 모드 `_DETECT_VULN_ELSE_HOLD`**: `db.py`에 모드C 추가. DBM-011 등록. 취약(violations>0) → 취약 확정, 위반0(수집됨) → 판단보류 강제(양호 자동판정 절대 금지).
+  - **mariadb DET 복원**: `DET_SOURCE.yaml` mariadb=STUB→DET. analysis에 "not loaded" 탐지 확인(실데이터 `"server_audit.so plugin is not loaded!"` 일치). `db_mariadb.yaml`에 `judgment_method: det_common` 추가.
+  - **pg STUB 유지**: 벤더 탐지조건(`'로드된 라이브러리가 없습니다.' in str(datum)`)이 실수집 데이터(`pgaudit_settings:[] dict`) 와 불일치 → 보수적 STUB 유지. LLM이 취약 탐지.
+  - **mssql STUB 유지**: 빈 본문(dbm_result=[]만) → 결정론 불가 → LLM(label A) 경로.
+  - **실데이터 5엔진 검증 결과**:
+    - mysql: 취약(det_common, conf=0.90) — "audit_log.so plugin is not loaded!" 탐지
+    - mariadb: 취약(det_common, conf=0.90) — "server_audit.so plugin is not loaded!" 탐지
+    - oracle: 취약(**det_common, conf=0.9** — "결정론 판정: 감사로그 미수집") audit_trail=NONE. **(dateutil 설치 후 실제 DET 작동)**
+    - mssql: 판단보류(llm) — NOTE 인터뷰 필요
+    - postgresql: 취약(llm) — pgaudit 미로드 LLM 탐지
+    - **양호 자동판정 0건 확인**
+  - **★Opus 적대리뷰 High 해소(2026-06-17): oracle/mssql 벤더 의존성**: `vendor/common/db/{oracle,mssql}/analysis.py·cloud_analysis.py`가 `dateutil.relativedelta`·`packaging.version`(비표준, DBM-008 날짜·DBM-016/025 버전비교 실사용) import → **미설치 시 모듈 import 실패 → oracle/mssql 전 DBM 항목 무징후 LLM 폴백**(classify=DET/runtime=LLM 모순). **사용자 결정=requirements.txt 선언+설치**(`python-dateutil>=2.8`, `packaging>=21.0` 추가, `--break-system-packages` 설치). → oracle/mssql DET 복구 실증(oracle DBM-011 취약 det_common 0.9). **타위치 pull 시 `pip install -r requirements.txt` 필수.**
+  - **테스트 마스킹 제거(Opus)**: oracle DBM-011 테스트가 "취약/판단보류 양분 수용"으로 DET 미검증 → **미수집→취약(DET)·수집됨→판단보류 분리 단정**(`pytest.importorskip("dateutil")` 가드).
+  - **단위테스트**: `TestDBM011DetectVulnElseHold` 신규 (mysql/mariadb/oracle/mssql/pg/cloud/전수거짓양호) — **1197 passed, 4 skipped**.
+  - **수정 파일**: `det_adapters/db.py`, `vendor/common/DET_SOURCE.yaml`, `item_configs/db_mariadb.yaml`, `tests/test_det_adapters_db.py`, **`requirements.txt`(dateutil/packaging 선언)**
 
   **✅ DBM 분류검토 Batch1 (003~009) 구현 SHIP (2026-06-17, 1176 passed, Opus 적대리뷰 SHIP·Critical0)**:
   - **DBM-003**: 현행 DET 자동판정 유지.
