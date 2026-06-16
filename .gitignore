@@ -23,3 +23,8 @@ out_*.log
 # 엑셀 임시 락 파일
 ref/~$*
 **/~$*
+
+# 외부 Django 소스(벤더링 원본) — secret(.env/SECRET_KEY) 보유, push 제외
+flus-main/
+flus-main.zip
+read_xlsx.py

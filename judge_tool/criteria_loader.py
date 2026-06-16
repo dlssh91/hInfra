@@ -102,6 +102,12 @@ def load_criteria(xlsx_path: str,
                         label,
                         has_summary=bool(summary_instruction),
                         in_empty_means_good=(item_id in profile.empty_means_good))
+                # §6 임계값 로딩: yaml thresholds/thresholds_source → Criterion.
+                # 없으면 {} / None(기존 동작 불변 — 아직 어떤 yaml도 thresholds 미보유).
+                thresholds_raw = vcfg.get("thresholds", cfg.get("thresholds"))
+                thresholds = dict(thresholds_raw) if isinstance(thresholds_raw, dict) else {}
+                thresholds_source = vcfg.get("thresholds_source",
+                                             cfg.get("thresholds_source"))
                 out[(item_id, vname)] = Criterion(
                     item_id=item_id,
                     item_name=name,
@@ -120,6 +126,8 @@ def load_criteria(xlsx_path: str,
                     patch_check=bool(vcfg.get("patch_check",
                                               cfg.get("patch_check", False))),
                     judgment_method=judgment_method,
+                    thresholds=thresholds,
+                    thresholds_source=thresholds_source,
                 )
         return out
     finally:

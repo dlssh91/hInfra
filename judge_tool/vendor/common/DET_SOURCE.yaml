@@ -1,0 +1,854 @@
+meta:
+  source: "DESIGN_common_deterministic_integration.md §17.2/§17.5 + flus-main/app/common 전수 대조"
+  as_of: "2026-06-16"
+  classes: [DET, STUB, UNREACHABLE, ABSENT, MANUAL, DET-PARTIAL]
+  notes: >
+    DET=실결정론 / STUB=placeholder(lambda:True·빈본문) / UNREACHABLE=도달불가 dead /
+    ABSENT=함수없음 / MANUAL=(*)/M 수동 / DET-PARTIAL=variant의존(variants 맵 필수).
+    어댑터(det_adapters/base.py)는 common 호출 전 이 표를 보고 DET가 아니면 handled=False.
+    조회 계약: items[item_id] 없으면 ABSENT 취급. variants 있으면 실제 variant 문자열로
+    조회하되 못 찾으면 엔진 토큰(variant.split('_')[0])으로 재조회, 그래도 없으면 default,
+    없으면 ABSENT. variants 없으면 default.
+    서버 분류 합계(xlsx 106개 전수): DET 36 + DET-PARTIAL 13(auto, 서비스active시 수동분기) +
+    DET-PARTIAL(linux-override) 5(auto_parse MANUAL, linux_parse DET) + MANUAL 13 + ABSENT 39.
+    §17.5 설계서 비교: DET 38(+5Linux)≒DET 36+PARTIAL 5, DET+MANUAL 16≒DET-PARTIAL 13, MANUAL 13=MANUAL 13, ABSENT 38≒39(SRV-179 D라벨 포함).
+    ※DET-PARTIAL(linux-override): SRV-026/069/074/127/131 — auto_parse stub, linux_parse DET(§16.3).
+    ※SRV-012/121/122는 DET((*) = error fallback만, 주 경로 결정론).
+    ※SRV-165/166은 MANUAL(항상 (*) 반환, 결정론 verdict 없음).
+    ※SRV-010은 DET이나 sendmail 분기에 판정 역전 버그(KNOWN_BUGS: SRV-010-polarity).
+    컨테이너(PRCC) 분류 합계(50개 전수, Phase 2, autoAnalysis.py 코드 직접 근거):
+      순수 DET(전 활성 variant N/Y): 39항목.
+      DET-PARTIAL(variant 맵 DET+MANUAL 혼재): 8항목(PRCC-004/010/017/018/022/024/036/039).
+      MANUAL(전 활성 variant M, 또는 단일 active variant에 M경로 지배): 3항목(PRCC-011).
+      → 실제 MANUAL-ALL=1(PRCC-011), DET-PARTIAL=8, 나머지 DET.
+      ABSENT=0(PRCC 전 항목 elif 분기 존재). UNREACHABLE=0. STUB=0.
+      DET_SOURCE 미기재 variant는 ABSENT 취급(gate 차단=안전 기본값).
+    타 도메인(DB/네트워크/PRCV/웹) 전수 분류는 해당 롤아웃 Phase에서 추가 —
+    현재는 버그/회귀 항목만 시드.
+
+# ─── 서버(SRV) 전수 분류 ────────────────────────────────────────────────────
+# 분류 근거:
+#   DET     - common 함수 있음, (*) 없거나 error-fallback-only
+#   DET-PARTIAL - linux_parse가 오버라이드하는 5건(auto_parse stub, linux_parse DET)
+#              또는 서비스 활성 시 수동 경로 존재(FTP/DNS active→(*))
+#   MANUAL  - 함수 있으나 즉각 (*) 반환 (4~5줄, 주 판정 없음)
+#   ABSENT  - function_dispatcher에 없고 SRV_Linux_parse에도 없음
+
+items:
+  # ── DET (주 경로 완전 결정론, (*) 없거나 input-parse 실패 fallback에만) ──
+  SRV-001:
+    default: DET                # (*) = outputArr 분할 실패 fallback 한 곳만
+  SRV-004:
+    default: DET
+  SRV-008:
+    default: DET                # (*) = outputArr 분할 실패 fallback만
+  SRV-010:
+    default: DET
+    bug: SRV-010-polarity       # sendmail 분기 result Y↔N + reason (+)↔(-) 역전
+  SRV-011:
+    default: DET                # (*) = outputArr 분할 실패 fallback만
+  SRV-012:
+    default: DET                # (*) = "권한 양호, 내용 확인 필요" 부가 메시지 — DET verdict 출력 후 추가 안내
+  SRV-015:
+    default: DET                # (*) = outputArr 분할 실패 fallback만
+  SRV-016:
+    default: DET
+  SRV-025:
+    default: DET                # (*) = outputArr 분할 실패 fallback만
+  SRV-028:
+    default: DET                # (*) = outputArr 분할 실패 fallback만
+  SRV-034:
+    default: DET
+  SRV-035:
+    default: DET
+  SRV-037:
+    default: DET
+  SRV-062:
+    default: DET                # (*) = outputArr 분할 실패 fallback만
+  SRV-070:
+    default: DET
+  SRV-081:
+    default: DET                # (*) = outputArr 분할 실패 fallback만 (crontab 750 체크 누락 §13.2)
+  SRV-082:
+    default: DET
+  SRV-083:
+    default: DET
+  SRV-084:
+    default: DET
+  SRV-087:
+    default: DET
+  SRV-092:
+    default: DET                # (*) = outputArr 분할 실패 fallback만
+  SRV-093:
+    default: DET
+  SRV-094:
+    default: DET
+  SRV-095:
+    default: DET
+  SRV-096:
+    default: DET
+  SRV-108:
+    default: DET
+  SRV-121:
+    default: DET                # (*) = PATH 변수 미탐지 fallback + "다른 프로파일 수동확인" 부가 메시지
+  SRV-122:
+    default: DET                # (*) = umask 미탐지 fallback + "다른 프로파일 수동확인" 부가 메시지
+  SRV-133:
+    default: DET
+  SRV-142:
+    default: DET
+  SRV-147:
+    default: DET
+  SRV-158:
+    default: DET
+  SRV-161:
+    default: DET                # (*) = outputArr 분할 실패 fallback만
+  SRV-164:
+    default: DET                # (*) = outputArr 분할 실패 fallback만
+  SRV-170:
+    default: DET                # (*) = outputArr 분할 실패 fallback만
+  SRV-174:
+    default: DET
+
+  # ── DET-PARTIAL: linux_parse 오버라이드 — linux=DET, 나머지=MANUAL (auto_parse stub) ──
+  SRV-026:
+    default: MANUAL
+    variants: {linux: DET}      # SRV_Linux_parse.py:6 DET, auto_parse:1313 MANUAL stub
+  SRV-069:
+    default: MANUAL
+    variants: {linux: DET}      # SRV_Linux_parse.py:152 DET, auto_parse:1658 MANUAL stub (§16.3)
+  SRV-074:
+    default: MANUAL
+    variants: {linux: DET}      # SRV_Linux_parse.py:372 DET, auto_parse:1777 MANUAL stub (§16.3)
+  SRV-127:
+    default: MANUAL
+    variants: {linux: DET}      # SRV_Linux_parse.py:501 DET, auto_parse:2651 MANUAL stub (§16.3)
+  SRV-131:
+    default: MANUAL
+    variants: {linux: DET}      # SRV_Linux_parse.py:597 DET, auto_parse:2658 MANUAL stub
+
+  # ── DET-PARTIAL: 서비스 active 시 (*) 수동 / 서비스 inactive 시 DET 양호 ──
+  SRV-005:
+    default: DET-PARTIAL        # postfix 일부 경로 (*), sendmail/exim DET — 서비스별 분기
+  SRV-006:
+    default: DET-PARTIAL        # postfix (*) 경로 존재, sendmail/exim DET
+    note: "postfix debug_peer_level 미구현 §13.2"
+  SRV-007:
+    default: DET-PARTIAL        # SMTP active → (*) 패치버전 수동; inactive → DET N
+  SRV-009:
+    default: DET-PARTIAL        # postfix permit 네트워크 적절성 (*), exim version<9 (*) 존재
+  SRV-013:
+    default: DET-PARTIAL        # FTP active + anonymous 불분명 시 (*) 수동
+  SRV-014:
+    default: DET-PARTIAL        # NFS 접근통제 적절성 (*) 존재 (파일권한 DET, 정책 수동)
+  SRV-021:
+    default: DET-PARTIAL        # FTP active → (*) 수동; inactive → DET N (양호)
+  SRV-063:
+    default: DET-PARTIAL        # DNS options 섹션 탐지 실패 (*) 경로 존재
+  SRV-064:
+    default: DET-PARTIAL        # DNS active → (*) 패치버전 수동; inactive → DET N
+  SRV-066:
+    default: DET-PARTIAL        # DNS options 탐지 실패 (*) 경로 존재 (탐지 성공 시 DET)
+  SRV-073:
+    default: DET-PARTIAL        # 관리자 그룹 의심계정 존재 → (*) 수동 판단 필요
+    bug: SRV-073-no-group-data  # /etc/group 부재 시 (*)수동 반환(거짓양호 차단), KNOWN_BUGS.md §6
+  SRV-165:
+    default: MANUAL             # 항상 (*) 반환 — 쉘 계정 목록 후 수동 판단 (결정론 verdict 없음)
+  SRV-166:
+    default: MANUAL             # 항상 (*) 반환 — 숨김 파일 목록 후 수동 판단 (결정론 verdict 없음)
+  SRV-171:
+    default: DET-PARTIAL        # FTP active → (*) 수동; inactive → DET N
+  SRV-173:
+    default: DET-PARTIAL        # DNS active → (*) 수동; inactive → DET N
+
+  # ── MANUAL: 함수 있으나 즉각 (*) 반환, 결정론 verdict 없음 ──
+  SRV-022:
+    default: MANUAL             # 즉각 (*) 해시크랙 필요 (label C)
+  SRV-027:
+    default: MANUAL             # 즉각 (*) 수동 판단 필요 (label A LLM 후보)
+  SRV-075:
+    default: MANUAL             # 즉각 (*) (label C 해시크랙, §15.1)
+  SRV-091:
+    default: MANUAL             # 즉각 (*) 수동 판단 필요 (label A LLM 후보)
+  SRV-109:
+    default: MANUAL             # 즉각 (*) 내부정책 (label B 인터뷰)
+  SRV-112:
+    default: MANUAL             # 즉각 (*) 수동 판단 필요
+  SRV-115:
+    default: MANUAL             # 즉각 (*) 운영행위 (label B)
+  SRV-118:
+    default: MANUAL             # 즉각 (*) 운영행위 (label B)
+  SRV-144:
+    default: MANUAL             # 즉각 (*) 수동 판단 필요 (label A LLM 후보)
+  SRV-163:
+    default: MANUAL             # 즉각 (*) 수동 판단 필요 (label A LLM 후보)
+  SRV-175:
+    default: MANUAL             # 즉각 (*) NTP 수동 확인 필요
+
+  # ── ABSENT: xlsx에 있으나 common function_dispatcher에도 SRV_Linux_parse에도 없음 ──
+  # (대부분 Windows 전용 또는 인터뷰/인벤토리)
+  SRV-003:
+    default: ABSENT
+  SRV-018:
+    default: ABSENT
+  SRV-020:
+    default: ABSENT
+  SRV-023:
+    default: ABSENT
+  SRV-024:
+    default: ABSENT
+  SRV-029:
+    default: ABSENT
+  SRV-031:
+    default: ABSENT
+  SRV-072:
+    default: ABSENT
+  SRV-078:
+    default: ABSENT
+  SRV-079:
+    default: ABSENT
+  SRV-080:
+    default: ABSENT
+  SRV-090:
+    default: ABSENT
+  SRV-097:
+    default: ABSENT
+  SRV-101:
+    default: ABSENT
+  SRV-103:
+    default: ABSENT
+  SRV-104:
+    default: ABSENT
+  SRV-105:
+    default: ABSENT
+  SRV-116:
+    default: ABSENT
+  SRV-119:
+    default: ABSENT
+  SRV-123:
+    default: ABSENT
+  SRV-125:
+    default: ABSENT
+  SRV-126:
+    default: ABSENT
+  SRV-128:
+    default: ABSENT
+  SRV-129:
+    default: ABSENT
+  SRV-134:
+    default: ABSENT
+  SRV-135:
+    default: ABSENT
+  SRV-136:
+    default: ABSENT
+  SRV-137:
+    default: ABSENT
+  SRV-138:
+    default: ABSENT
+  SRV-139:
+    default: ABSENT
+  SRV-140:
+    default: ABSENT
+  SRV-149:
+    default: ABSENT
+  SRV-150:
+    default: ABSENT
+  SRV-151:
+    default: ABSENT
+  SRV-152:
+    default: ABSENT
+  SRV-172:
+    default: ABSENT
+  SRV-177:
+    default: ABSENT
+  SRV-178:
+    default: ABSENT
+  SRV-179:
+    default: ABSENT             # EOL/패치 — label D
+
+# ─── 타 도메인: 버그/회귀테스트 필요 항목 시드 ──────────────────────────────
+# (전수 분류는 해당 롤아웃 Phase에서 추가)
+
+  # DB: DBM-005 — mssql만 DET, 나머지 STUB (§17.4, §18.4)
+  DBM-005:
+    variants:
+      mssql: DET
+      mysql: STUB
+      oracle: STUB
+      mariadb: STUB
+      pg: STUB
+
+  # ─── 웹서버-WAS (WST) 웹 특화 항목 — Phase 3 전수 분류 ──────────────────────
+  # meta.notes: "Phase3=웹특화 WST만; OS-동형 WST는 서버프로파일 담당, 데이터 SRV-NNN"
+  # OS-동형 WST(WST-NNN 중 SRV 동형)는 실데이터에서 SRV ID로 수집되므로 이곳 미등재.
+  # variant 키: apache/iis/webtob/tomcat/jeus/webservice (profile.WEBWAS 웹키)
+  # 코드 근거: WST_Apache_parse.py / WST_IIS_parse.py / WST_WebtoB_parse.py의 check_WST_NNN 함수
+
+  # OS variant DET-PARTIAL 원칙 (§6.2 웹서버 추론 지원):
+  # detect_variant가 linux 등 OS 키를 반환하더라도, webwas 어댑터가 raw에서 웹서버 종류를
+  # 추론해 WST check 함수를 호출할 수 있다. 이를 위해 OS 5종(linux/aix/hpux/solaris/win)을
+  # DET-PARTIAL로 등재 → main.py gate 통과 → 어댑터가 raw 추론 시도.
+  # 추론 실패 시 어댑터가 handled=False → LLM 폴백 (안전 기본값 유지).
+
+  # WST-031: Directory Indexes — 3파서 config_dispatcher 등재
+  WST-031:
+    default: ABSENT              # tomcat/jeus/webservice 파서 없음
+    variants:
+      apache: DET
+      iis: DET
+      webtob: DET
+      linux: DET-PARTIAL         # OS variant: raw에서 웹서버 추론 후 판정 시도
+      aix: DET-PARTIAL
+      hpux: DET-PARTIAL
+      solaris: DET-PARTIAL
+      win: DET-PARTIAL
+
+  # WST-032: IIS 스크립트 경로 Everyone 권한 — IIS 전용
+  WST-032:
+    default: ABSENT
+    variants:
+      iis: DET
+      win: DET-PARTIAL           # OS variant win: IIS 추론 후 판정 시도
+
+  # WST-033: 웹서버 버전 — Apache DET, IIS DET, WebtoB NA→MANUAL((*) 반환)
+  WST-033:
+    default: ABSENT
+    variants:
+      apache: DET
+      iis: DET
+      webtob: MANUAL             # NA 처리: result='NA', reason에 (*) — Low-1 가드로 handled=False
+      linux: DET-PARTIAL         # OS variant: raw에서 웹서버 추론 후 판정 시도
+      aix: DET-PARTIAL
+      hpux: DET-PARTIAL
+      solaris: DET-PARTIAL
+      win: DET-PARTIAL
+
+  # WST-034: 불필요한 파일 — Apache MANUAL(*), IIS DET, WebtoB MANUAL(*)
+  WST-034:
+    default: ABSENT
+    variants:
+      apache: MANUAL             # WST_Apache_parse.py:69 즉각 (*) 반환
+      iis: DET
+      webtob: MANUAL             # WST_WebtoB_parse.py:12 즉각 (*) 반환
+      linux: DET-PARTIAL         # OS variant: raw에서 웹서버 추론 후 판정 시도
+      aix: DET-PARTIAL
+      hpux: DET-PARTIAL
+      solaris: DET-PARTIAL
+      win: DET-PARTIAL
+
+  # WST-035: LimitRequestBody — 3파서 등재
+  WST-035:
+    default: ABSENT
+    variants:
+      apache: DET
+      iis: DET
+      webtob: DET
+      linux: DET-PARTIAL
+      aix: DET-PARTIAL
+      hpux: DET-PARTIAL
+      solaris: DET-PARTIAL
+      win: DET-PARTIAL
+
+  # WST-036: 프로세스 권한(User/Group) — 3파서 등재, Apache $환경변수→(*) DET-PARTIAL
+  WST-036:
+    default: ABSENT
+    variants:
+      apache: DET                # $ 환경변수 경우 (*) → Low-1 가드가 handled=False로 처리
+      iis: DET
+      webtob: DET
+      linux: DET-PARTIAL
+      aix: DET-PARTIAL
+      hpux: DET-PARTIAL
+      solaris: DET-PARTIAL
+      win: DET-PARTIAL
+
+  # WST-037: DocumentRoot — 3파서 등재
+  WST-037:
+    default: ABSENT
+    variants:
+      apache: DET
+      iis: DET
+      webtob: DET
+      linux: DET-PARTIAL
+      aix: DET-PARTIAL
+      hpux: DET-PARTIAL
+      solaris: DET-PARTIAL
+      win: DET-PARTIAL
+
+  # WST-038: FollowSymLinks/디렉터리 리스팅 — Apache DET, IIS DET, WebtoB NA→MANUAL
+  WST-038:
+    default: ABSENT
+    variants:
+      apache: DET
+      iis: DET
+      webtob: MANUAL             # NA 처리: result='NA', reason에 (*) — Low-1 가드
+      linux: DET-PARTIAL
+      aix: DET-PARTIAL
+      hpux: DET-PARTIAL
+      solaris: DET-PARTIAL
+      win: DET-PARTIAL
+    bug: WST-038-apache-dotall   # WST_Apache_parse.py:314 re.DOTALL 누락 → 멀티라인 거짓양호 수정
+
+  # WST-039: 불필요한 모듈 활성화 — Apache MANUAL(*), IIS DET, WebtoB DET
+  WST-039:
+    default: ABSENT
+    variants:
+      apache: MANUAL             # WST_Apache_parse.py:357 즉각 (*) 반환
+      iis: DET
+      webtob: DET
+      linux: DET-PARTIAL
+      aix: DET-PARTIAL
+      hpux: DET-PARTIAL
+      solaris: DET-PARTIAL
+      win: DET-PARTIAL
+
+  # WST-040: IIS .asa/.asax 매핑 — xlsx 판단기준 역전 의심, 결정론 비활성
+  # KNOWN_BUGS.md §3 WST-040-polarity 사용자 확인 대기 → MANUAL로 강등
+  WST-040:
+    default: ABSENT
+    variants:
+      iis: MANUAL                # xlsx 역전 의심 → 결정론 비활성, 사용자 xlsx 확인 대기(§4.2)
+      win: MANUAL                # win OS variant도 IIS 추론 후 동일 MANUAL
+    bug: WST-040-polarity        # WST_IIS_parse.py:524-580 polarity + xlsx 역전 의심
+
+  # WST-041: IIS 실행파일 Everyone 권한 — IIS 전용
+  WST-041:
+    default: ABSENT
+    variants:
+      iis: DET
+      win: DET-PARTIAL
+
+  # WST-042: IIS handlers 매핑 — IIS 전용
+  WST-042:
+    default: ABSENT
+    variants:
+      iis: DET
+      win: DET-PARTIAL
+
+  # WST-043: IIS 버전 — IIS 전용
+  WST-043:
+    default: ABSENT
+    variants:
+      iis: DET
+      win: DET-PARTIAL
+
+  # WST-044: Tomcat/JEUS 기본 계정 — 전파서 MANUAL(*), label C
+  WST-044:
+    default: MANUAL              # WST_Apache/IIS/WebtoB_parse 모두 즉각 (*) 반환
+
+  # WST-080: 보안패치 — 파서 함수 없음 (§17.3 ABSENT)
+  WST-080:
+    default: ABSENT              # 파서 없음, label D
+
+  # WST-102: 서버 정보 노출 방지 — 3파서 등재, IIS 버그수정 완료
+  WST-102:
+    default: ABSENT
+    variants:
+      apache: DET
+      iis: DET                   # VENDOR-EDIT(bug) WST-102-iis-polarity 수정 완료
+      webtob: DET
+      linux: DET-PARTIAL         # OS variant: raw에서 웹서버 추론 후 판정 시도
+      aix: DET-PARTIAL
+      hpux: DET-PARTIAL
+      solaris: DET-PARTIAL
+      win: DET-PARTIAL
+    bug: WST-102-iis-polarity    # WST_IIS_parse.py:688-689 위반0건→result='N'(양호) 수정
+
+  # WST-121~126: 파서 함수 없음 (§17.3 ABSENT/GAP)
+  WST-121:
+    default: ABSENT
+  WST-122:
+    default: ABSENT
+  WST-123:
+    default: ABSENT
+  WST-124:
+    default: ABSENT
+  WST-125:
+    default: ABSENT
+  WST-126:
+    default: ABSENT              # EOL, label D
+
+  # OS가상화(PRCV): elif 중첩버그로 도달불가
+  PRCV-027:
+    default: UNREACHABLE
+    bug: PRCV-027-036-unreachable
+  PRCV-028:
+    default: UNREACHABLE
+    bug: PRCV-027-036-unreachable
+  PRCV-029:
+    default: UNREACHABLE
+    bug: PRCV-027-036-unreachable
+  PRCV-030:
+    default: UNREACHABLE
+    bug: PRCV-027-036-unreachable
+  PRCV-031:
+    default: UNREACHABLE
+    bug: PRCV-027-036-unreachable
+  PRCV-033:
+    default: UNREACHABLE
+    bug: PRCV-027-036-unreachable
+  PRCV-034:
+    default: UNREACHABLE
+    bug: PRCV-027-036-unreachable
+  PRCV-035:
+    default: UNREACHABLE
+    bug: PRCV-027-036-unreachable
+  PRCV-036:
+    default: UNREACHABLE
+    bug: PRCV-027-036-unreachable
+
+  # 네트워크: NET-051 오타 버그
+  NET-051:
+    default: STUB
+    bug: NET-051-typo           # NetworkConfig.py:2592 tcp-kepalives-in (e 누락)
+
+# ─── 컨테이너(PRCC) 전수 분류 ────────────────────────────────────────────────
+# Phase 2 (2026-06-16). 분류 근거: autoAnalysis.py 코드 분기 1순위(§2.5/§15.4).
+# 미기재 variant → ABSENT(gate 차단, 안전 기본값).
+# DET-PARTIAL 인코딩: variants 맵에 variant별 DET/MANUAL 값 직접 기재.
+#   base.py classify가 variant별로 DET/MANUAL 반환 → gate 자동 분기(§2.4).
+# 검증: k8s_master 실데이터 검증 완료. 타 variant(worker/eks/aks/ocp/docker)는
+#   코드리뷰 근거로 분류, 실데이터 미검증(Phase 2 한계 §6.3).
+
+  # ── DET: 전 활성 variant가 N/Y 결정론(M 분기 없음) ──────────────────────────
+
+  PRCC-001:
+    variants:
+      k8s_master: DET    # :38 "ROLE: cluster-admin" 매칭 → Y/N
+      eks_master: DET    # :38 동일 or 조건
+      aks_master: DET    # :38 동일 or 조건
+      ocp_master: DET    # :38 동일 or 조건
+
+  PRCC-002:
+    variants:
+      k8s_master: DET    # :57 ["*"] 매칭 → Y, 없으면 디폴트 N
+      eks_master: DET
+      aks_master: DET
+      ocp_master: DET
+
+  PRCC-003:
+    variants:
+      k8s_master: DET    # :70 "Service Account:default" 매칭 → Y
+      eks_master: DET
+      aks_master: DET
+      ocp_master: DET
+
+  PRCC-005:
+    variants:
+      k8s_master: DET    # :98 "--use-service-account-credentials=true" 부재 → Y
+      ocp_master: DET    # :104 ["true"] 부재 → Y
+
+  PRCC-006:
+    variants:
+      k8s_master: DET    # :111 "[X]" → Y
+      eks_master: DET
+      aks_master: DET
+
+  PRCC-007:
+    variants:
+      k8s_master: DET    # :117 파일권한 숫자비교 → Y/N
+      k8s_worker: DET    # :162
+      docker_linux: DET  # :191 ("docker" in "docker_linux" = True)
+      ocp_master: DET    # :212 권한 추출 후 비교
+      ocp_worker: DET    # :311 권한 추출 후 비교
+      eks_worker: DET    # :343
+      aks_worker: DET    # :369
+
+  PRCC-008:
+    variants:
+      k8s_master: DET    # :397 bind-address 확인
+      ocp_master: DET    # :406
+
+  PRCC-009:
+    variants:
+      k8s_master: DET    # :417 audit-policy-file/path 확인
+      k8s_worker: DET    # :426 --v= 확인
+      docker_linux: DET  # :434 ("docker" in "docker_linux")
+      ocp_master: DET    # :442 audit-log-path/policy-file
+      ocp_worker: DET    # :451
+      aks_worker: DET    # :451 동일 조건 (ocp_worker or aks_worker)
+      eks_master: DET    # :459 No log types 확인
+      eks_worker: DET    # :468 No result count
+      aks_master: DET    # :476 flag: [X]
+
+  PRCC-012:
+    variants:
+      k8s_master: DET    # :534 tls-cert-file/private-key 확인
+      k8s_worker: DET    # :543
+      docker_linux: DET  # :554 ("docker" in "docker_linux")
+      eks_master: DET    # :562 https:// 확인
+
+  PRCC-013:
+    variants:
+      k8s_master: DET    # :568 --anonymous-auth 확인
+      k8s_worker: DET    # :577
+      ocp_master: DET    # :585 [X] 확인
+      ocp_worker: DET    # :590 false 확인
+      aks_worker: DET    # :590 동일 조건
+      eks_master: DET    # :595 forbidden 확인
+      eks_worker: DET    # :600 No result count
+
+  PRCC-014:
+    variants:
+      k8s_master: DET    # :609 request-timeout 시간단위변환 후 >60초 확인
+      ocp_master: DET    # :627 min-request-timeout 추출 (IndexError 가능, 예외→M폴백)
+      ocp_worker: DET    # :634 AlwaysAllow 확인
+
+  PRCC-015:
+    variants:
+      k8s_master: DET    # :640 --authorization-mode 확인
+      k8s_worker: DET    # :648
+      ocp_master: DET    # :658
+      eks_worker: DET    # :663 (if not elif — 중첩 가드 주의)
+      aks_worker: DET    # :668
+
+  PRCC-016:
+    variants:
+      k8s_master: DET    # :674 --service-account-lookup=false 확인
+      ocp_master: DET    # :679
+
+  PRCC-019:
+    variants:
+      docker_linux: DET  # :737 "root" in vulOutput
+
+  PRCC-020:
+    variants:
+      docker_linux: DET  # :743 "true" in vulOutput
+
+  PRCC-021:
+    variants:
+      docker_linux: DET  # :748 userland-proxy 확인
+
+  PRCC-023:
+    variants:
+      docker_linux: DET  # :772 default_bridge:true / does not exist 확인
+
+  PRCC-025:
+    variants:
+      k8s_master: DET    # :805 --profiling 확인
+
+  PRCC-026:
+    variants:
+      k8s_master: DET    # :823 flag: [X] 확인
+      eks_master: DET
+      aks_master: DET
+      docker_linux: DET  # :828 Privileged: true
+      ocp_master: DET    # :833 SCC: 확인
+
+  PRCC-027:
+    variants:
+      k8s_master: DET    # :839 capabilities 확인
+      eks_master: DET
+      aks_master: DET
+      ocp_master: DET    # :846 SCC: 확인
+
+  PRCC-028:
+    variants:
+      k8s_master: DET    # :852 capabilities.drop:'' 확인
+      eks_master: DET
+      aks_master: DET
+      ocp_master: DET    # :857 SCC: 확인
+
+  PRCC-029:
+    variants:
+      k8s_master: DET    # :864 allowPrivilegeEscalation 확인
+      eks_master: DET
+      aks_master: DET
+      docker_linux: DET  # :872 no-new-privileges 확인
+      ocp_master: DET    # :882 SCC: 확인
+
+  PRCC-030:
+    variants:
+      k8s_master: DET    # :888 seccompProfile.localhostProfile:'' 확인
+      docker_linux: DET  # :893 seccomp=unconfined / profile=unconfined
+
+  PRCC-031:
+    variants:
+      k8s_master: DET    # :902 runAsNonRoot/runAsUser 확인
+      eks_master: DET
+      aks_master: DET
+      docker_linux: DET  # :916 UID: 0 / Config.User
+      ocp_master: DET    # :926 SCC: 확인
+
+  PRCC-032:
+    variants:
+      docker_linux: DET  # :933 live-restore 확인
+
+  PRCC-033:
+    variants:
+      k8s_master: DET    # :942 restartPolicy:Never 확인
+      eks_master: DET
+      aks_master: DET
+      docker_linux: DET  # :947 RestartPolicy Name: no / MaximumRetryCount: 0
+      ocp_master: DET    # :956 [X] 확인
+
+  PRCC-034:
+    variants:
+      docker_linux: DET  # :963 no healthcheck 확인
+
+  PRCC-035:
+    variants:
+      k8s_master: DET    # :968 시스템 디렉터리 마운트 확인
+      eks_master: DET
+      aks_master: DET
+      docker_linux: DET  # :976 does not exist 확인
+      ocp_master: DET    # :981 Pod 파싱 후 hostPath 확인
+
+  PRCC-037:
+    variants:
+      k8s_master: DET    # :1018 readOnlyRootFilesystem 확인
+      eks_master: DET
+      aks_master: DET
+      docker_linux: DET  # :1027 does not exist 확인
+      ocp_master: DET    # :1032 [X] 확인
+
+  PRCC-038:
+    variants:
+      k8s_master: DET    # :1038 mountPropagation: Bidirectional 확인
+      eks_master: DET
+      aks_master: DET
+      docker_linux: DET  # :1043 does not exist 확인
+      ocp_master: DET    # :1048 [X] 확인
+
+  PRCC-040:
+    variants:
+      k8s_worker: DET    # :1066 aufs 확인
+      docker_linux: DET  # :1066 ("docker" in "docker_linux")
+      ocp_worker: DET    # :1066
+      eks_worker: DET    # :1066
+      aks_worker: DET    # :1066
+
+  PRCC-041:
+    variants:
+      docker_linux: DET  # :1072 host/default / deactivated 확인
+
+  PRCC-042:
+    variants:
+      k8s_master: DET    # :1082 spec.hostPID:'true' 확인
+      eks_master: DET
+      aks_master: DET
+      docker_linux: DET  # :1087 host 확인
+      ocp_master: DET    # :1092 [X] 확인
+
+  PRCC-043:
+    variants:
+      k8s_master: DET    # :1099 spec.hostIPC:'true' 확인
+      eks_master: DET
+      aks_master: DET
+      docker_linux: DET  # :1104 host 확인
+      ocp_master: DET    # :1109 [X] 확인
+
+  PRCC-044:
+    variants:
+      k8s_master: DET    # :1115 spec.hostNetwork:'true' 확인
+      eks_master: DET
+      aks_master: DET
+      docker_linux: DET  # :1120 host / icc+bridge 확인
+      ocp_master: DET    # :1129 [X] 확인
+
+  PRCC-045:
+    variants:
+      k8s_master: DET    # :1135 spec.hostUTS:'true' (중복조건 버그 무해)
+      docker_linux: DET  # :1140 UTSMode: host
+      ocp_master: DET    # :1145 [X] 확인
+
+  PRCC-046:
+    variants:
+      k8s_master: DET    # :1151 [X] 확인
+      ocp_master: DET    # :1151 동일 or 조건
+      eks_master: DET
+      aks_master: DET
+
+  PRCC-047:
+    variants:
+      k8s_master: DET    # :1161 resources.limits.memory 확인
+      eks_master: DET
+      aks_master: DET
+      docker_linux: DET  # :1169 Memory: 0
+      ocp_master: DET    # :1174 [X] 확인
+
+  PRCC-048:
+    variants:
+      docker_linux: DET  # :1180 CgroupParent 확인
+
+  PRCC-049:
+    variants:
+      k8s_worker: DET    # :1187 pod-pids-limit/podPidsLimit 확인
+      docker_linux: DET  # :1198 PidsLimit 확인
+
+  PRCC-050:
+    variants:
+      docker_linux: DET  # :1204 default-ulimit + HostConfig.Ulimits 이중 확인
+
+  # ── DET-PARTIAL: variant에 따라 DET/MANUAL 혼재 ─────────────────────────────
+  # DET 변형은 결정론 판정, MANUAL 변형은 gate 차단 → LLM 폴백(§2.4).
+
+  PRCC-004:
+    variants:
+      k8s_master: MANUAL     # :83-85 result="M" 직접 반환
+      ocp_master: DET        # :87-94 token-auth-file / flag:[X] 매칭
+    # 나머지(eks_master/aks_master 등) 미기재 → ABSENT(평가대상 아님)
+
+  PRCC-010:
+    variants:
+      k8s_master: DET        # :482 audit-log-path / 휘발성경로 확인
+      k8s_worker: DET        # :494 log-file 설정 확인
+      ocp_master: DET        # :507 audit-log-path 확인
+      ocp_worker: MANUAL     # :519-521 result="M"
+
+  PRCC-017:
+    variants:
+      k8s_master: DET        # :685 pass → 디폴트 N 반환 (아무 위반조건 없음, 평가항목 아님 취급)
+      k8s_worker: DET        # :687 read-only-port 확인
+      ocp_worker: DET        # :698 [\"0\"] 확인
+      eks_worker: MANUAL     # :703-705 result="M"
+      aks_worker: DET        # :707 =0 확인
+
+  PRCC-018:
+    variants:
+      k8s_worker: MANUAL     # :713-715 result="M"
+      ocp_worker: DET        # :717 false 확인
+      eks_worker: DET        # :722 No result count
+      aks_worker: DET        # :730 No result 확인
+
+  PRCC-022:
+    variants:
+      k8s_master: MANUAL     # :761 ("k8s" in "k8s_master") result="M"
+      k8s_worker: MANUAL     # :761 ("k8s" in "k8s_worker")
+      ocp_master: MANUAL     # :761 ("ocp" in "ocp_master")
+      ocp_worker: MANUAL     # :761
+      eks_master: MANUAL     # :761 ("eks" in "eks_master")
+      eks_worker: MANUAL     # :761
+      aks_master: MANUAL     # :761 ("aks" in "aks_master")
+      aks_worker: MANUAL     # :761
+      docker_linux: DET      # :764 insecure-registry 확인
+
+  PRCC-024:
+    variants:
+      k8s_master: MANUAL     # :782 "No resources"→Y, else→M (M경로 지배적, 보수 MANUAL)
+      ocp_master: MANUAL     # :795 result="M" 직접 (dead code, 선매칭에 의해 도달불가 §17.2 무해)
+      eks_master: MANUAL     # :782 동일 or 조건
+      aks_master: MANUAL     # :782 동일 or 조건
+      docker_linux: DET      # :790 enable_icc:true 확인
+
+  PRCC-036:
+    variants:
+      k8s_master: DET        # :1000 docker.sock/containerd.sock 마운트 확인
+      docker_linux: DET      # :1008 does not exist 확인
+      ocp_master: MANUAL     # :1013-1015 result="M"
+
+  PRCC-039:
+    variants:
+      k8s_master: MANUAL     # :1054-1056 result="M"
+      ocp_master: MANUAL     # :1054
+      eks_master: MANUAL     # :1054
+      aks_master: MANUAL     # :1054
+      docker_linux: DET      # :1058 HostConfig.Devices 매칭
+
+  # ── MANUAL: 활성 variant 전부 또는 유일 활성 variant에 M 경로 지배 ────────────
+
+  PRCC-011:
+    variants:
+      docker_linux: MANUAL   # :524-531 json-file→Y, else→M (M 경로 존재, 유일 활성, 보수 MANUAL)
+    # docker가 유일 활성 variant이고 M 경로 있음 → MANUAL(gate 차단→LLM 폴백)이 안전
+    # §2.5 설계서: "PRCC-011 주플랫폼 DET 단정 금지 — docker가 유일 활성이고 M 경로 있음"

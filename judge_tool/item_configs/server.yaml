@@ -1,15 +1,484 @@
-# server(OS) 항목 라벨 & LLM 지시 — 스캐폴드(구조 단계)
+# server(OS) 항목 라벨 & LLM 지시 — Phase 1 완성: 전 SRV 항목 5-way 라벨링
 # label A: 기술 증거로 판정 가능 (LLM)
 # label B: 담당자 인터뷰 필수 — verdict=판단보류 고정, LLM은 summary_instruction으로 증거 요약만
 # label C: 기술적 한계 — 자동 판단보류, canned_message 출력 (LLM 호출 없음)
 # label D: 외부지식 필요(EOL·패치 등) — 자동 판단보류, canned_message 출력 (LLM 호출 없음)
 #
-# 현재 상태: 항목 미등재 → 전 항목(106개 SRV) 기본 label A(LLM 판정).
 # variant 키: aix / hpux / linux / solaris / win (variants: 오버라이드 가능).
 #
-# TODO(후속 과제 — 실수집 샘플 데이터 확보 후):
-# - 평가기준 '서버' 시트의 판단기준/판단방법을 OS 변형별로 정독하여
-#   C(기술한계)/D(EOL·패치 결정론)/B(인터뷰) 항목을 분류·등재한다.
-# - 커널/패치 버전성 항목(예: OS 패치 적용 여부)은 D + eol_check/patch_check
-#   후보로 보이나, 샘플 없이 추정 분류하지 않는다(여기 TODO로만 기록).
-# - empty_means_good(빈 출력=양호) 후보도 스크립트 분석 후 profile.SERVER에 보강.
+# ── Phase 1 완성: 전 SRV 항목(DET_SOURCE 기준 106개) 5-way 라벨링 ──
+# 라벨링 규칙(우선순위):
+#   1. EOL/패치(SRV-007/064/179) → D
+#   2. 크랙 기술한계(SRV-022/075) → C
+#   3. 인터뷰 필수(SRV-074/109/115/118) → B
+#      ※SRV-074: linux=SRV_Linux_parse 실결정론(Opus M-1 검증됨) + label B 폴백(비-linux/파싱실패) — 자기모순 아님
+#   4. linux classify==DET(위 1~3 제외) → judgment_method: det_common / label: A(폴백)
+#   5. MANUAL + §15.4 LLM 가능 명시분 → A
+#   6. ABSENT: §15.4 LLM 가능 명시분(SRV-027/091/144/163/165/166) → A; 나머지 → C
+#   7. DET-PARTIAL(서비스상태 의존) → det_common + label: A 폴백
+#      (사용자결정 2026-06-16: DET-PARTIAL 패스스루 — common 명확경로 결정론, (*)→LLM)
+#      예외: SRV-006(§13.2 누락으로 패스스루 제외, label A LLM 유지)
+#
+# 분류 권위: judge_tool/vendor/common/DET_SOURCE.yaml
+# 설계서 근거: DESIGN_common_deterministic_integration.md §14/§15/§16/§18.3
+
+# ─── D 라벨 — EOL/패치 (판단보류 고정, LLM 호출 없음) ─────────────────────────
+
+SRV-007:
+  label: D                        # DET-PARTIAL (SMTP active→(*) 패치버전); EOL/패치 → 규칙1 D
+  canned_message: "SMTP 패치버전 항목 — 외부지식(버전 목록) 필요, 판단보류(담당자 확인)"
+
+SRV-064:
+  label: D                        # DET-PARTIAL (DNS active→(*) 패치버전); EOL/패치 → 규칙1 D
+  canned_message: "DNS 패치버전 항목 — 외부지식(버전 목록) 필요, 판단보류(담당자 확인)"
+
+SRV-179:
+  label: D                        # ABSENT; EOL/패치 → 규칙1 D
+  canned_message: "OS 패치 적용 항목 — 외부지식(패치 이력) 필요, 판단보류(담당자 확인)"
+
+# ─── C 라벨 — 크랙 기술한계 (판단보류 고정, LLM 호출 없음) ──────────────────────
+
+SRV-022:
+  label: C                        # MANUAL; 즉각 (*) 해시크랙 필요 → 규칙2 C (§15.1)
+  canned_message: "패스워드 해시 크랙 필요 항목 — 기술적 한계로 자동 판정 불가, 수동 점검 필요"
+
+SRV-075:
+  label: C                        # MANUAL; 즉각 (*) 패스워드 복잡도 해시 마스킹 → 규칙2 C (§15.1)
+  canned_message: "패스워드 복잡도/해시 크랙 필요 항목 — 기술적 한계로 자동 판정 불가, 수동 점검 필요"
+
+# ─── C 라벨 — ABSENT (수집 함수 없음, 기본 보수적 판단보류) ────────────────────
+# 대부분 Windows 전용 또는 인터뷰/인벤토리 기반 항목 (DET_SOURCE: ABSENT, §18.3)
+
+SRV-003:
+  label: C                        # ABSENT (Windows 전용 계정 정책); 기본 보수적 → 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-018:
+  label: C                        # ABSENT (Windows 전용 계정 잠금); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-020:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-023:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-024:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-029:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-031:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-072:
+  label: C                        # ABSENT (인벤토리/인터뷰 기반); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-078:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-079:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-080:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-090:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-097:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-101:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-103:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-104:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-105:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-116:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-119:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-123:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-125:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-126:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-128:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-129:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-134:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-135:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-136:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-137:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-138:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-139:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-140:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-149:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-150:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-151:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-152:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-172:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-177:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+SRV-178:
+  label: C                        # ABSENT (Windows 전용); 규칙6 C
+  canned_message: "점검 결과 자동 판정 불가 — 수동 확인 필요(수집 함수 없음)"
+
+# ─── B 라벨 — 인터뷰 필수 (verdict=판단보류 고정, summary_instruction으로 증거 요약) ─────
+
+SRV-074:
+  # 사용자 결정(2026-06-16): check_SRV_074(SRV_Linux_parse.py:372) 로직 = xlsx 판단기준과 정확 일치
+  #   ("분기별 1회 이상 로그인 기록 없거나 / 비밀번호 90일 초과 미변경 → 취약") → 결정론 유지.
+  #   xlsx "※ 업무상 사용 여부 확인 필요"는 needs_review=True(전 서버 항목)로 사람이 최종 확인.
+  # Opus M-1 검증(2026-06-16): det_common + label B = 자기모순 아님.
+  #   linux variant → SRV_Linux_parse.check_SRV_074 실결정론(실데이터 N/Y, (*) 없음) — 확인.
+  #   비-linux/파싱실패 → (*) → Low-1 가드 → handled=False → label B 폴백(인터뷰). 의도된 설계.
+  #   auto_parse의 check_SRV_074는 항상 (*) 스텁이나, linux variant에서는 SRV_Linux_parse가 우선됨.
+  judgment_method: det_common     # linux=SRV_Linux_parse 실로직(실데이터 verdict 확인됨). 비-linux/파싱실패=B 폴백
+  label: B                        # handled=False(파싱실패·비-linux variant) 폴백 = 인터뷰 — 자기모순 아님
+  summary_instruction: "이 항목의 휴면계정 판정 증거를 정리하라: 마지막 로그인/패스워드 변경 90일 초과 계정 목록, 해당 계정의 업무 사용 여부 확인이 필요한 계정을 요약하라"
+
+SRV-109:
+  label: B                        # MANUAL; 즉각 (*) 내부정책 확인 → 규칙3 B (§15.3)
+  summary_instruction: "이 항목의 내부정책/운영절차 관련 증거를 정리하라: 정책 문서 참조, 담당자 확인이 필요한 사항을 요약하라"
+
+SRV-115:
+  label: B                        # MANUAL; 즉각 (*) 운영행위 확인 → 규칙3 B (§15.3)
+  summary_instruction: "이 항목의 운영행위 관련 증거를 정리하라: 로그 기록, 운영 이력 확인이 필요한 사항을 담당자 인터뷰를 위해 요약하라"
+
+SRV-118:
+  label: B                        # MANUAL; 즉각 (*) 운영행위 확인 → 규칙3 B (§15.3)
+  summary_instruction: "이 항목의 운영행위 관련 증거를 정리하라: 로그 기록, 운영 이력 확인이 필요한 사항을 담당자 인터뷰를 위해 요약하라"
+
+# ─── det_common 라벨 — linux=DET 확정 항목 (결정론 판정 활성화) ──────────────────
+# 폴백 label: A (handled=False 엣지 시 LLM 폴백)
+# 주석에 DET_SOURCE 분류값 + 규칙 번호 표기
+
+SRV-001:
+  judgment_method: det_common     # DET_SOURCE: default=DET; (*) = outputArr 분할 실패 fallback — 규칙4
+  label: A                        # handled=False 시 LLM 폴백
+
+SRV-004:
+  judgment_method: det_common     # DET_SOURCE: default=DET — 규칙4
+  label: A
+
+SRV-008:
+  judgment_method: det_common     # DET_SOURCE: default=DET; (*) = outputArr 분할 실패 fallback — 규칙4
+  label: A
+
+SRV-010:
+  judgment_method: det_common     # DET_SOURCE: default=DET (SRV-010-polarity 버그 벤더링 시 수정 완료) — 규칙4
+  label: A
+
+SRV-011:
+  judgment_method: det_common     # DET_SOURCE: default=DET; (*) = outputArr 분할 실패 fallback — 규칙4
+  label: A
+
+SRV-012:
+  judgment_method: det_common     # DET_SOURCE: default=DET; (*) = "권한 양호, 내용 확인 필요" 부가 메시지 — 규칙4
+  label: A
+
+SRV-015:
+  judgment_method: det_common     # DET_SOURCE: default=DET; (*) = outputArr 분할 실패 fallback — 규칙4
+  label: A
+
+SRV-016:
+  judgment_method: det_common     # DET_SOURCE: default=DET — 규칙4
+  label: A
+
+SRV-025:
+  judgment_method: det_common     # DET_SOURCE: default=DET; (*) = outputArr 분할 실패 fallback — 규칙4
+  label: A
+
+SRV-026:
+  judgment_method: det_common     # DET_SOURCE: variants={linux:DET}; SRV_Linux_parse.py:6 DET, auto_parse MANUAL stub — 규칙4
+  label: A
+
+SRV-028:
+  judgment_method: det_common     # DET_SOURCE: default=DET; (*) = outputArr 분할 실패 fallback — 규칙4
+  label: A
+
+SRV-034:
+  judgment_method: det_common     # DET_SOURCE: default=DET — 규칙4
+  label: A
+
+SRV-035:
+  judgment_method: det_common     # DET_SOURCE: default=DET — 규칙4
+  label: A
+
+SRV-037:
+  judgment_method: det_common     # DET_SOURCE: default=DET — 규칙4
+  label: A
+
+SRV-062:
+  judgment_method: det_common     # DET_SOURCE: default=DET; (*) = outputArr 분할 실패 fallback — 규칙4
+  label: A
+
+SRV-069:
+  judgment_method: det_common     # DET_SOURCE: variants={linux:DET}; SRV_Linux_parse.py:152 DET, auto_parse MANUAL stub (§16.3) — 규칙4
+  label: A                        # linux 외 variant는 MANUAL → handled=False → LLM 폴백
+
+SRV-070:
+  judgment_method: det_common     # DET_SOURCE: default=DET — 규칙4
+  label: A
+
+SRV-081:
+  # ⚠️ det_common 부여 금지(§13.2/Opus C-1): common check_SRV_081은 결정론(classify=DET)이나
+  # xlsx 요구 '/usr/bin/crontab 바이너리 750 이하' 검사를 누락 → det_common이면 과다권한을
+  # 놓치고 거짓 양호(0.9 신뢰)로 샘. xlsx 권위 원칙 → SRV-006과 동형으로 LLM 폴백(label A).
+  # 후속: 어댑터에 crontab 750 보강 시 det_common 재승격 가능(단 수집 데이터도 필요).
+  label: A                        # DET-but-loose; §13.2 처방 = LLM 폴백 — 규칙4 예외
+
+SRV-082:
+  judgment_method: det_common     # DET_SOURCE: default=DET — 규칙4
+  label: A
+
+SRV-083:
+  judgment_method: det_common     # DET_SOURCE: default=DET — 규칙4
+  label: A
+
+SRV-084:
+  judgment_method: det_common     # DET_SOURCE: default=DET — 규칙4
+  label: A
+
+SRV-087:
+  judgment_method: det_common     # DET_SOURCE: default=DET — 규칙4
+  label: A
+
+SRV-092:
+  judgment_method: det_common     # DET_SOURCE: default=DET; (*) = outputArr 분할 실패 fallback — 규칙4
+  label: A
+
+SRV-093:
+  judgment_method: det_common     # DET_SOURCE: default=DET — 규칙4
+  label: A
+
+SRV-094:
+  judgment_method: det_common     # DET_SOURCE: default=DET — 규칙4
+  label: A
+
+SRV-095:
+  judgment_method: det_common     # DET_SOURCE: default=DET — 규칙4
+  label: A
+
+SRV-096:
+  judgment_method: det_common     # DET_SOURCE: default=DET — 규칙4
+  label: A
+
+SRV-108:
+  judgment_method: det_common     # DET_SOURCE: default=DET — 규칙4
+  label: A
+
+SRV-121:
+  judgment_method: det_common     # DET_SOURCE: default=DET; (*) = PATH 변수 미탐지 fallback — 규칙4
+  label: A
+
+SRV-122:
+  judgment_method: det_common     # DET_SOURCE: default=DET; (*) = umask 미탐지 fallback — 규칙4
+  label: A
+
+SRV-127:
+  judgment_method: det_common     # DET_SOURCE: variants={linux:DET}; SRV_Linux_parse.py:501 DET, auto_parse MANUAL stub — 규칙4
+  label: A
+
+SRV-131:
+  judgment_method: det_common     # DET_SOURCE: variants={linux:DET}; SRV_Linux_parse.py:597 DET, auto_parse MANUAL stub — 규칙4
+  label: A
+
+SRV-133:
+  judgment_method: det_common     # DET_SOURCE: default=DET — 규칙4
+  label: A
+
+SRV-142:
+  judgment_method: det_common     # DET_SOURCE: default=DET — 규칙4
+  label: A
+
+SRV-147:
+  judgment_method: det_common     # DET_SOURCE: default=DET — 규칙4
+  label: A
+
+SRV-158:
+  judgment_method: det_common     # DET_SOURCE: default=DET — 규칙4
+  label: A
+
+SRV-161:
+  judgment_method: det_common     # DET_SOURCE: default=DET; (*) = outputArr 분할 실패 fallback — 규칙4
+  label: A
+
+SRV-164:
+  judgment_method: det_common     # DET_SOURCE: default=DET; (*) = outputArr 분할 실패 fallback — 규칙4
+  label: A
+
+SRV-170:
+  judgment_method: det_common     # DET_SOURCE: default=DET; (*) = outputArr 분할 실패 fallback — 규칙4
+  label: A
+
+SRV-174:
+  judgment_method: det_common     # DET_SOURCE: default=DET — 규칙4
+  label: A
+
+# ─── A 라벨 — LLM 판정 (증거 있음, 의미판단) ───────────────────────────────────
+
+# DET-PARTIAL(서비스상태 의존): 어댑터 런타임 분기 미구현, 현재 LLM — 규칙7
+
+SRV-005:
+  # DET-PARTIAL 패스스루(사용자결정): common 명확경로 결정론, (*)→LLM. 폴백 A.
+  judgment_method: det_common     # DET_SOURCE: default=DET-PARTIAL; postfix 일부 (*), sendmail/exim DET
+  label: A                        # handled=False((*) 수동경로) 시 LLM 폴백
+
+SRV-006:
+  label: A                        # DET-PARTIAL; §13.2 누락으로 패스스루 제외, LLM 유지 — postfix debug_peer_level 미구현
+
+SRV-009:
+  # DET-PARTIAL 패스스루(사용자결정): common 명확경로 결정론, (*)→LLM. 폴백 A.
+  judgment_method: det_common     # DET_SOURCE: default=DET-PARTIAL; postfix permit (*), exim version<9 (*) 존재
+  label: A                        # handled=False((*) 수동경로) 시 LLM 폴백
+
+SRV-013:
+  # DET-PARTIAL 패스스루(사용자결정): common 명확경로 결정론, (*)→LLM. 폴백 A.
+  judgment_method: det_common     # DET_SOURCE: default=DET-PARTIAL; FTP active + anonymous 불분명 시 (*) 수동
+  label: A                        # handled=False((*) 수동경로) 시 LLM 폴백
+
+SRV-014:
+  # DET-PARTIAL 패스스루(사용자결정): common 명확경로 결정론, (*)→LLM. 폴백 A.
+  judgment_method: det_common     # DET_SOURCE: default=DET-PARTIAL; NFS 접근통제 적절성 (*) 존재
+  label: A                        # handled=False((*) 수동경로) 시 LLM 폴백
+
+SRV-021:
+  # DET-PARTIAL 패스스루(사용자결정): common 명확경로 결정론, (*)→LLM. 폴백 A.
+  judgment_method: det_common     # DET_SOURCE: default=DET-PARTIAL; FTP active → (*); inactive → DET N
+  label: A                        # handled=False((*) 수동경로) 시 LLM 폴백
+
+SRV-063:
+  # DET-PARTIAL 패스스루(사용자결정): common 명확경로 결정론, (*)→LLM. 폴백 A.
+  judgment_method: det_common     # DET_SOURCE: default=DET-PARTIAL; DNS options 섹션 탐지 실패 (*) 존재
+  label: A                        # handled=False((*) 수동경로) 시 LLM 폴백
+
+SRV-066:
+  # DET-PARTIAL 패스스루(사용자결정): common 명확경로 결정론, (*)→LLM. 폴백 A.
+  judgment_method: det_common     # DET_SOURCE: default=DET-PARTIAL; DNS options 탐지 실패 (*) 존재
+  label: A                        # handled=False((*) 수동경로) 시 LLM 폴백
+
+SRV-073:
+  # DET-PARTIAL 패스스루(사용자결정): common 명확경로 결정론, (*)→LLM. 폴백 A.
+  judgment_method: det_common     # DET_SOURCE: default=DET-PARTIAL; 관리자 그룹 의심계정 → (*) 수동
+  label: A                        # handled=False((*) 수동경로) 시 LLM 폴백
+
+SRV-171:
+  # DET-PARTIAL 패스스루(사용자결정): common 명확경로 결정론, (*)→LLM. 폴백 A.
+  judgment_method: det_common     # DET_SOURCE: default=DET-PARTIAL; FTP active → (*); inactive → DET N
+  label: A                        # handled=False((*) 수동경로) 시 LLM 폴백
+
+SRV-173:
+  # DET-PARTIAL 패스스루(사용자결정): common 명확경로 결정론, (*)→LLM. 폴백 A.
+  judgment_method: det_common     # DET_SOURCE: default=DET-PARTIAL; DNS active → (*); inactive → DET N
+  label: A                        # handled=False((*) 수동경로) 시 LLM 폴백
+
+# MANUAL + §15.4 LLM 가능 명시분 — 규칙5/6
+# common이 (*) 수동 punt했으나 config 증거 존재 → LLM 판정 (§14 분류표)
+
+SRV-027:
+  label: A                        # MANUAL; 즉각 (*) 수동 — §15.4 LLM 후보 명시 — 규칙5
+
+SRV-091:
+  label: A                        # MANUAL; 즉각 (*) 수동 — §15.4 LLM 후보 명시 — 규칙5
+
+SRV-112:
+  label: A                        # MANUAL; 즉각 (*) 수동 — 규칙5
+
+SRV-144:
+  label: A                        # MANUAL; 즉각 (*) 수동 — §15.4 LLM 후보 명시 — 규칙5
+
+SRV-163:
+  label: A                        # MANUAL; 즉각 (*) 수동 — §15.4 LLM 후보 명시 — 규칙5
+
+SRV-165:
+  label: A                        # MANUAL; 항상 (*) — 쉘 계정 목록 후 수동 판단; §15.4 LLM 가능 명시 — 규칙5
+
+SRV-166:
+  label: A                        # MANUAL; 항상 (*) — 숨김 파일 목록 후 수동 판단; §15.4 LLM 가능 명시 — 규칙5
+
+SRV-175:
+  label: A                        # MANUAL; 즉각 (*) NTP 수동 확인 필요 — 규칙5
+
+# 주: 타 도메인(DBM/WST/PRCV/NET) 버그/시드 항목은 server.yaml이 아니라
+# judge_tool/vendor/common/DET_SOURCE.yaml에 이미 등재됨(여기 있던 잘못 들여쓰기된
+# 중복 블록은 YAML 파싱 시 소실돼 무효였음 → Opus H-1로 제거). 각 도메인 라벨링은
+# 해당 롤아웃 Phase의 item_configs/<domain>.yaml에서 진행.

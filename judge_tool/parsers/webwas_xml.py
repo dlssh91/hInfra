@@ -148,7 +148,9 @@ def parse(xml_path: str) -> List[Tuple[str, List[ResourceEvidence], Optional[str
             if masked_output:
                 resources.append(ResourceEvidence(
                     resource_id=f"{cid}#{n}", status="", detail="",
-                    evidence=masked_output))
+                    evidence=masked_output,
+                    raw_evidence=raw_output or None,  # §6.1 Phase3: 결정론 전용 비마스킹
+                ))
             out.append((cid, resources, None))
     if not out:
         raise ReportError(

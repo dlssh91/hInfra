@@ -4,7 +4,7 @@ import logging
 import os
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, Optional
 
@@ -19,8 +19,16 @@ from judge_tool.fw_policy import detect_for_iss, policy_from_dict
 from judge_tool.mapper import aggregate
 from judge_tool.models import EvidenceItem, Judgment, ResourceEvidence
 from judge_tool.parsers import get_parser
+from judge_tool.preflight import PreflightError, run_preflight  # noqa: F401
 from judge_tool.profile import get_profile
 from judge_tool.writer import build_coverage, write_excel, write_json
+
+# 결정론 어댑터 등록 — import 시 _DET_ADAPTERS["server"] 등록 부작용 발생
+import judge_tool.det_adapters.server as _server_adapter  # noqa: F401,E402
+# 컨테이너 어댑터 등록 — import 시 _DET_ADAPTERS["container"] 등록 부작용 발생
+import judge_tool.det_adapters.container as _container_adapter  # noqa: F401,E402
+# 웹서버-WAS 어댑터 등록 — import 시 _DET_ADAPTERS["webwas"] 등록 부작용 발생 (Phase 3)
+import judge_tool.det_adapters.webwas as _webwas_adapter  # noqa: F401,E402
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +60,9 @@ class JudgeContext:
     client: object
     items: Dict
     variant: str
+    # 항목별 임계값 맵 {item_id: {param: value, ...}}. 기본 빈 dict.
+    # run()에서 _build_thresholds(criteria)로 채워짐(§6). 기존 생성 호출 불변.
+    thresholds: Dict = field(default_factory=dict)
 
 
 def _auto_defer(crit, item, profile) -> Judgment:
@@ -369,6 +380,135 @@ def _fw_policy_handler(crit, item, ctx: "JudgeContext") -> Optional[Judgment]:
         return None
 
 
+def _build_thresholds(criteria: Dict) -> Dict:
+    """criteria({(item_id, variant): Criterion}) → {item_id: dict} 임계값 맵.
+
+    Criterion.thresholds가 비어있지 않은 항목만 수록한다.
+    같은 item_id가 여러 variant에 걸쳐 있으면 비어있지 않은 것 중 첫 번째를 사용
+    (현재 thresholds는 variant 무관 공통값이므로 충돌 없음).
+    criteria가 비어있거나 어떤 항목도 thresholds를 가지지 않으면 빈 dict.
+    """
+    result: Dict = {}
+    for crit in criteria.values():
+        if getattr(crit, "thresholds", None) and crit.item_id not in result:
+            result[crit.item_id] = crit.thresholds
+    return result
+
+
+def _raw_evidence_for_det(item) -> str:
+    """det_common 어댑터 공급용: item의 resources에서 raw_evidence를 모아 반환.
+
+    citation/LLM 경로에는 사용하지 않는다(§7 누출 경계).
+    raw_evidence가 있는 첫 번째 ResourceEvidence의 raw_evidence를 반환.
+    없으면 빈 문자열(어댑터가 빈 입력으로 handled=False 반환 가능).
+    """
+    for res in (item.resources if item else []):
+        raw = getattr(res, "raw_evidence", None)
+        if raw:
+            return raw
+    return ""
+
+
+def _det_common_label_route(crit, item, ctx: "JudgeContext") -> Optional[Judgment]:
+    """§18.3 라벨 라우팅: handled=False 시 crit.label에 따라 분기한다.
+
+    label A → _judge_one(LLM)
+    label B → _summarize_one(인터뷰)
+    label C / D → _defer_or_eol(canned/EOL)
+    기타/미지 → _judge_one(보수적 폴백)
+
+    구현됨(§18.3 라우팅): Phase 1부터 무조건 LLM 폴백 금지.
+    """
+    label = getattr(crit, "label", None) or "A"
+    if label == "B":
+        return _summarize_one(crit, item, ctx)
+    if label in ("C", "D"):
+        return _defer_or_eol(crit, item, ctx)
+    # label A 또는 미지 → LLM
+    return _judge_one(crit, item, ctx)
+
+
+def _det_common_handler(crit, item, ctx: "JudgeContext") -> Optional[Judgment]:
+    """common 결정론 판정 핸들러 (judgment_method="det_common").
+
+    Phase 0 동작: 어댑터 레지스트리가 비어있으므로 get_adapter()가 항상 None →
+    §18.3 라벨 라우팅으로 폴백. 기존 판정 동작 불변(서버 항목에 det_common 미부여 상태).
+
+    Phase 1+ 동작(어댑터 등록 후):
+      1) gate(): 비결정론(STUB/ABSENT/UNREACHABLE/MANUAL)이면 handled=False →
+         §18.3 라벨 라우팅(A→LLM, B→인터뷰, C/D→canned). 구현됨(§18.3 라우팅).
+      2) DET 확인 후 어댑터 호출 → ForcedVerdict.
+      3) handled=True면 fw_policy_handler 패턴으로 합성 EvidenceItem 래핑 →
+         forced → reconcile → needs_review=True.
+
+    raw 입력은 citation/LLM에 노출되지 않는다(§7 누출 경계: _raw_evidence_for_det 사용).
+    """
+    from judge_tool.det_adapters import base as det_base  # 지연 임포트(순환 방지)
+
+    profile = ctx.profile
+    adapter = det_base.get_adapter(ctx.profile_key)
+
+    # 어댑터 없음 → §18.3 라벨 라우팅(Phase 0: 서버 항목에 det_common 미부여라 실질 불변)
+    if adapter is None:
+        return _det_common_label_route(crit, item, ctx)
+
+    # Phase 1+: 어댑터 있는 경우 — 거짓 양호 게이트(§18.1 C1)
+    gate_result = det_base.gate(crit.item_id, ctx.variant)
+    if gate_result is not None and not gate_result.handled:
+        # 비-DET(ABSENT/MANUAL/STUB) 항목: §18.3 라벨 라우팅(구현됨)
+        return _det_common_label_route(crit, item, ctx)
+
+    # DET 확인: 어댑터 호출
+    raw = _raw_evidence_for_det(item)  # §7: raw를 citation/LLM에 넘기지 않는다
+    thresholds = ctx.thresholds.get(crit.item_id, {})
+    try:
+        fv = adapter(crit.item_id, raw, ctx.variant, thresholds,
+                     context=item.context if item else None)
+    except Exception as e:  # noqa: BLE001
+        log.warning("det_common 어댑터 예외 item=%s variant=%s type=%s — §18.3 라벨 라우팅",
+                    crit.item_id, ctx.variant, type(e).__name__)
+        return _det_common_label_route(crit, item, ctx)
+
+    if not fv.handled:
+        # 어댑터가 (*)/M 분기를 만남 → §18.3 라벨 라우팅(구현됨)
+        return _det_common_label_route(crit, item, ctx)
+
+    # fw_policy_handler와 동일 패턴: 합성 EvidenceItem 래핑 → reconcile → needs_review
+    violation_text = "\n".join(fv.citations[:20]) if fv.citations else "이상 없음"
+    ev_item = EvidenceItem(
+        item_id=crit.item_id,
+        variant=ctx.variant,
+        resources=[ResourceEvidence(
+            resource_id=f"{crit.item_id}-det",
+            status=fv.ev_status,
+            detail=fv.rationale[:200],
+            evidence=violation_text,
+            # raw_evidence는 합성 증거에 넣지 않는다(§7 누출 경계)
+        )],
+        context=None,
+    )
+    forced = {
+        "verdict": fv.verdict,
+        "confidence": fv.confidence,
+        "rationale": fv.rationale,
+        "cited_evidence": fv.citations[:20],
+    }
+    try:
+        j = reconcile(
+            forced, crit, ev_item,
+            status_available=profile.status_available,
+            flag_vulnerable_for_review=profile.flag_vulnerable_for_review,
+            empty_means_good=crit.item_id in profile.empty_means_good,
+        )
+        j.label = crit.label
+        j.needs_review = True  # 탐지=결정론, 임계값 정당성=사람
+        return j
+    except Exception as e2:  # noqa: BLE001
+        log.warning("det_common reconcile 실패, §18.3 라벨 라우팅 item=%s type=%s",
+                    crit.item_id, type(e2).__name__)
+        return _det_common_label_route(crit, item, ctx)
+
+
 # 판단방식(judgment_method) → 핸들러 디스패치 레지스트리.
 # label if/elif 분기를 대체한다. 새 판정 종류(예: 방화벽 결정론 엔진)는
 # 여기에 method→핸들러를 등록하는 것으로 확장한다(elif 증식 없음).
@@ -380,6 +520,7 @@ _HANDLERS = {
     "interview_holdonly": _summarize_one,
     "det": _defer_or_eol,
     "fw_policy": _fw_policy_handler,
+    "det_common": _det_common_handler,  # Phase 0: 어댑터 미등록 → LLM 폴백(동작 불변)
 }
 
 
@@ -409,7 +550,8 @@ def _guard_out_dir(out_dir: str, report_path: str, criteria_path: str) -> None:
 
 def run(report_path: str, criteria_path: str, profile_key: str, client,
         json_out: str, xlsx_out: str, model_name: str,
-        now: Optional[str] = None, variant_override: Optional[str] = None) -> Dict:
+        now: Optional[str] = None, variant_override: Optional[str] = None,
+        skip_preflight: bool = False) -> Dict:
     # 잘못된 --profile 입력은 사용자 입력 오류이므로 ReportError로 변환해
     # main()에서 깔끔히 안내한다(raw KeyError 트레이스백 노출 방지).
     try:
@@ -453,6 +595,26 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
             f"--variant로 직접 지정하세요"
             f"(사용 가능: {list(profile.variants)}).")
 
+    # Pre-flight: 인코딩 교정 + LLM 점검 가능 게이트.
+    # 교정 결과 텍스트는 preflight 모듈이 파서 내부(_read_text)에 이미 통합돼
+    # 있으므로 여기서는 게이트(NG이면 PreflightError)만 실행한다.
+    # 게이트 적용 기준: 파일 확장자 하드코딩 대신 profile.parser 종류로 판단.
+    # XML 계열 파서(cloud_xml/server_xml/container_xml/network_xml/osvirt_xml/
+    # webwas_xml/iss_xml)는 텍스트 XML이므로 인코딩 교정+게이트 적용.
+    # db_json/fw_policy_xlsx 등 비XML 파서는 자체 처리라 게이트 생략.
+    # 이로써 대문자 .XML·확장자 없는 경로에도 일관 적용된다.
+    _XML_PARSERS = {
+        "cloud_xml", "server_xml", "container_xml", "network_xml",
+        "osvirt_xml", "webwas_xml", "iss_xml",
+    }
+    if profile.parser in _XML_PARSERS:
+        run_preflight(report_path, client if not skip_preflight else None,
+                      skip=skip_preflight)
+    elif not skip_preflight:
+        log.debug(
+            "pre-flight 게이트: XML 파서 아님(parser=%s), 게이트 생략 (%s)",
+            profile.parser, report_path)
+
     criteria = load_criteria(criteria_path, profile, profile_key=profile_key)
     raw_checks = parser.parse(report_path)
     items = aggregate(raw_checks, variant, profile)
@@ -460,7 +622,8 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
     judgments = []
     judged_ids: set = set()
     ctx = JudgeContext(profile=profile, profile_key=profile_key, client=client,
-                       items=items, variant=variant)
+                       items=items, variant=variant,
+                       thresholds=_build_thresholds(criteria))
 
     # TODO(네이티브 OS레벨 항목): DBM-012(lsnrctl)/022(파일권한)/026(umask)/
     # 034(구동권한)/021(ODBC) 등은 SQL이 섹션 자체를 출력하지 않아 아래 루프에서
@@ -535,8 +698,12 @@ def main(argv=None):
                     help="변형 강제 지정(파일명 자동식별을 건너뜀). "
                          "예: oracle_native, mysql_rds")
     ap.add_argument("--out-dir", default=".")
-    ap.add_argument("--model", default="qwen2.5:14b")
+    ap.add_argument("--model", default="qwen3-coder:30b")
     ap.add_argument("--ollama-url", default="http://localhost:11434")
+    ap.add_argument("--skip-preflight", "--no-llm-gate",
+                    action="store_true", default=False,
+                    help="pre-flight 인코딩 교정·LLM 게이트를 건너뜀 "
+                         "(테스트/오프라인 모드용). 기본은 활성화.")
     args = ap.parse_args(argv)
 
     _guard_out_dir(args.out_dir, args.report, args.criteria)
@@ -549,7 +716,8 @@ def main(argv=None):
     try:
         cov = run(args.report, args.criteria, args.profile, client,
                   json_out, xlsx_out, args.model,
-                  variant_override=args.variant)
+                  variant_override=args.variant,
+                  skip_preflight=args.skip_preflight)
     except (ReportError, OSError) as e:
         # 사용자 입력 오류(손상 XML/파일 부재 등)만 깔끔히 안내한다.
         # ReportError 는 의도된 입력/보고서 문제, OSError(FileNotFoundError

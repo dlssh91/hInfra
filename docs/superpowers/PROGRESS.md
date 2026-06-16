@@ -1,13 +1,197 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-15 (Docker 실수집 7건 + collected/ 정리 + 폴더 재배치). 다음 세션에서 이 파일부터 읽고 이어서 진행할 것.
-> (한 작업단위 종료 시마다 이 파일을 갱신해 인계. commit/push 안 함 — 문서로만 이어받음.
->  "개발진행해" 트리거는 CLAUDE.md 참조. 이 파일이 단일 진실원천.)
+> 마지막 업데이트: 2026-06-16 (**상태저장. 이번 세션 완료: Phase 0~3(서버·컨테이너·웹서버WAS) 결정론 통합 SHIP + 듀얼런 하니스(det>LLM 실증) + Pre-flight 인코딩교정·LLM게이트 + 30b label-A 평가(B)·프롬프트튜닝. 980 passed, 3 skipped**). **"다음에 진행해줘" → 아래 ★다음 착수(Phase 4 DB)부터.**
+> (한 작업단위 종료 시마다 이 파일을 갱신해 인계. 이 파일이 단일 진실원천.
+>  재개 트리거: "개발진행해"/"이어서 진행"/"다음 작업"/**"다음에 진행해"** → 아래 TL;DR ★다음 착수부터.)
 
 ## ▶ 다음 세션 즉시 시작점 (TL;DR)
-- **★다음 작업 = 획득 결과파일의 local LLM 판정 유효성 검토** (사용자 지정).
-  Docker/제공으로 결과파일 획득한 대상에 대해 스크립트 결과를 local LLM(Ollama)이
-  얼마나 잘 판단하는지 평가. 획득 현황은 `collected/INDEX.md` 참조.
+- **★다음 착수 = Phase 4 DB(DBM) 결정론 통합** (로드맵 §9 다음 도메인). "다음에 진행해줘" → 여기부터.
+  **방법 = Phase 1/2/3에서 검증된 패턴 그대로**(vendor → DET_SOURCE 분류 → 어댑터 → gate{DET,DET-PARTIAL} → Low-1+증거존재 가드 → 5-way 라벨 → 실데이터 검증 → 듀얼런 불변확인 → Opus 적대리뷰 → 미듐이상 shift-left). 설계는 Fable 불가 시 Opus 대체.
+  **DB 특이주의(§17.4)**: ⚠️**엔진별 STUB 산재** — `flus-main/app/common/DatabaseConfigLoader/modules/database/{mysql,oracle,mssql,mariadb,postgresql}/analysis.py`를 벤더링하되 **DBM-005(mysql/oracle/mariadb/pg=STUB·mssql만 DET) 등 엔진별 DET/STUB를 DET_SOURCE에 정확히**(STUB→handled=False, 거짓양호 금지). DBM-034/035/036 전엔진 ABSENT. **DB는 기존 검증된 LLM 산출물 존재 → 듀얼런으로 전환 후 불변확인 필수**(Q4). 임계값은 JSON config(rules)에서 읽으므로 yaml thresholds 매핑 깔끔(§6). 실데이터: `collected/db/` 5엔진 네이티브 샘플.
+  **착수 0번**: criteria '데이터베이스' 시트 ID 체계 확인(DBM-NNN) + DET_SOURCE에 DBM 엔진별 분류 작성(autoAnalysis 아닌 각 analysis.py 코드 근거).
+  - **(병행 가능, 비차단) LLM 품질 트랙**: 인코딩 교정·프롬프트 튜닝(빈출력클래스) 안전레버 **소진 완료**. 남은 레버=**골드라벨 확보**(사용자 정답 → 30b/결정론 진짜 측정, 현재 Opus 대용 N=10). 30b는 label-A에 보수적 충분(거짓양호 0) 확인됨.
+
+  - **Pre-flight 인코딩 교정 + LLM 점검가능 게이트(2026-06-16, 980 passed)**: `judge_tool/preflight.py`.
+    - **인코딩 자동교정(결정론)**: utf-8 strict 프로빙→cp949(단 mojibake>5%면 utf-8 replace 폴백)→replace. 선언 인코딩 불신(EUC-KR 선언+UTF-8 바이트 mojibake 버그 수정). server_xml `_read_text`→`preflight.read_text` 위임, container/webwas 자동적용. **실증: 컨테이너 mojibake 812→0(한글 정상).**
+    - **점검가능 게이트(사용자계약: 항상 LLM 판정)**: `run_llm_gate` LLM 권위화 — LLM 성공시 LLM 최종(OK→통과/NG→`PreflightError` 중단, 휴리스틱 미참조), **LLM 불가시에만 휴리스틱 폴백**(meta `gate_decided_by`). 모델 기본 `--model qwen3-coder:30b`(production, 사용자확정 [[local-llm-only]]). 게이트 프롬프트: 인코딩깨짐/전손상/빈데이터만 NG(취약내용은 OK). 게이트 적용=profile.parser(XML계열) 기준. `--skip-preflight` 제공.
+    - **실LLM 30b 검증**: 정상파일→OK(false NG 없음)·손상→NG(중단)·미가동→폴백. det verdict 불변(ASCII 마커). 목표=LLM 입력 텍스트 정상화 달성.
+    - 함의: 이제 LLM-assist(label A) 평가가 공정해짐(깨끗한 한글 입력). 듀얼런 LLM 거짓양성(`[not exist]` 오독류) 일부는 깨끗한 입력 + 마커설명 프롬프트로 개선 여지.
+    - **★인코딩 효과 실증(2026-06-16)**: 컨테이너 듀얼런 재실행(동일 30b, 인코딩만 차이) → **일치율 44.4%→72.2%**(matched 16→26, +10항목). mojibake가 LLM 주된 실패원인이었음 확정. PRCC-029/033/035/036/037/047 = 깨진한글→정상으로 LLM 일치. PRCC-028/030 = 취약(거짓)→판단보류(안전)로 개선. 남은 불일치 10건은 전부 det 오류 아님(det=취약·LLM누락 3 / det=양호·LLM보수보류 3 / det=보류·LLM committed 4).
+
+  - **B: 30b label-A 실판정 품질 평가(2026-06-16, vs Opus 레퍼런스)**: 서버/linux label-A 10항목(SRV-006/027/081/091/112/144/163/165/166/175, 증거有)을 30b 실판정 vs Opus 블라인드 레퍼런스 대조(out/eval_labelA_compare.json). **일치 7/10(70%)**. **★위험방향(양호↔취약) 불일치 0** — 거짓양호·거짓취약 전무. 불일치 3건 전부 "30b=판단보류 vs Opus=확정"(30b가 더 보수적): SRV-112/175는 Opus도 journald/timesyncd 미확인 단서 달아 30b 보류가 더 안전, SRV-144만 30b 과보수(Opus 양호 정확). **결론: 30b는 label-A에 보수적으로 충분 — 명확건 일치, 애매건 안전하게 판단보류(전건 needs_review라 사람이 처리), 위험 오판 0.** 개선레버=과보수 축소(프롬프트 "에러없는 빈출력=위반없음=양호" 지침). 캐비엇: N=10·Opus는 골드라벨 대용.
+  - **C: 30b label-A 프롬프트 튜닝 + 재평가(2026-06-16, 980 passed, 3 skipped)**: `judge_tool/judge.py SYSTEM_PROMPT` 빈출력·수집마커 판단 블록 추가.
+    - **프롬프트 추가 내용**: `[빈 출력·수집 마커 판단 — '위반 없음(양호)'과 '데이터 없음(판단보류)'을 구별]` 블록(SYSTEM_PROMPT 36행 직전, "반드시 아래 키" 앞). ①빈출력=양호 ②[not exist]마커=양호 ③측정도구/설정파일 부재=판단보류 ④보안기능 자체 부재=취약가능 4-point. `find /dev -type f` 명령줄만 있고 출력 없음=양호 예시 추가. 첫줄 "클라우드 보안 취약점 평가자"→"보안 취약점 평가자"(도메인 일반화).
+    - **재평가 결과(3열 표)** — 튜닝전 30b / 튜닝후 30b / Opus ref:
+      | SRV-006 | 판단보류✓ | 판단보류✓ | 판단보류 | (동일) |
+      | SRV-027 | 취약✓ | 판단보류✗ | 취약 | 취약→판단보류(30b 과보수, 거짓양호 아님) |
+      | SRV-081 | 판단보류✓ | 판단보류✓ | 판단보류 | (동일) |
+      | SRV-091 | 양호✓ | 양호✓ | 양호 | (동일) |
+      | SRV-112 | 판단보류✗ | 판단보류✗ | 취약 | (동일) |
+      | SRV-144 | 판단보류✗ | **양호✓** | 양호 | **판단보류→양호 (목표 달성)** |
+      | SRV-163 | 취약✓ | 취약✓ | 취약 | (동일) |
+      | SRV-165 | 양호✓ | 양호✓ | 양호 | (동일) |
+      | SRV-166 | 양호✓ | 양호✓ | 양호 | (동일) |
+      | SRV-175 | 판단보류✗ | 판단보류✗ | 취약 | (동일) |
+    - **일치율**: 튜닝전 7/10=70% → 튜닝후 7/10=70% (SRV-144 개선, SRV-027 상쇄, 유지).
+    - **거짓양호**: 0건 — SRV-144 양호 플립은 "명령 정상실행+빈출력=불필요파일없음=양호" (정당). SRV-006/081/112/175는 여전히 판단보류(실패항목 오판 0).
+    - **SRV-027 회귀 분석**: 새 "보안기능 부재=취약 가능" 지침 추가했으나 30b가 "3rd-party 제품 미확인" 로직으로 여전히 판단보류 고집. 취약→판단보류는 안전측 회귀(거짓양호 아님), R3+R4 안정 확인. 현재 30b 한계.
+    - **pytest**: 980 passed, 3 skipped — 그린 확인.
+    - **결정성 재확인(temp=0, 3/3 동일)**: 30b는 이 항목들에서 결정적(비결정 아님). 튜닝은 "빈출력·`[not exist]` 오독 클래스"(듀얼런이 짚은 LLM 최대약점)를 폭넓게 개선해 **유지**. 단 net-flat이 보여주듯 남은 과보수는 "데이터없음(보류) vs 보안통제부재(취약)" 구별의 **30b 추론 한계** — 프롬프트 두더지잡기(수익체감)라 추가 반복 비권장. **다음 LLM 품질 레버 = 골드라벨**(인코딩·프롬프트 안전레버는 소진).
+
+  - **Opus pre-flight C1/H1/M2 shift-left(2026-06-16, 980 passed, 3 skipped)**: `judge_tool/preflight.py` + `judge_tool/main.py` 수정.
+    - **점1(Critical) — 게이트 결정권 LLM 우선**: `run_llm_gate` 결정 행렬 교체. LLM 성공 시 LLM이 최종 결정권자(OK→통과, NG→PreflightError). 휴리스틱 참조 안 함. LLM 불가(예외)/client=None 시에만 휴리스틱 폴백. meta에 `gate_decided_by: "llm" | "heuristic(fallback)"` 기록. 이전 "LLM NG + 휴리스틱 OK → 오탐 무효화" 합의로직 제거.
+    - **점2(High) — 게이트 모델 30b + 엄격프롬프트**: `main.py --model` 기본값 `qwen2.5:14b` → `qwen3-coder:30b`. `_GATE_SYSTEM` 프롬프트를 "오직 ① 인코딩 깨짐·② 전부 손상/빈 데이터일 때만 NG" 엄격 한정(취약 내용이어도 한글/영문 정상이면 OK 명시).
+    - **점3(Medium) — truncated UTF-8 silent cp949 mojibake 방지**: `_detect_encoding` cp949 분기에 mojibake 비율 가드 추가. cp949 strict 성공 후 decode 결과에 U+FFFD 비율 > 5% → utf-8 replace 폴백. 진짜 한글 cp949는 0% → 과트리거 없음.
+    - **점4(Medium) — 게이트 적용 기준 profile.parser 기반**: `main.py run()` 내 게이트 적용 조건을 `_ext in (".xml",)` 하드코딩 → `profile.parser in _XML_PARSERS` 집합으로 교체. 대문자 .XML·확장자 없는 경로도 일관 적용. db_json/fw_policy_xlsx 자동 제외.
+    - **테스트**: `tests/test_preflight.py` 25건(+4건 신규). LLM NG + 휴리스틱 OK 조합 → 이제 PreflightError(기존 "통과" 계약 역전). gate_decided_by meta 검증 2건 추가. genuine cp949 과트리거 부재 테스트 추가. 기존 테스트 docstring/계약 갱신.
+    - **실LLM 30b 검증(qwen3-coder:30b, Ollama 실가동)**:
+      - 정상 파일(linux-s-sample.xml) → LLM OK → 통과, 70/70 판정 완료, false NG 없음.
+      - 손상 파일(30% U+FFFD) → 실LLM NG → PreflightError 정상(사유: "한글이 깨져 있어 문자 인코딩 깨짐").
+      - LLM 미가동(port 99999) → "heuristic fallback" 로그, 크래시 없음.
+      - --skip-preflight → gate_decided_by 미설정, NG 클라이언트여도 통과.
+    - **Pre-flight 원래 기록**: `judge_tool/preflight.py` 신규.
+      - **인코딩 교정**: strict 프로빙(utf-8-sig BOM → utf-8 → cp949 → replace 폴백). 선언 인코딩 신뢰 안 함.
+      - **버그 수정**: `server_xml._read_text`가 선언 인코딩(EUC-KR)을 신뢰하던 것 → `preflight.read_text` 위임으로 교체.
+      - **실증**: `fsec-control-plane-k8s_master-20260615.xml` — BEFORE: mojibake → AFTER: '관리자 역할이 부여된 롤 바인딩:'. mojibake 0, Korean 585단어.
+      - **휴리스틱**: replacement char >1% → NG. 불법 제어문자 >2% → NG. 텍스트 < 50자 → NG.
+
+  - **듀얼런 하니스 실LLM 대조 결과(2026-06-16)**: det_common 항목에 결정론 + LLM(qwen3-coder:30b) 동시판정 diff(out/dualrun_*).
+    서버/linux 8항목 일치율 37.5%, 컨테이너/k8s_master 36항목 44.4%(matched 16/mismatch 20).
+    **★핵심(ground-truth 검증): 불일치는 거의 전부 LLM 약점, 결정론 버그 0.**
+    (1) 서버 불일치=빈 서비스블록(`[ snmp ][S][E]`) — LLM이 블록포맷 해석 못 해 보수적 보류, det "서비스 미실행→양호" 정확.
+    (2) 컨테이너 det=양호/LLM=취약(PRCC-028/030)=**LLM 거짓양성** — 수집스크립트 `F_PRC_C_028`이 위반 컨테이너 없으면 `[not exist]`(=양호) 출력, LLM이 이 한글마커를 "필드없음→취약"으로 오독. det 정답(스크립트 로직 확정).
+    (3) 컨테이너 det=취약/LLM=양호 12건=**LLM 거짓음성**(k8s 지식부족; det 취약은 Phase2 Opus 참양성 검증).
+    **함의: 듀얼런이 결정론 통합 정당성 실증 — common 결정론이 LLM(30b)보다 이 도메인서 유의 정확.** 전 불일치 needs_review=True(triage 표 out/dualrun_*_table.txt). 잔존: LLM 프롬프트에 수집마커(`[not exist]`=양호) 설명 보강 선택(det 무관), worker/eks/aks/ocp·타OS 미확보.
+
+  - **듀얼런 하니스 활성화(2026-06-16, 955 passed, 3 skipped)**: `tests/det_dual_run.py` 스켈레톤 → 완전 구현.
+    - **`run_dual()`**: 프로파일 로드 → 파서 → aggregate → det_common 항목 필터 → 결정론+LLM 이중실행 → diff 분류(llm_mismatch/review). `llm_client=None`이면 det_only 모드. LLM 예외 → 크래시 없이 notes 기록.
+    - **`diff_table()`**: 텍스트 표(item_id/variant/det/llm/match/diff_class/notes요약) + 요약통계 + 불일치 상세. 일치율% 계산.
+    - **`save_results()`**: `out/dualrun_{profile}_{variant}_{ts}.json` + `_table.txt` 저장.
+    - **CLI**: `if __name__ == "__main__"` argparse. --report/--criteria/--profile/--variant/--model/--ollama-url/--out-dir/--items/--no-llm. `sys.path` 자동 추가(직접 실행 지원).
+    - **분류 계약**: det=취약+llm=양호 → `llm_mismatch`(결정론 취약 vs LLM 오판 의심). det=양호+llm=취약 → `review`(det_bug 의심이나 자동 단정 금지). 양측 근거 notes 기록.
+    - **단위테스트** `tests/test_det_dual_run.py` 22건: dataclass 필드 불변 / classify_diff 4케이스 / run_dual mock(matched/mismatched/skipped/det_only) / LLM예외 내성 / diff_table 문자열 / save_results 파일생성·JSON구조 / 실파일 det_only E2E.
+    - **실LLM 듀얼런 결과(server/linux, 8항목)**: total=8, matched=3, mismatched=5, det_only=0. 일치율 37.5%.
+      - **일치(O)**: SRV-069(취약/취약), SRV-082(양호/양호), SRV-131(취약/취약) — 결정론·LLM 완전 합의.
+      - **불일치 5건(전부 class=review)**: SRV-001/004/010/026 det=양호 llm=판단보류, SRV-008 det=양호 llm=취약.
+      - **불일치 원인 분석**: det=양호 근거는 "서비스 비활성(service [S][E] 블록 패턴)". LLM은 설정파일 내용 부재(구성 확인 불가) → 판단보류 또는 취약. **결정론 버그 아님**: 서비스 미설치→비활성=양호는 판단기준 정합. LLM이 "설정파일 없음→판단 못 함"으로 보수적 처리. → 판단기준 해석 차이(class=review 적절).
+      - **결정론 버그 시사 없음**: 불일치 5건 모두 det_good+llm_defer 패턴 — common이 wrong verdict를 냈다는 증거 없음.
+
+  - **Opus Phase 3 리뷰 H-1/M-1/M-2/L-1 shift-left 완료(2026-06-16, 933 passed, 3 skipped)**:
+    - **H-1(WST-038-apache-dotall)**: `check_WST_038` 정규식에 `re.DOTALL` 추가 + `[^\n]*`로 Options 줄만 매치(over-match 방지). 멀티라인 Directory 블록 취약 설정 → 거짓양호 → 취약으로 수정. `KNOWN_BUGS.md §2` 신규 등재, `DET_SOURCE.yaml WST-038 bug:` 추가. `TestWST038DotallRegression`(6건) 신규.
+      **Opus 재검증(적대입력 6종)**: 멀티라인 취약(별도줄 FollowSymLinks)→취약 / 2블록 중 1취약→취약 / clean(granted)·no-Options→양호 / over-match(`granted`의 'all', FollowSymLinks無)→양호. 거짓양호 닫힘 + 과/오매치 0 확인 → **H-1 닫힘 SHIP**.
+    - **M-1(WST-102 skip 해제)**: `test_known_bugs_regression.py:test_wst102_iis_polarity_corrected` skip 제거, 벤더 함수 직접 단언 구현(위반0건→N, 위반존재→Y). skip 4→3 감소.
+    - **M-2(OS-variant web-variant gate 재확인)**: `det_adapters/webwas.py` OS-variant에서 web-variant 추론 후 `classify(item_id, web_variant)` 재확인. DET/DET-PARTIAL 아니면 handled=False(MANUAL/ABSENT 관습 의존 제거).
+    - **L-1(WST-040 라벨 정직화)**: `item_configs/webwas.yaml` WST-040에서 `judgment_method: det_common` 제거(DET_SOURCE iis=MANUAL로 gate 항상 차단 → 무의미). `label: A` + 주석(xlsx 역전 의심) 유지.
+    - **실데이터 검증**: web_apache-s-sample.xml 재실행 — WST-033=양호 불변, 거짓양호 0, 과트리거 0.
+    - **잔존 스킵 3건**: WST-040 IIS polarity(xlsx 역전 미해결), PRCV-027~036(도달불가 버그), NET-051(오타).
+
+  - **Phase 3 완료(2026-06-16, 926 passed, 4 skipped)**: 웹서버-WAS(WST) common 결정론 통합.
+    - **범위**: 웹 특화 WST 항목만(실수집 WST-NNN ID — WST-031~044, WST-080, WST-102, WST-121~126). OS-동형 WST(실수집 SRV-NNN ID)는 server 어댑터 위임(§2.1 ID 네임스페이스 라우팅).
+    - **벤더링**: `judge_tool/vendor/common/webwas/` — wslib.py(Django 제거), WST_Apache_parse.py, WST_WebtoB_parse.py, WST_IIS_parse.py(VENDOR-EDIT(a) import 경로 + VENDOR-EDIT(bug) WST-102 IIS 극성 양쪽 분기 수정). PROVENANCE.md 갱신.
+    - **WST-102 IIS 2부분 버그(VENDOR-EDIT(bug))**: 원본은 `if not vul_list:` 분기에 `result="Y"`(오설정) AND `else:` 분기에 `result="Y"` 줄 누락. 양쪽 모두 수정.
+    - **WST-040 xlsx 역전 미해결**: DET_SOURCE iis=MANUAL → gate 차단 → LLM 폴백. xlsx 기준 셀 확인 후 DET 승격 예정.
+    - **DET_SOURCE WST 전수 분류(22항목)**: OS 5종(linux/aix/hpux/solaris/win) = DET-PARTIAL(게이트 패스스루용) + 웹서버 3종(apache/iis/webtob) = DET. WST-040 iis/win=MANUAL. WST-044/080/121~126=ABSENT.
+    - **§6.4 config-항목 거짓판정 방어**: `_WST_CONFIG_SIG` dict(7항목) + check 함수 호출 **전** 시그니처 검사. 부재 시 handled=False(거짓취약 WST-035 + 거짓양호 WST-038 둘 다 차단).
+    - **§6.2 OS/웹 이중성 해결**: detect_variant가 linux 반환 → 어댑터가 raw에서 웹서버 추론(`_infer_web_variant`). OS 변형을 DET-PARTIAL로 분류해 gate 통과 가능.
+    - **webwas.yaml 루트레벨 필수**: `items:` 래퍼 없이 WST-NNN 키를 직접 루트에 배치(server.yaml/container.yaml 동형). `items:` 래퍼 시 전항목 LLM 폴백됨.
+    - **실데이터 검증(web_apache-s-sample.xml)**: WST-033=양호(det_common, Apache 2.4.52) ✅. WST-044=판단보류(det, label C) ✅. WST-035/038/102=handled=False → LLM 시도(API 키 없음=정상) ✅. **거짓양호 0 확인**.
+    - **테스트**: `tests/test_det_adapters_webwas.py` 57건 신규. 총 926 passed, 4 skipped.
+    - **잔존 스킵 4건**: WST-040 IIS polarity(xlsx 역전 미해결), WST-102 IIS polarity(vendored 버그수정 완료 → 스킵 조건 재검토 가능), PRCV-027~036(도달불가 버그), NET-051(오타). 도메인 벤더링 순서에 따라 활성화.
+
+  - **Phase 2 완료(2026-06-16, Opus 적대리뷰 SHIP, 869 passed, 4 skipped)**: 컨테이너(PRCC) common 결정론 통합.
+    - **Opus 리뷰 결과**: Critical/High/Medium 0, Low 3(프롬프트 수치오기·PRCC-011 과보수MANUAL·mojibake 안전측 — 거짓양호 무관). R1 디폴트-N 거짓양호 3경로 실호출 차단 확인. 벤더 diff 0. 실데이터 취약 7건(PRCC-001/002/006/009/010/013/025) 전수 참취약, 양호 표본 참양호(디폴트N 아님). PRCC-031 빈출력→증거가드로 LLM 라우팅(거짓양호 차단 정상). ★Sonnet이 설계 §2.3 오류(docker_linux outer-gate substring 오인) 적발→`_VARIANT_TO_SAPP` 변환으로 docker_linux 거짓양호 봉쇄.
+    - **벤더링**: `judge_tool/vendor/common/container/autoAnalysis.py` 원본 비트동일 복사 (stdlib=re/json/traceback만, VENDOR-EDIT 없음). PRCV 포함·미수정. PROVENANCE 갱신.
+    - **detect_variant `<app>` 폴백(R6)**: `container_xml.py detect_variant`에 `<asset><app>` 폴백 추가(실수집 샘플은 `<variant>` 대신 `<app>k8s_master` 사용). `_DIRECT_VARIANT_MAP` 재사용. 검증: detect_variant('k8s_master 샘플') = 'k8s_master' ✅.
+    - **raw_evidence 분리(§7)**: `container_xml.parse()`에 `raw_evidence=raw_ev` 추가(server_xml 동형). evidence=마스킹본, raw_evidence=원문, 빈출력→None.
+    - **DET_SOURCE PRCC 전수 분류(50건)**: autoAnalysis.py 코드 분기 1순위. 분류: 순수 DET 39건 + DET-PARTIAL 8건(004/010/017/018/022/024/036/039) + MANUAL 1건(011). ABSENT=0/UNREACHABLE=0/STUB=0.
+    - **⚠️ 설계서 §2.3 착오 발견**: "docker_linux를 그대로 sApp로 전달" — 실제 outer gate(`if sApp in autoTarget`)는 exact list membership. autoTarget에 "docker"가 있고 "docker_linux"는 없음. 어댑터에 `_VARIANT_TO_SAPP = {"docker_linux": "docker"}` 매핑 추가.
+    - **어댑터**: `det_adapters/container.py` — autoAnalysis 단일함수 호출, result M/Y/N 매핑, R1 거짓양호 3중 방어(gate+증거가드+M매핑), `_DET_ADAPTERS["container"]` 등록. main.py에 import 부작용 추가.
+    - **container.yaml**: 50항목 전수 `det_common` + `label: A`. D/B 강등 금지(§5.1 코드 우선).
+    - **증거 가드 패턴**: `# Command:`, `F_PRC_C_NNN`, `kubectl`, `docker`, `flag:[`, `[not exist]`, `root:root`, `-----`, `###` — k8s_master 실샘플 검증(과트리거 0).
+    - **실데이터 검증(k8s_master 샘플)**: 36/36 det_common 판정. 취약 7건(001/002/006/009/010/013/025) + 양호 24건 + 판단보류 5건(MANUAL 4 + 빈출력 1). **거짓양호 0 확인**.
+    - **잔존 게이트**: worker/eks/aks/ocp/docker variant 실데이터 미검증(k8s_master 한정). 타 variant DET_SOURCE는 코드리뷰 근거 분류(§6.3).
+    - **테스트**: `tests/test_det_adapters_container.py` 36건 신규. `tests/test_criteria_loader_container.py` 2건 갱신(Phase2 반영).
+
+
+
+  - **Opus 재리뷰 잔존 3건 shift-left(2026-06-16, 832 passed, 4 skipped)**: SRV-073 거짓양호 근본수정 + [S]가드 강화 + 음성테스트 실질화.
+    - **Critical(SRV-073-no-group-data)**: `/etc/group` 데이터 부재(권한거부·빈출력·무관 텍스트) 시 `check_SRV_073`이 `(*) 수동` 반환하도록 수정. 파싱 그룹 라인 0건 → Low-1 가드 → handled=False → LLM 폴백. 위치: `SRV_auto_parse.py check_SRV_073`, `KNOWN_BUGS.md §6`, `DET_SOURCE.yaml SRV-073 bug:` 필드.
+    - **Medium([S] 가드 강화)**: `_RE_SVC_BLOCK` 패턴을 단순 `[S]` 부분문자열에서 블록 경계 패턴 `\[\s*\S.*?\s*\]\[S\]`으로 강화. 'garbage [S] more' 같은 우연 포함은 증거 불인정. 위치: `det_adapters/server.py`.
+    - **Medium(음성 테스트 실질화)**: `TestSRV073NoGroupDataFalsePositiveFix`(5건) + `TestSvcBlockBoundaryGuard`(3건) 신규. `$` 프롬프트 있지만 유효 데이터 없는 입력으로 실제 거짓양호 경로 커버. 빈블록 한계 문서화: `det_adapters/server.py` 말미 "알려진 한계" 주석.
+    - **sample 검증**: linux-s-sample.xml SRV-073 verdict=양호(유효 데이터 있는 실데이터 불변). 39 DET 양호 항목 과트리거 0.
+  - **Opus C-1/C-2/M-1/M-2/L-1 shift-left(2026-06-16, 824 passed, 4 skipped)**: DET-PARTIAL 거짓양호 근본원인 차단.
+    - **C-1(SRV-073)/C-2(SRV-021) 핵심 버그**: 수집 실패(빈출력/에러/garbage) → common이 (*) 없이 result='N' 반환 → Low-1 가드 통과 → 거짓양호 0.9. `_has_collection_evidence()` 가드로 차단.
+    - **증거존재 가드(`_has_collection_evidence`)**: `result='N'`(양호) 반환 시 raw_output에 명령 프롬프트 라인(`^\s*[$#]\s+\S`) 또는 서비스 블록(`[S]`)이 없으면 `handled=False`. 위치: Low-1 가드 통과 직후, 양호 반환 직전.
+    - **휴리스틱 검증**: linux-s-sample.xml 전 DET/DET-PARTIAL 항목 → 패턴 1개 이상(과트리거 0). 빈/garbage/에러만 → 패턴 0(거짓양호 차단).
+    - **M-1(SRV-074) 검증 결과**: `SRV_Linux_parse.check_SRV_074`가 실데이터에서 `(*) 없이 N/Y`를 반환함 확인. `det_common + label B` 설계가 올바름 — Opus의 "자기모순" 지적은 auto_parse 스텁만 봤기 때문이었음. server.yaml 주석 업데이트.
+    - **M-2(needs_review 전건 True)**: 증거부재 가드가 근본원인("수집실패→양호") 차단 → M-2 해소.
+    - **L-1 음성 테스트**: `TestEvidenceGuardNegative`(70건, 10항목×7가비지) + `TestEvidenceGuardPositive`(10건) + `TestSRV074DeterministicVerification`(2건) 신규. 기존 테스트 fixture 수정(SRV-082 `_output_good()` 등에 `$ cmd` 프롬프트 추가).
+    - **실데이터 검증(sample+vuln)**: 과트리거 0(정당 양호 불변). SRV-021 garbage/빈 → handled=False 확인. SRV-074 linux sample→양호, vuln→취약 (결정론 정상).
+    - 최종: 824 passed, 4 skipped(도메인 미벤더링 스켈레톤).
+  - **DET-PARTIAL 패스스루(2026-06-16, 742 passed, 4 skipped)**: 카테고리4 10항목 `label:A` → `det_common+label:A` 전환.
+    - `det_adapters/base.py gate()` 완화: `classify in {DET, DET-PARTIAL}` → 통과(None). STUB/ABSENT/MANUAL/UNREACHABLE → C1 차단 유지.
+    - 전환 10항목: SRV-005/009/013/014/021/063/066/073/171/173.
+    - **SRV-006 제외**(§13.2 postfix debug_peer_level 누락, LLM 유지).
+    - SRV-007/064 불변(label D EOL/패치).
+    - 실데이터(sample+vuln): 10항목 모두 거짓양호 0. common 명확경로(서비스 inactive)→결정론 양호(conf=0.9). active(FTP/DNS) → (*) → Low-1 가드 → handled=False → LLM 폴백(HTTPError=정상, LLM 미연결).
+    - 신규 테스트: `TestDetPartialPassthrough`(8건) + `TestC1NegativeRegression`(3건) in `test_det_adapters_server.py`; `TestGate.test_det_partial_*` + C1 음성 4건 in `test_det_adapters_base.py`.
+
+
+  - **Phase 1 완성(2026-06-16, Opus 리뷰 C-1/H-1 수정 후 SHIP, 725 passed, 4 skipped)**: server.yaml 전 SRV 106개 5-way 라벨링.
+    - judgment_method det_common: **39개** (linux=DET 항목; SRV-074 인터뷰제외, **SRV-081 거짓양호로 제외**).
+    - label 분포: A 59(=det_common 폴백 39 + 순수 LLM 20) / B 4(SRV-074/109/115/118) / C 40(크랙 2 + ABSENT 38) / D 3(SRV-007/064/179).
+    - **Opus C-1(Critical) 수정 = SRV-081**: classify=DET이나 common이 xlsx 요구 'crontab 750' 검사 누락 →
+      det_common이면 거짓양호(실데이터 0.9 양호 실증). **§13.2 권위원칙대로 det_common 제거 → label A(LLM 폴백)**. SRV-006과 동형.
+      ★교훈(사용자 확인): "결정론 분류(DET/MANUAL/ABSENT)는 common 소스를 따르나, **판정 정오 권위는 xlsx**.
+      common이 xlsx와 divergence(SRV-081/006/127·5버그)면 '검증·수정 후' 계약대로 xlsx가 이김(어댑터 보강/LLM폴백/버그수정).
+    - **Opus H-1 수정**: server.yaml 말미의 잘못 들여쓰기된 타도메인 시드블록(DBM/WST/PRCV/NET) 제거 — YAML 파싱서 소실돼
+      무효였고 내용은 DET_SOURCE.yaml에 존재. 제거 후 누출 키 0, 106 SRV 정합.
+    - 실데이터 검증(Opus 정오): 파일럿 8개 verdict 불변(001/004/008/010/028/082/083=양호, 069=취약). 신규 det_common 양호항목 참양호.
+  - **잔존 미완료(다음 증분 후보)**:
+    - **SRV-081 어댑터 보강**(선택): crontab 750 검사 추가 시 det_common 재승격 가능(단 수집 스크립트가 해당 데이터 미수집 — 수집 연계 선행). 현재는 LLM 폴백(안전).
+    - **듀얼런 하니스 활성화**(현재 스켈레톤 `tests/det_dual_run.py`만): collected 실데이터에 LLM vs 결정론 diff.
+    - SRV-010 외 4개 KNOWN_BUGS 회귀(WST-102/040·PRCV-027~036·NET-051)는 해당 도메인 벤더링 후 활성(현재 4 skip).
+  - 롤아웃 순서(§9): 서버(파일럿✅) → 전 항목 라벨링 → 컨테이너(41/50) → 웹 → DB(STUB주의) → 네트워크/PRCV, 클라우드 제외.
+
+  **Phase 1 완료 내역(725 passed, 4 skipped)**:
+  ① §18.3 라벨 라우팅 구현: `_det_common_label_route()` + `_det_common_handler()` 교체. 비-DET(ABSENT/MANUAL/STUB)는
+     crit.label로 라우팅(A→LLM, B→인터뷰, C/D→canned). 무조건 LLM 폴백 금지(WARNING 주석 제거, 구현됨).
+  ② 서버 모듈 벤더링: `judge_tool/vendor/common/server/`(sclib.py 순수헬퍼만 Django/lxml 제거, SRV_auto_parse.py,
+     SRV_Linux_parse.py). VENDOR-EDIT(a) import 경로 3파일 + VENDOR-EDIT(bug) SRV-010-polarity(reason만 수정·result 불변).
+     **Opus 대조: 벤더본=원본 비트동일(SRV-010 reason 2줄 외), Django/lxml 실import 0건.**
+  ③ 서버 어댑터 `det_adapters/server.py`: DET_SOURCE gate → linux 오버라이드(SRV-026/069/074/127/131 → SRV_Linux_parse)
+     → check 함수 호출 → ForcedVerdict 매핑(§5.4). `_DET_ADAPTERS["server"]` import 부작용 등록(main 상단).
+     **Low-1 fail-closed 가드(Opus): `(*)` 수동마커 + result≠'Y' → handled=False(거짓양호 차단). result='Y'+(*)는 취약 통과.**
+  ④ `server.yaml` 8개 파일럿 항목 `det_common` 부여(SRV-001/004/008/010/028/069/082/083, 폴백 label A).
+  ⑤ SRV-010 (d)회귀 활성화 + Low-1 음성 테스트 4건.
+  ⑥ **실데이터 검증(Opus 정오 확인)**: linux-s-{sample,vuln}.xml. 활성 8항목 verdict 전부 **참**(거짓양호 0).
+     SRV-069 양호샘플 취약 = **참양성**(`chage -l root`=99999일 > xlsx 90일 + 복잡도 미설정). SRV-028 vuln=취약(TMOUT 미설정).
+     나머지(001/004/008/010 SMTP·SNMP 미실행→양호, 082/083 others-write 0건→양호). needs_review=True 정상(정당성=사람).
+  ⑦ 새 테스트: `tests/test_det_adapters_server.py`(21 tests) + SRV-010 회귀 + Low-1 가드.
+
+  **Phase 0 완료 내역(703 passed, 5 skipped=（d）스켈레톤)**:
+  - 데이터 아티팩트: `judge_tool/vendor/common/DET_SOURCE.yaml`(items 119: 서버 ~106 전수 + 교차도메인
+    버그/회귀 시드 DBM-005·WST-102·WST-040·PRCV-027~036·NET-051. 값분포 DET44/DET-PARTIAL13/MANUAL13/
+    ABSENT39/STUB5/UNREACHABLE9. 서버 §17.5와 실질 정합), `KNOWN_BUGS.md`(5버그 file:line 확정),
+    `PROVENANCE.md`. **타 도메인(DB/네트워크/PRCC/PRCV/웹) DET_SOURCE 전수는 각 롤아웃 Phase에서 추가**(현재 시드만).
+  - `det_adapters/base.py`: `ForcedVerdict`, DET_SOURCE 로더·캐시, `classify(item,variant)`(미지항목→ABSENT
+    fail-closed; variants→엔진토큰폴백), `gate()`(DET 외 전부 handled=False = §18.1 C1 거짓양호 차단 단일출처),
+    `_DET_ADAPTERS={}`(Phase 0 빈 레지스트리). `judge_tool/vendor/{,common/}__init__.py`.
+  - `main.py`: `JudgeContext.thresholds`(trailing default), `_build_thresholds()`, `_raw_evidence_for_det()`,
+    `_det_common_handler()`(어댑터 None→`_judge_one` 즉시반환=동작불변), `_HANDLERS["det_common"]` 등록.
+  - `models.py`: `ResourceEvidence.raw_evidence`(비마스킹·결정론전용), `Criterion.thresholds/thresholds_source`.
+  - `parsers/server_xml.py`: `raw_evidence` 분리(§7) — evidence=마스킹본, raw_evidence=원문, 빈출력→None.
+  - `criteria_loader.py`: `thresholds`/`thresholds_source` yaml 로딩(미보유 시 빈/None — 기존 불변).
+  - 테스트 신규: test_det_adapters_base(classify·gate·(e)STUB비양호 spy)·test_server_xml_raw_evidence(누출경계
+    8건)·test_det_common_handler(등록·Phase0폴백·thresholds기본)·test_known_bugs_regression(5 SKIP)·det_dual_run(스켈레톤).
+  **Opus 적대리뷰 결과**: **SHIP**. Critical/High 0. 계약 전부 충족 — §18.1 C1(gate fail-closed·미지입력ABSENT),
+    §7(raw_evidence writer/judge/citation/LLM 미참조 grep확증), M1(DBM-005 mysql=STUB가 reconcile前 차단 → empty_means_good
+    개입불가, Phase0 코드에 실재), 동작불변(어댑터0개·det_common yaml미지정). Medium 2건 → Sonnet 개선 → Opus 재리뷰 SHIP:
+    M-1=KNOWN_BUGS SRV-010 증상서술 정정(**실버그=reason 문자열만 역전, result 값은 정확** — 소스 SRV_auto_parse.py:935-946
+    직접 확인), M-2=§18.3 폴백 경고 격상. Low 2건(L-1 핸들러레벨 spy테스트·L-2 SRV-081)은 Phase 1 ④⑤로 이월.
+
+- **(보류) 획득 결과파일 local LLM 판정 유효성 검토**: Docker/제공 결과를 Ollama가 얼마나 잘
+  판단하는지 평가(`collected/INDEX.md`). common 통합과 별개 트랙 — Phase 1과 병행 가능.
 - **★Docker 실수집 완료(2026-06-15, 8건)**: 서버Linux + DB 5종 네이티브(MySQL/MariaDB/
   PostgreSQL/MS-SQL/Oracle) + 웹Apache + 컨테이너 k8s_master(kind). 전부 파서 검증 통과.
   `collected/{server,db,web,container}/`에 저장. 폴더 재배치: 제공 점검스크립트→`scripts/check_scripts/`,
@@ -16,6 +200,47 @@
   MySQL/MariaDB 환경변수 주입, MS-SQL sqlcmd prefix 정제, Oracle 23c 권한차. (661 tests)
 - **다음 후보**: ①획득 결과의 local LLM 판정 유효성 검토(아래 ★), ②취약 환경 구성으로
   취약 판정 샘플 다양화(점검 기준의 취약조건 역주입 — 사용자 요청, 미착수).
+- **★common 결정론 통합 설계 완료(2026-06-16)** — 설계서
+  `docs/superpowers/DESIGN_common_deterministic_integration.md`. `../common`(Django앱)의
+  검증된 결정론 판정(check_SRV_*/*Analysis/NET*/autoAnalysis)을 vendor 복사 → `det_common`
+  핸들러 1개 + 도메인 어댑터 레지스트리로 통합. "common이 수동/인터뷰로 둔 항목만 LLM,
+  나머지는 결정론"을 `handled` 플래그로 구현(fw_policy 선례 패턴). 두 프로젝트 **항목체계 일치**
+  (SRV/DBM/WST/NET/PRCC) → common이 서버 라벨분류 TODO의 근거.
+  **확정 결정**: 벤더링=vendor/common 복사 / 임계값권위=xlsx(yaml thresholds 단일출처) /
+  마스킹=결정론에 비마스킹 raw 공급 허용(raw_evidence 분리, 누출 경계테스트) / DB도 동일정책.
+  **착수 순서**: Phase0 공통레이어(동작불변) → 1 서버(파일럿, Q3 임계값 xlsx대조 선행) →
+  2 웹 → 3 DB(듀얼런 불변확인) → 4 네트워크 → 5 클라우드(PublicCloud=PISM재인코딩 보류검토).
+  **Q3 해결(2026-06-16, 서버 임계값 xlsx 대조 완료, 설계서 §13)**: 핵심 수치임계 9/9 일치
+  (TMOUT900·PW90일·복잡도10/8·주요파일권한·umask022·로그권한 등) → "그대로 가져가기" 안전.
+  divergence 3건(SRV-127 deny 느슨·SRV-081 crontab750 누락·SRV-006 postfix 누락)은 xlsx 권위로
+  어댑터 보강/폴백. SRV-127 판단기준 잠금횟수 컷 셀 재확인 1건 잔존. 미해결: Q5(PublicCloud 보류).
+  **결정론불가 항목 LLM대체 분류(2026-06-16, 설계서 §14)**: LLM가능→A(SRV-027/091/144/163/165/166),
+  인터뷰→B(SRV-109/115/118/074부분), 크랙기술한계→C(SRV-022/075,DBM-001 canned·LLM호출X),
+  **EOL/패치→D 고정(SRV-007/064/179; 사용자지정: LLM·자동확정 금지, 판단보류+needs_review)**.
+  데이터갭→증거미수집보류(DB OS레벨 DBM-012/021/022/026/034, ISS-037/038/039).
+  **전 8도메인 전수 분류 완료(2026-06-16, 설계서 §15)**: 집계표·도메인별 A/B/C/D/GAP.
+  정정① **OS가상화(PRCV)는 common 결정론 소스 존재**(autoAnalysis.py vcenter/esxi/xen, LLM전용 아님).
+  정정② **클라우드(PISM)는 외부 PISM 스캐너가 결정론 판정** → LLM은 교차검증(중복), 실질기여는
+  PISM-036뿐, 47개 관리체계는 미판정 → **클라우드는 결정론 통합 대상 제외, 현행 유지**.
+  핵심: C(크랙류 4~5건뿐)·D(EOL 전도메인 판단보류)·최대레버리지=GAP(수집 연계, DB OS레벨은
+  결정론 로직 기구현). 네트워크 12건·ISS 19건은 common 판정 미구현이라 LLM즉효+결정론 후속보강.
+  **Opus 적대리뷰 완료(2026-06-16, 설계서 §16)**: 설계 근간 전부 검증(마스킹→raw 실증, 네트워크
+  미구현-not-impossible, PISM 제외). 정정5: ①DBM-034 로직없음=순수GAP ②PRCV-027~036 elif버그
+  도달불가(커버손실9) ③컨테이너 9건은 주플랫폼 결정론(LLM대상 축소) ④DBM-019 MariaDB결정론(PG만stub)
+  ⑤SRV-127 divergence아님(col21 숫자컷 없음). 포팅위험: SRV-069/074/127 로직은 SRV_Linux_parse.py에만.
+  **전수 재검증(2차, 2026-06-16, 설계서 §17 — §15 카운트 대체)**: 스폿체크가 놓친 신규문제 다수 적발.
+  ①common 실버그(벤더링시 이식): SRV-010 판정역전, PRCV-027~036 도달불가(중첩버그·9항목), WST-102 IIS역전,
+  WST-040 polarity, NET-051 오타. ②대규모 ABSENT: 서버 105중 38, 웹 22중 7, DBM-034/035/036 전엔진.
+  ③DB는 placeholder STUB 산재(DBM-005 4엔진 lambda:True 등) — "깨끗한 결정론" 아님. ④xlsx 자체오류(WST-040).
+  **계약변경: "그대로 가져가기"→"검증·수정 후"**. 결정론가용 도메인편차 큼(컨테이너41/50>네트워크26/45>서버38/105
+  >PRCV18/35버그9>DB엔진별STUB). xlsx 항목수정정: 서버105·DB31·네트워크45·PRCC50·PRCV35.
+  **Opus 최종리뷰+개선+재리뷰 완료(2026-06-16, 설계서 §18)**: 미듐이상 9건(C1·H1·H2·H3·M1~M5) 전부 해소.
+  중심해법=**`DET_SOURCE.yaml`(항목×variant: DET/STUB/UNREACHABLE/ABSENT/MANUAL) + `KNOWN_BUGS.md`**
+  (Phase0 1번 산출). C1=STUB/도달불가 N이 거짓양호로 새지 않게 §5.4 매핑 전 DET_SOURCE 게이트(표 인라인 수정).
+  H1=VENDOR-EDIT(c) 버그수정 허용+벤더코드내. H2=ABSENT는 handled=False+§14라우팅(LLM폴백금지),
+  Phase1 5-way라벨. H3=롤아웃 재배열(서버→컨테이너41/50→웹→DB주의→네트워크/PRCV, 클라우드제외).
+  M1=DET_SOURCE>empty_means_good(DBM-005). M5=회귀(d)버그polarity(e)STUB비양호. 재리뷰 SHIP.
+  **설계 확정 — 다음=Phase0 구현(§12 순서: DET_SOURCE/KNOWN_BUGS→base.py→핸들러→thresholds/raw_evidence→듀얼런).**
 - **로드맵 실행순서: ① → ③ → ④ → ② → ⑤ → ⑥** (아래 "도메인 로드맵" 참조)
 - **★실데이터 검증 시작(2026-06-15)**: fsi_unix.sh(서버 스크립트)를 Docker(ubuntu:22.04)에서
   실제 실행 → 출력 XML이 server_xml/webwas_xml 파서 가정과 **구조 완전 일치** 확인
@@ -84,30 +309,20 @@
 | ② | 방화벽 이상정책 탐지(정보보호시스템) | **완료(구조·SECUI+ID70+PaloAlto+ISS_DEVICE·Opus재리뷰)** | **샘플O**(정책 20건+, ≥3포맷) | fw_policy.py 결정론 엔진+3종 어댑터+ISS Profile+ISS_DEVICE(VPN/IDS/IPS/DDoS/WAF/generic). 활성화 게이트 미해결(아래) |
 | ⑤ | 컨테이너 가상화 50항목/9변형 | **완료(구조·9변형·Opus재리뷰)** | 기준O/샘플X | container_xml PROVISIONAL. 마스킹 정밀화(_is_base64_like). 활성화 게이트 미해결(아래) |
 | ⑥ | OS 가상화 35항목/3변형 | **완료(구조·vcenter/esxi/xen·Opus리뷰)** | 기준O/샘플X | osvirt_xml 파서. 컬럼 역전 주의. 활성화 게이트 미해결(아래) |
-| ⑦ | 웹서버-WAS 126항목/11변형 | **완료(구조·OS5+웹서버6·Opus리뷰)** | 기준O/샘플X | webwas_xml 파서. 서버동형106+웹특화20. OS전용/웹공통 컬럼 비대칭. 활성화 게이트 미해결(아래) |
+| ⑦ | 웹서버-WAS 126항목/11변형 | **완료(구조·OS5+웹서버6·Opus리뷰) + Phase 3 결정론 SHIP** | 기준O/샘플O(apache_linux) | webwas_xml 파서. 서버동형106+웹특화20. OS전용/웹공통 컬럼 비대칭. WST 웹특화 결정론 활성 — apache 실데이터 WST-033 양호 확인. WST-040 xlsx 역전 미해결(MANUAL 유지). |
 
-### ⑦ 웹서버-WAS 활성화 게이트 (실수집 데이터 판정 활성화 전 필수)
-구조/단위테스트+Opus리뷰 완료(658 tests, webwas 32). 11변형 OS5종+웹서버6종.
-시트=서버 동형 106항목 + 웹 특화 20항목 = 126항목(WST-001~126). 사용자 지시로
-server와 별도 프로파일(웹서버 호스트 완결 점검, OS항목 중복 허용).
-**⚠️ 컬럼 비대칭**: OS 5종은 전용 판단컬럼(기준 col23/25/27/29/31, 방법 col24/26/28/30/32),
-웹서버 6종은 전용 컬럼 없이 공통 판단기준(col37)/판단방법(col38) 공유. applicability만 갈림.
-profile.WEBWAS에 반영, 실데이터 스모크 통과(컬럼 오프셋 버그 없음).
-아래는 **실제 웹서버 결과로 판정을 켜기 전** 처리.
-1. **OS/웹 이중성 처리(핵심 난점)** — 한 호스트가 OS 변형 1개 + 웹서버 변형 1개를
-   동시 보유(예: Linux+Apache)하나 현재 단일 variant 구조는 한 변형만 선택. 웹 특화
-   항목 판단기준이 OS 변형 컬럼(col23~32)에 복제돼 있어 OS 변형 선택 시에도 웹 항목이
-   판정되지만(WST-031 col27=col37 동일 확인), 웹서버 종류별 세분 점검은 별도. 수집
-   포맷 확정 후 (a) OS 변형 단일 판정 + 웹항목 자동포함, 또는 (b) OS+웹 2회 판정,
-   또는 (c) 복합 variant 중 전략 결정.
-2. **수집 포맷 확정(선행조건)** — 웹서버 점검 수집 스크립트 없음. 현재 파서(webwas_xml)는
-   server_xml 동일 PROVISIONAL XML 엔벨로프 가정(<asset><os>+<webserver>).
-3. **item_configs/webwas.yaml 전수 라벨분류** — 126항목 전부 기본 A(LLM). server.yaml의
-   OS 항목 라벨을 항목명 동일한 106개 WST에 동기화(SRV/WST ID 체계 다름 → 평가항목명
-   기준 대조). 웹 특화: WST-126(EOL) D, WST-080(패치) D 후보.
-4. **detect_variant 실데이터 검증** — <asset><variant> 직접키 / <os> / <webserver>/<product>
-   어느 방식인지 확인. 미식별 None→--variant 유도. OS>웹서버 우선순위 재검토.
-5. **empty_means_good 식별** — 수집 스크립트 분석 후.
+### ⑦ 웹서버-WAS 활성화 게이트 — **Phase 3 SHIP(2026-06-16, 926 passed, 4 skipped)**
+웹 특화 WST 결정론 통합 완료. 실데이터(web_apache-s-sample.xml) 검증: WST-033 양호(det_common) 확인.
+거짓양호 0. 아래는 잔존 과제.
+
+1. **✅ OS/웹 이중성 처리** — DET_SOURCE OS 변형 = DET-PARTIAL + `_infer_web_variant()` raw 추론으로 해결.
+   linux detect → raw에서 apache 추론 → WST-033 apache check 함수 호출 정상.
+2. **✅ webwas.yaml 전수 라벨분류** — 웹 특화 WST 항목 등재 완료. WST-126=D, WST-080=D.
+   OS-동형 WST는 server 어댑터 위임(ID 라우팅으로 자동).
+3. **✅ detect_variant 실데이터 검증** — web_apache-s-sample.xml에서 linux 반환 + raw 추론 apache 정상.
+4. **WST-040 xlsx 역전 미해결** — DET_SOURCE iis=MANUAL 유지. xlsx 기준 셀(판단기준/판단방법 역전 여부) 사용자 확인 후 DET 승격 예정.
+5. **IIS/WebtoB/Tomcat/JEUS 실수집 샘플 미확보** — 합성 픽스처 기반 테스트만(57건). 실데이터로 업그레이드 필요.
+6. **server.yaml OS 항목 라벨 → WST 동기화** — 현재 OS-동형 WST는 server 어댑터가 SRV-NNN으로 처리. webwas.yaml에는 WST-NNN OS 항목 미등재(범위 밖). 필요 시 평가항목명 기준 대조 후 webwas.yaml에 추가.
 
 ### ⑥ OS 가상화 활성화 게이트 (실수집 데이터 판정 활성화 전 필수)
 구조/단위테스트+Opus리뷰 완료(626 tests, osvirt 33). 3변형 vcenter/esxi/xen.
@@ -298,7 +513,8 @@ generic = 벤더 미식별 장비를 벤더중립 판단기준(C18)으로 LLM �
 | ④ 네트워크 장비 구조 | NETWORK Profile(변형 cisco[applicability_col=33]+generic[applies_when_standard=True, 벤더중립 C18 폴백]), VariantSpec에 `applies_when_standard` 필드 가산, criteria_loader elif 분기, `network_xml` 파서(server_xml 미러: parse 3-튜플·detect_variant cisco/generic 폴백·민감마스킹 16패턴+Juniper+동등성보존), judge.py generic 벤더중립 scope_note, writer 요약시트 프로파일/변형 행, item_configs/network.yaml 스캐폴드(전수 A). e2e 보류(샘플X). (06-12, Fable설계+델타설계, Sonnet구현, Opus 2회리뷰 마스킹누출 H1[ppp/SNMPv3]·H2[비-Cisco set평문]·M1[community_index 분리]·M2 수정 후 병합) |
 | ② 방화벽 이상정책 탐지(ISS) | ISS Profile(fw 변형, applicability_col=12, standard/method 18/19), `fw_policy_xlsx` 파서(detect_variant="fw" 고정, 12개 ISS-030~041 3-튜플 emit, SECUI/ID70/PaloAlto 3종 어댑터, compact JSON 직렬화), `fw_policy.py` 결정론 탐지 엔진(Policy dataclass, sniff_format, ADMIN/VULN/VULN_REMOTE 포트셋, detect_any_any/broad_cidr/all_port/two_way/src_port/vuln_remote/unused/shadow 8개 함수, _CAPABILITY 포맷×항목 맵, detect_for_iss 진입점, 직렬화 왕복), criteria_loader.py yaml judgment_method 오버라이드 seam, main.py `_fw_policy_handler` + `_HANDLERS["fw_policy"]` 등록, item_configs/iss.yaml(ISS-030~037/041: fw_policy, ISS-038/039/040: label C). 포맷전략 = 수요기반 3종+로컬LLM 헤더매핑 폴백(v2). 합성 픽스처 단위테스트 4파일. (06-12, Plan설계, Sonnet구현) |
 | ⑤ 컨테이너 가상화 구조 | CONTAINER Profile(9변형: k8s_master/k8s_worker/eks_master/eks_worker/aks_master/aks_worker/ocp_master/ocp_worker/docker_linux, applicability_col C12~20, std/method 쌍 C21~38), `container_xml` 파서(server_xml 미러, detect_variant: <asset><variant> 직접 키 > <platform>+<role> 조합, 마스킹 동일), parsers/__init__.py 등록, item_configs/container.yaml 스캐폴드(전 50항목 기본 A). e2e 보류(샘플X). (06-12, Sonnet) |
-| 테스트 | **551 passed** (+⑤ 컨테이너 ~65: test_profile_container.py/test_container_xml.py/test_criteria_loader_container.py) |
+| Phase 3 웹서버-WAS(WST) 결정론 | `judge_tool/vendor/common/webwas/`(wslib.py/WST_Apache_parse.py/WST_WebtoB_parse.py/WST_IIS_parse.py — VENDOR-EDIT(a)+(bug) WST-102 IIS 2부분 극성 수정), `det_adapters/webwas.py`(SRV-* → server 위임 / WST-* gate+파서+§6.4 config 시그니처 가드+§6.2 raw 추론+_map_result), `parsers/webwas_xml.py` raw_evidence 분리, `judge_tool/vendor/common/DET_SOURCE.yaml` WST 22항목 전수 분류(OS 5종=DET-PARTIAL, 웹 3종=DET, WST-040=MANUAL, WST-044/080/121~126=ABSENT), `item_configs/webwas.yaml` 루트레벨 전수 등재(WST-031~044/080/102/121~126), `tests/test_det_adapters_webwas.py`(57건). 실데이터 WST-033=양호(det_common, Apache 2.4.52) 거짓양호 0. (2026-06-16, Sonnet) |
+| 테스트 | **926 passed, 4 skipped** (+Phase3 webwas 57: test_det_adapters_webwas.py) |
 
 ### 2026-06-10 비판적 리뷰에서 확정된 사실 (재개 시 꼭 알아야 함)
 

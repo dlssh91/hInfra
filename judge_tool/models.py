@@ -28,8 +28,13 @@ class Criterion:
     eol_check: bool = False                   # D: eol.yaml EOL 결정론 판정 시도
     patch_check: bool = False                 # D: eol.yaml 패치 대조 시도
     # 판단방식 5분류(정적). label+플래그+empty_means_good에서 loader가 도출.
-    # llm | llm_det | det | interview | interview_holdonly
+    # llm | llm_det | det | interview | interview_holdonly | det_common
     judgment_method: str = "llm"
+    # 결정론 임계값 (§6): xlsx 산문을 사람이 구조화한 값. item_configs yaml에서 로딩.
+    # 어댑터가 thresholds를 common 함수에 주입한다. 기본 빈 dict(기존 호출 불변).
+    thresholds: dict = field(default_factory=dict)
+    # 임계값 출처 추적: xlsx 시트/셀 위치 메모. 감사 추적용.
+    thresholds_source: Optional[str] = None
 
     @property
     def is_mixed(self) -> bool:
@@ -56,6 +61,9 @@ class ResourceEvidence:
     status: str           # good | bad | info | error | review
     detail: str
     evidence: str
+    # 결정론(det_common)만 읽는 비마스킹 원문. 산출물/citation/LLM 경로는 절대 사용 금지.
+    # None이면 raw가 없거나 수집 안 됨(마스킹 전 원문과 마스킹본 동일한 경우 포함).
+    raw_evidence: Optional[str] = None
 
 
 @dataclass

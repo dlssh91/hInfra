@@ -258,7 +258,7 @@ def test_run_isolates_per_item_failure(tmp_path):
 
     cov = run(report_path=report, criteria_path=criteria, profile_key="cloud",
               client=BoomClient(), json_out=json_out, xlsx_out=xlsx_out,
-              model_name="stub")
+              model_name="stub", skip_preflight=True)
 
     assert os.path.exists(json_out) and os.path.exists(xlsx_out)
     data = json.load(open(json_out, encoding="utf-8"))

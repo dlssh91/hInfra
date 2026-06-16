@@ -57,9 +57,9 @@ def test_server_criteria_all_variants(tmp_path):
         c = crit[("SRV-001", vname)]
         assert c.applicable is True and c.is_judgeable is True
         assert "양호" in c.standard
-        # 스캐폴드 yaml에 항목 미등재 → 기본 label A, llm
+        # Phase 1: server.yaml에 SRV-001 det_common 등재 → label A, det_common
         assert c.label == "A"
-        assert c.judgment_method == "llm"
+        assert c.judgment_method == "det_common"
 
     assert crit[("SRV-002", "linux")].is_judgeable is True
     for vname in ("aix", "hpux", "solaris", "win"):
@@ -127,10 +127,12 @@ def test_server_run_integration_detects_variant(tmp_path):
     assert data["metadata"]["variant"] == "linux"
     assert data["metadata"]["profile"] == "server"
     by_id = {j["item_id"]: j for j in data["judgments"]}
-    # SRV-001: raw 증거 1건 → 스텁 LLM 취약 + flag_vulnerable_for_review
-    assert by_id["SRV-001"]["verdict"] == "취약"
+    # SRV-001: Phase 1 server.yaml → det_common. raw 증거("PermitRootLogin no")로
+    #   check_SRV_001 결정론 판정 → 결과는 결정론에 따름(양호/취약).
+    #   판정 성공 시 needs_review=True(결정론 정당성=사람 검토).
+    #   판정 실패(handled=False) 시 §18.3 라벨A → LLM 폴백.
     assert by_id["SRV-001"]["needs_review"] is True
-    assert by_id["SRV-001"]["judgment_method"] == "llm"
+    assert by_id["SRV-001"]["judgment_method"] == "det_common"
     assert by_id["SRV-001"]["script_status"] is None    # status_available=False
     assert by_id["SRV-001"]["agreement"] == "N/A"
     # SRV-002: 공백 output → 증거 없음 → 판단보류 강제(empty_means_good 없음)

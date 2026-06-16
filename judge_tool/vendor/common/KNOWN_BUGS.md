@@ -1,0 +1,309 @@
+# KNOWN_BUGS.md — common 실버그 목록
+
+> 상태: **확정(2026-06-16)** · 전수검증(§17.2) + Opus 리뷰(§16) 반영.  
+> 규칙: 벤더링(Phase 1~) 시 이 파일의 버그만 `# VENDOR-EDIT(bug):` 주석과 함께 수정.  
+> 수정 시 반드시 corrected 동작을 단언하는 핀고정 회귀테스트 동반(§18.2/§18.6-d).  
+> `DET_SOURCE.yaml`의 `bug:` 필드 id와 1:1 매핑.
+
+---
+
+## 1. `SRV-010-polarity`
+
+**id**: `SRV-010-polarity`  
+**위치**: `flus-main/app/common/ServerConfigLoader/SRV_auto_parse.py` lines **942–946**  
+**함수**: `check_SRV_010(output)` — sendmail 분기
+
+### 증상
+sendmail `PrivacyOptions restrictqrun` 체크에서 **result 값(Y/N)은 올바르나, reason 문자열(양호/취약 문구)만 역전**되어 있다.
+
+실제 소스(SRV_auto_parse.py:935-946):
+
+```python
+# 현재 버그 코드 (SRV_auto_parse.py:935-946)
+if not restrictq:   # restrictqrun 부재 = 취약 상황
+    result = 'Y'    # ← Y=취약 마킹 (정확)
+    auto_result_reason = "(+) sendmail.cf :: PrivacyOptions필드에 "
+        "restrictqrun값이 존재하는 것으로 탐지되어 양호로 판단\n"
+    # ↑ reason만 역전: "존재"·"(+)"·"양호" → 사실은 "부재=취약"이어야 함
+else:               # restrictqrun 존재 = 양호 상황
+    result = 'N'    # ← N=양호 마킹 (정확)
+    auto_result_reason = "(-) sendmail.cf :: PrivacyOptions필드에 "
+        "restrictqrun값이 존재하지 않는 것으로 탐지되어 취약으로 판단\n"
+    # ↑ reason만 역전: "존재하지 않는"·"(-)"·"취약" → 사실은 "존재=양호"이어야 함
+```
+
+**result 값(Y/N)은 각 분기에서 올바르게 설정**된다.  
+버그는 **reason 문자열만**: `if not restrictq`(취약 분기)에 양호 문구가, `else`(양호 분기)에 취약 문구가 붙는다.
+
+> 참고: postfix 분기(lines 913–918)는 result와 reason 모두 올바르게 구현되어 있다.  
+> exim 분기(line 921)는 `(*) 수동` — 버그 해당 없음.
+
+### Corrected 동작 명세
+수정: **result 값은 변경하지 않고** reason 문자열만 각 분기에 맞게 교체.  
+수정 후: `restrictqrun` **부재**(`not restrictq`) → `result='Y'`(취약), `"(-) ... 존재하지 않아 취약으로 판단"`.  
+수정 후: `restrictqrun` **존재**(`else`) → `result='N'`(양호), `"(+) ... 존재하여 양호로 판단"`.
+
+```python
+# 수정 후 (VENDOR-EDIT(bug): SRV-010-polarity)
+if not restrictq:
+    result = 'Y'                                                # ← 변경 없음(취약)
+    auto_result_reason = "(-) sendmail.cf :: PrivacyOptions필드에 "
+        "restrictqrun값이 존재하지 않는 것으로 탐지되어 취약으로 판단\n" + reason_str.strip()
+    # ↑ reason만 교체: (-) + 취약 문구
+else:
+    result = 'N'                                                # ← 변경 없음(양호)
+    auto_result_reason = "(+) sendmail.cf :: PrivacyOptions필드에 "
+        "restrictqrun값이 존재하는 것으로 탐지되어 양호로 판단\n" + reason_str.strip()
+    # ↑ reason만 교체: (+) + 양호 문구
+```
+
+### 회귀테스트 핀
+- **입력**: `restrictqrun`이 포함된 sendmail.cf 출력 → **기대 result='N'(양호), reason에 "(+)"·"양호" 포함**
+- **입력**: `restrictqrun`이 없는 sendmail.cf 출력 → **기대 result='Y'(취약), reason에 "(-)"·"취약" 포함**
+- `vulnerability_condition_result_model_list`가 비어있으면 result='N', 있으면 result='Y'임을 단언.
+- result 값 자체는 수정 전후 동일(수정 대상은 reason 문자열만).
+
+---
+
+## 2. `WST-038-apache-dotall`
+
+**id**: `WST-038-apache-dotall`  
+**위치**: `judge_tool/vendor/common/webwas/WST_Apache_parse.py` line **314** 부근  
+**함수**: `check_WST_038(configData)` — Apache FollowSymLinks 심볼릭링크 설정 점검
+
+### 증상
+`vuln_pattern` 정규식이 `re.IGNORECASE`만 사용하고 `re.DOTALL`을 누락했다.  
+`.`이 개행 문자를 넘지 못해, **표준 멀티라인 httpd.conf** 형식의 `<Directory>` 블록
+(`<Directory /var/www>\nOptions Indexes FollowSymLinks\n</Directory>`)에서
+취약 설정이 있어도 정규식이 매치하지 못해 `result='N'`(양호) = **거짓 양호** 반환.
+
+같은 파일 WST-031은 `re.DOTALL | re.IGNORECASE`로 올바르게 구현되어 있음.
+
+```python
+# 현재 버그 코드 (WST_Apache_parse.py:314)
+vuln_pattern = re.compile(
+    r"<Directory((?!<\/Directory>)[\s\S])*?Options.*\b(?:\+FollowSymLinks|FollowSymLinks|all)\b.*?<\/Directory>",
+    re.IGNORECASE   # ← re.DOTALL 누락
+)
+```
+
+재현:
+```python
+check_WST_038("<Directory /var/www>\nOptions Indexes FollowSymLinks\nAllowOverride None\n</Directory>")
+# → result='N'(양호)  (버그: 취약이어야 함)
+```
+
+### Corrected 동작 명세
+수정: `re.IGNORECASE` → `re.DOTALL | re.IGNORECASE` (WST-031과 동형).  
+수정 후:
+- 멀티라인 `<Directory>` 블록에서 `FollowSymLinks` 발견 → `result='Y'`(취약)
+- 단일라인 `<Directory ...>Options ... FollowSymLinks ...</Directory>` → `result='Y'`(취약)
+- `FollowSymLinks` 없는 clean 블록 → `result='N'`(양호)
+
+```python
+# 수정 후 (VENDOR-EDIT(c): WST-038-apache-dotall)
+vuln_pattern = re.compile(
+    # [^\n]* 로 Options 줄만 검색(over-match 방지) + re.DOTALL로 블록 경계 매치
+    r"<Directory((?!<\/Directory>)[\s\S])*?Options[^\n]*\b(?:\+FollowSymLinks|FollowSymLinks|all)\b[^\n]*.*?<\/Directory>",
+    re.DOTALL | re.IGNORECASE
+)
+```
+
+> 주의: 단순히 `re.DOTALL` 추가 시 `Options` 뒤 `.*`가 다른 줄의 `Require all granted`를
+> 매치하는 over-match 발생. `[^\n]*`로 Options 키워드 매치를 해당 줄로 제한함.
+
+### 회귀테스트 핀
+- **입력**: 멀티라인 `<Directory>` + `Options Indexes FollowSymLinks` → **기대 result='Y'(취약)**
+- **입력**: 단일라인 `<Directory...>Options ... FollowSymLinks...</Directory>` → **기대 result='Y'(취약)**
+- **입력**: `FollowSymLinks` 없는 clean `<Directory>` 블록 → **기대 result='N'(양호)**
+- 어댑터 경유 `judge('WST-038', <멀티라인 취약 raw>, 'apache', {})` → `verdict='취약'`, `handled=True`
+
+---
+
+## 3. `WST-102-iis-polarity`
+
+**id**: `WST-102-iis-polarity`  
+**위치**: `flus-main/app/common/WebServerConfigLoader/WST_IIS_parse.py` lines **688–689**  
+**함수**: `check_WST_102(configData)` — IIS 서버 정보 노출 헤더 설정
+
+### 증상
+위반 항목(`vulnerability_condition_result_model_list`)이 **비어있을 때** `result = "Y"`(취약)로 설정된다.
+
+```python
+# 현재 버그 코드 (WST_IIS_parse.py:688-693)
+if not vulnerability_condition_result_model_list:
+    result = "Y"  # 양호 상태 ← 주석은 "양호"이나 "Y"는 common 인코딩상 취약
+    auto_result_reason = "(+) requestFiltering removeServerHeader값이 true 거나 ..."
+```
+
+common 인코딩: `Y`=취약, `N`=양호 (`sclib.py:344-346` 확인). 위반 0건이 양호인데 `result="Y"`(취약)로 역전.
+
+### Corrected 동작 명세
+수정 후: 위반 항목 없음(`not vulnerability_condition_result_model_list`) → `result = "N"` (양호).  
+수정 후: 위반 항목 있음 → `result = "Y"` 유지(취약 — 올바름).
+
+```python
+# 수정 후 (VENDOR-EDIT(bug): WST-102-iis-polarity)
+if not vulnerability_condition_result_model_list:
+    result = "N"  # 위반 없음 = 양호
+    auto_result_reason = "(+) ..."
+else:
+    # result 기본값 "N", 위반 종류별로 "Y" 설정 (기존 else 블록 유지)
+```
+
+### 회귀테스트 핀
+- **입력**: `removeServerHeader="true"` + `errorMode` 없음 → **기대 result='N'(양호)**
+- **입력**: removeServerHeader 없음 + `errorMode="detailed"` → **기대 result='Y'(취약)**
+- 위반 0건 → N, 위반 1건 이상 → Y를 단언.
+
+---
+
+## 4. `WST-040-polarity`
+
+**id**: `WST-040-polarity`  
+**위치**: `flus-main/app/common/WebServerConfigLoader/WST_IIS_parse.py` lines **524–580**  
+**함수**: `check_WST_040(configData)` — IIS `.asa`/`.asax` 파일 매핑 허용 설정
+
+### 증상
+복합 polarity 의심:
+1. **코드 polarity**: `requestFiltering` 섹션 없음(`not has_match`) → `result='N'`(기본, 양호)로 처리하는데, 섹션 부재가 `.asa`/`.asax` 차단인지 허용인지 판단 방법과 불일치 가능성 있음 (lines 571–572).
+2. **xlsx 판단기준 역전 의심**: xlsx 웹 시트 WST-040 row의 양호/취약 판단기준 문구가 코드 판단방법과 역전되어 있을 수 있음 (§17.6 지적, 사용자 확인 필요).
+
+> ⚠️ **xlsx 정정 미확인**: 코드 로직은 "`.asa`/`.asax` 매핑 `true` 존재 → 취약(Y)", "없거나 섹션 부재 → 양호(N)"이나,  
+> xlsx 판단기준 셀의 양호/취약 문구가 이와 역전되어 있다는 지적(§17.6). **Phase 3 착수 전 xlsx 셀 재확인 필수**.
+
+### Corrected 동작 명세(잠정)
+코드 기준 올바른 로직:
+- `.asa` 또는 `.asax` 매핑이 `true`로 설정됨 → `result="Y"` (취약)
+- 매핑 없거나 `requestFiltering` 섹션 없음 → `result="N"` (양호)
+
+xlsx 판단기준 문구가 위와 역전되어 있다면 → **xlsx 정정이 우선** (xlsx 권위 원칙). 사용자 확인 후 `# VENDOR-EDIT(bug): WST-040-polarity` 처리.
+
+### 회귀테스트 핀
+- **입력**: `.asa` true 포함 → **기대 result='Y'(취약)** (코드 현행 동작)
+- **입력**: `requestFiltering` 없음 → **기대 result='N'(양호)** (코드 현행 동작)
+- xlsx 확인 후 corrected 방향이 확정되면 핀 갱신 필요.
+
+---
+
+## 5. `PRCV-027-036-unreachable`
+
+**id**: `PRCV-027-036-unreachable`  
+**위치**: `flus-main/app/common/PrivatecloudConfigLoader/autoAnalysis.py` lines **1678–1804**  
+**함수**: OS가상화 판정 분기 (autoAnalysis 메인 루프 내)
+
+### 증상
+`PRCV-027`~`PRCV-036`(결번 `PRCV-032` 제외) 9개 항목의 판정 분기가 **`PRCV-026` 블록 안에 잘못 들여쓰기**되어 있어 **도달 불가**하다.
+
+```python
+# 현재 버그 코드 (autoAnalysis.py:1649~1678~)
+elif "PRCV-026" in vulKey:          # line 1649
+    if "esxi" in sApp:              # line 1650
+        ...                         # PRCV-026 logic (lines 1651-1676)
+
+        elif "PRCV-027" in vulKey:  # line 1678 ← 들여쓰기 오류!
+            if "esxi" in sApp:      # PRCV-026의 if-esxi 블록 안의 elif
+                ...
+        elif "PRCV-028" in vulKey:  # line 1691
+            ...
+        # ... PRCV-029~036 동일 패턴
+```
+
+`elif "PRCV-027" in vulKey`는 `elif "PRCV-026" in vulKey` 블록 내부의 `if "esxi" in sApp:` 절의 `elif`로 처리되어, `vulKey`에 `PRCV-026`이 있을 때만 도달 가능하다. 실제로는 `PRCV-027`이 `vulKey`인 경우 `elif "PRCV-026"` 블록 자체에 진입하지 않으므로 **영구 미발동**.
+
+영향: xlsx 실존 9개 항목(PRCV-027~031, PRCV-033~036)이 항상 기본값 `result='N'`(양호) 반환 — **거짓 양호**.
+
+### Corrected 동작 명세
+수정: `PRCV-027`~`PRCV-036` 분기를 `PRCV-026` 블록 **바깥**으로 들여쓰기 교정.  
+수정 후: 각 항목이 독립적으로 진입 가능, esxi 조건 하에서 결정론 판정 동작.
+
+```python
+# 수정 후 구조 (VENDOR-EDIT(bug): PRCV-027-036-unreachable)
+elif "PRCV-026" in vulKey:          # 독립 elif
+    if "esxi" in sApp:
+        ...                         # PRCV-026 로직
+
+elif "PRCV-027" in vulKey:          # ← 들여쓰기 교정: 동위 elif
+    if "esxi" in sApp:
+        ...
+elif "PRCV-028" in vulKey:          # ← 동위 elif
+    ...
+# ... PRCV-029~036 동일
+```
+
+### 회귀테스트 핀
+- `vulKey="PRCV-027"`, `sApp="esxi"`, 취약 입력 → **기대: result='Y'(취약)** (현재는 'N' = 거짓 양호)
+- `vulKey="PRCV-026"`, `sApp="esxi"` → 기존 PRCV-026 로직 불변 확인
+- 9개 항목(027~031, 033~036) 각각 취약/양호 입력 단언 필요.
+
+---
+
+## 6. `SRV-073-no-group-data`
+
+**id**: `SRV-073-no-group-data`
+**위치**: `judge_tool/vendor/common/server/SRV_auto_parse.py` 함수 `check_SRV_073`
+**함수**: `check_SRV_073(output)` — 관리자 그룹 멤버 점검
+
+### 증상
+`/etc/group` 수집 결과가 없는 경우 — 권한거부(`cat: /etc/group: Permission denied`),
+빈 cat 결과(`$ cat /etc/group\n`), 무관 텍스트 등 — `commands` 리스트에서 파싱 가능한
+그룹 라인이 0건이어도 `man_inspect=False`로 떨어져 **`result='N'`(양호)**를 반환한다.
+
+어댑터의 증거부재 가드(`_has_collection_evidence`)는 `$ cat /etc/group` 프롬프트 라인을
+"증거"로 인식하여 통과시키므로 **거짓 양호 0.9**가 최종 판정으로 나온다.
+
+재현:
+```python
+judge('SRV-073', '$ cat /etc/group\ncat: /etc/group: Permission denied\n', 'linux', {})
+# → verdict='양호', handled=True  (버그)
+```
+
+### Corrected 동작 명세
+수정: `check_SRV_073` 내부에서 `commands`가 비었거나 파싱된 그룹 라인이 0건이면
+`result='N'` 양호로 반환하지 않고 `(*) 수동 판단 필요: /etc/group 수집 결과 없음...`을 반환.
+어댑터 Low-1 가드(`(*) and result!='Y'` → handled=False)가 잡아 LLM 폴백으로 라우팅.
+
+수정 후 동작:
+- `/etc/group` 데이터 있음 → 결정론 판정 유지 (기존 동작 불변)
+- `/etc/group` 데이터 없음(권한거부/빈/무관) → `(*) 수동` → handled=False → LLM 폴백
+
+### 회귀테스트 핀
+- `'$ cat /etc/group\ncat: /etc/group: Permission denied\n'` → handled=False, verdict≠양호
+- `'$ cat /etc/group\n'` (빈 결과) → handled=False, verdict≠양호
+- `'$ cat /etc/group\nunrelated text\n'` → handled=False, verdict≠양호
+- `'$ cat /etc/group\nroot:x:0:\n'` (유효 데이터) → handled=True, verdict=양호 (회귀 불변)
+
+---
+
+## 5. `NET-051-typo`
+
+**id**: `NET-051-typo`  
+**위치(v202101R1)**: `flus-main/app/common/NetworkConfigAnalysis/v202101R1/NetworkConfig.py` line **2592**  
+**위치(v202001R1)**: `flus-main/app/common/NetworkConfigAnalysis/v202001R1/NetworkConfig.py` line **3106**  
+**함수**: `NET051(...)` — Cisco tcp keepalives 설정 점검
+
+### 증상
+`line 2592`에서 검색 문자열에 오타가 있다:
+
+```python
+# 현재 버그 코드 (NetworkConfig.py:2592)
+if "service tcp-kepalives-in" in line:   # ← "keepalives" → "kepalives" (e 누락)
+```
+
+실제 Cisco IOS 설정 문자열은 `"service tcp-keepalives-in"`. 오타로 인해 검색 조건이 **영구 미발동** → 취약 판정 분기 미진입 → 항상 기본 결과(양호) 반환. 사실상 `STUB`과 동일.
+
+### Corrected 동작 명세
+수정: `"tcp-kepalives-in"` → `"tcp-keepalives-in"` (e 추가).  
+수정 후: Cisco IOS에서 `service tcp-keepalives-in`이 없거나 `no`인 경우 `result="Y"` (취약) 판정.
+
+```python
+# 수정 후 (VENDOR-EDIT(bug): NET-051-typo)
+if "service tcp-keepalives-in" in line:   # ← 오타 수정
+```
+
+> 두 버전(v202001R1, v202101R1) 모두 동일 오타 존재. 벤더링 시 채용 버전을 PROVENANCE.md에 명기하고 양쪽 모두 수정 또는 채용 버전만 수정.
+
+### 회귀테스트 핀
+- **입력**: `"service tcp-keepalives-in"` 포함 Cisco raw → **기대: result='N'(양호)**
+- **입력**: `"no service tcp-keepalives-in"` 포함 → **기대: result='Y'(취약)**
+- 오타 문자열(`tcp-kepalives-in`) 검색은 위 두 입력 어디서도 매치하지 않음을 단언.

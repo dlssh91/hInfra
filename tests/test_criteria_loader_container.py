@@ -67,7 +67,8 @@ def test_k8s_master_applicable(tmp_path):
     assert "양호" in c.standard
     assert c.method == "k8s_master 방법"
     assert c.label == "A"
-    assert c.judgment_method == "llm"
+    # Phase 2: PRCC-001은 container.yaml에 det_common 등재됨 (k8s_master=DET)
+    assert c.judgment_method == "det_common"
 
 
 def test_k8s_worker_not_applicable(tmp_path):
@@ -117,12 +118,21 @@ def test_multiple_items_loaded(tmp_path):
     assert crit[("PRCC-011", "docker_linux")].applicable is True
 
 
-def test_judgment_method_llm_default(tmp_path):
-    """container.yaml에 미등재 항목 → 기본 label=A, judgment_method=llm."""
+def test_judgment_method_det_common_registered(tmp_path):
+    """container.yaml에 등재된 항목(PRCC-001) → judgment_method=det_common (Phase 2)."""
     p = str(tmp_path / "c6.xlsx")
     _container_xlsx(p, [("PRCC-001", {"k8s_master": True}, "기준")])
     crit = load_criteria(p, CONTAINER, profile_key="container")
-    assert crit[("PRCC-001", "k8s_master")].judgment_method == "llm"
+    # Phase 2: PRCC-001이 container.yaml에 det_common으로 등재됨
+    assert crit[("PRCC-001", "k8s_master")].judgment_method == "det_common"
+
+
+def test_judgment_method_llm_for_unlisted(tmp_path):
+    """container.yaml에 미등재 항목(PRCC-999) → 기본 label=A, judgment_method=llm."""
+    p = str(tmp_path / "c6b.xlsx")
+    _container_xlsx(p, [("PRCC-999", {"k8s_master": True}, "기준")])
+    crit = load_criteria(p, CONTAINER, profile_key="container")
+    assert crit[("PRCC-999", "k8s_master")].judgment_method == "llm"
 
 
 def test_standard_col_per_variant(tmp_path):

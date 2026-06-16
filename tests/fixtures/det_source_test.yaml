@@ -1,0 +1,56 @@
+# 테스트 전용 DET_SOURCE 픽스처 (실파일 아님)
+# tests/test_det_adapters_base.py 가 reload_det_source(path)로 로드한다.
+meta:
+  source: test-fixture
+  as_of: 2026-06-16
+  classes: [DET, STUB, UNREACHABLE, ABSENT, MANUAL, DET-PARTIAL]
+  notes: base.py classify 조회 계약 단위테스트용 최소 픽스처
+
+items:
+  # default만 있는 케이스
+  SRV-001:
+    default: DET
+
+  # variants가 있고 variant 직접 매칭
+  SRV-069:
+    variants:
+      linux: DET
+      aix: MANUAL
+      hpux: MANUAL
+      solaris: MANUAL
+      win: ABSENT
+
+  # default가 있으면서 variants도 있는 케이스
+  SRV-010:
+    default: DET
+    bug: SRV-010-polarity   # 무시 필드
+
+  # 엔진토큰 폴백 검증: mysql_native -> mysql
+  DBM-005:
+    variants:
+      mssql: DET
+      mysql: STUB
+      oracle: STUB
+      mariadb: STUB
+      pg: STUB
+
+  # UNREACHABLE 케이스
+  PRCV-027:
+    default: UNREACHABLE
+
+  # MANUAL 케이스
+  SRV-022:
+    default: MANUAL
+
+  # DET-PARTIAL 케이스 (variants에 DET/MANUAL 혼재)
+  NET-NET1:
+    variants:
+      cisco: DET
+      juniper: MANUAL
+
+  # DET-PARTIAL 케이스 (default=DET-PARTIAL, 서버 카테고리4 대표)
+  SRV-021:
+    default: DET-PARTIAL          # FTP active→(*); inactive→DET N
+
+  SRV-073:
+    default: DET-PARTIAL          # 관리자 그룹 의심계정→(*) 수동

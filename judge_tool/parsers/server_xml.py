@@ -28,8 +28,12 @@ fsi_unix.sh / fsi_win.bat 가 출력하는 동일 포맷을 처리한다:
   reconcile의 '증거 없음 → 판단보류 강제' 가드가 동작하는 보수적 선택
   (서버는 empty_means_good 분석 자료가 없어 빈 출력=양호로 단정 불가).
 - XML 파싱 실패는 ReportError로 변환(경로/위치만 노출, 본문 비노출).
-- parse()는 evidence 적재 전 _mask_server_evidence()로 민감정보를 마스킹한다.
-  shadow 해시·SSH 개인키·32+ 연속 hex가 대상(db_json.py 마스킹과 보안 일관성).
+- parse()는 evidence(공개 필드)에 마스킹된 출력을, raw_evidence(비공개)에
+  마스킹 전 원문을 각각 싣는다(§7 raw_evidence 분리 계약):
+    - evidence: _mask_server_evidence()로 shadow 해시·SSH 개인키·긴 hex 마스킹.
+      산출물·LLM 프롬프트·citation에 이 필드만 사용한다(누출 경계).
+    - raw_evidence: 마스킹 전 원문. det_common 핸들러만 읽는다.
+      빈 출력(raw_output이 빈 문자열)이면 raw_evidence=None.
 - resource_id는 cid별 전역 카운터({cid}#0, {cid}#1, ...)로 유일성 보장.
   같은 cid가 여러 dump에 걸쳐 등장해도 중복 resource_id가 발생하지 않는다.
 """
@@ -40,6 +44,7 @@ from typing import Dict, List, Optional, Tuple
 from judge_tool.errors import ReportError
 from judge_tool.models import ResourceEvidence
 from judge_tool.parsers.cloud_xml import sanitize
+from judge_tool.preflight import read_text as _preflight_read_text
 
 # <asset><os> 텍스트(lower) → 변형 키. 구체 토큰을 먼저 검사한다.
 # 변형 키는 profile.SERVER.variants 키와 일치해야 한다.
@@ -124,20 +129,14 @@ def _mask_server_evidence(text: str) -> str:
 
 
 def _read_text(xml_path: str) -> str:
-    """선언된 인코딩(UTF-8/euc-kr 등)으로 디코딩하고 XML 선언을 제거해 반환.
+    """인코딩 자동 교정 후 텍스트를 반환한다(preflight.read_text 위임).
 
-    미지/오기 인코딩 선언은 utf-8 폴백, 디코딩 불가 바이트는 치환(errors=
-    replace)해 구조 파싱이 깨지지 않게 한다(태그/id는 ASCII).
+    preflight.read_text 는 strict 프로빙(utf-8-sig → utf-8 → cp949 → replace
+    폴백)으로 실제 인코딩을 확정하며, XML 선언 제거·sanitize까지 적용한다.
+    이전에 선언 인코딩을 신뢰하던 구현(mojibake 원인)을 대체한다.
     """
-    with open(xml_path, "rb") as fh:
-        raw = fh.read()
-    m = _ENC_DECL.search(raw[:200])
-    enc = m.group(1).decode("ascii", errors="replace") if m else "utf-8"
-    try:
-        text = raw.decode(enc, errors="replace")
-    except LookupError:  # 알 수 없는 인코딩 이름 → utf-8 폴백
-        text = raw.decode("utf-8", errors="replace")
-    return _XML_DECL.sub("", text, count=1)
+    text, _meta = _preflight_read_text(xml_path)
+    return text
 
 
 def _parse_root(xml_path: str) -> ET.Element:
@@ -183,6 +182,8 @@ def parse(xml_path: str) -> List[Tuple[str, List[ResourceEvidence], Optional[str
         ids = [i for i in ids if i]
         raw_output = (dump.findtext("./output") or "").strip()
         masked_output = _mask_server_evidence(raw_output) if raw_output else raw_output
+        # §7 raw_evidence 분리: 빈 출력이면 raw_evidence=None(det_common 공급 없음)
+        raw_ev = raw_output if raw_output else None
         for cid in ids:
             n = cid_counter.get(cid, 0)
             cid_counter[cid] = n + 1
@@ -190,7 +191,8 @@ def parse(xml_path: str) -> List[Tuple[str, List[ResourceEvidence], Optional[str
             if masked_output:
                 resources.append(ResourceEvidence(
                     resource_id=f"{cid}#{n}", status="", detail="",
-                    evidence=masked_output))
+                    evidence=masked_output,
+                    raw_evidence=raw_ev))
             out.append((cid, resources, None))
     if not out:
         raise ReportError(

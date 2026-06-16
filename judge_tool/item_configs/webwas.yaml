@@ -1,22 +1,127 @@
-# webwas(웹서버-WAS) 항목 라벨 & LLM 지시 — 스캐폴드(구조 단계)
+# webwas(웹서버-WAS) 항목 라벨 & LLM 지시
+# Phase 3 완료: 웹 특화 WST 항목 5-way 라벨 등재.
+#
 # label A: 기술 증거로 판정 가능 (LLM)
 # label B: 담당자 인터뷰 필수 — verdict=판단보류 고정, LLM은 summary_instruction으로 증거 요약만
 # label C: 기술적 한계 — 자동 판단보류, canned_message 출력 (LLM 호출 없음)
 # label D: 외부지식 필요(EOL·패치 등) — 자동 판단보류, canned_message 출력 (LLM 호출 없음)
 #
-# 현재 상태: 항목 미등재 → 전 항목(126개 WST) 기본 label A(LLM 판정).
 # variant 키: OS 5종(aix/hpux/linux/solaris/win) + 웹서버 6종
 #             (webservice/apache/webtob/iis/tomcat/jeus).
 #
-# 시트 구성: 총 126항목(WST-001~126). 서버(SRV)와 항목명 동일 106개(OS 점검)
-# + 웹 특화 20개(WST-031~044 등 ID 구간 산재, 연속 아님).
-# 웹 특화 항목은 OS 변형 컬럼에 판단기준이 복제돼 있어 OS 변형 선택 시에도 판정됨.
+# ★OS/웹 이중성 게이트 (Phase 3 확정):
+# - 실수집 데이터에서 OS 항목 = SRV-NNN ID로 emit, 웹 특화 = WST-NNN.
+# - webwas 어댑터가 SRV-* → server 어댑터 위임, WST-* → WST check 함수.
+# - criteria 웹서버-WAS 시트는 WST-001~126 전부 WST ID (SRV 혼재 없음, 126항목).
+# - OS-동형 WST(WST-NNN 중 SRV 동형): 실데이터 SRV ID ↔ criteria WST ID 불일치로
+#   webwas 프로파일에서 매칭 안 됨 → 서버 프로파일(Phase 1)이 SRV-NNN으로 담당.
+# - webwas Phase 3 결정론 범위 = 웹특화 WST 항목만 (수집 WST-NNN 증거 있는 것).
 #
-# TODO(후속 과제 — 실수집 샘플 데이터 확보 후):
-# - server.yaml의 OS 항목 라벨 분류를 항목명 동일한 106개 WST에 동기화(ID 직접 매핑
-#   금지 — SRV/WST ID 체계가 다르므로 평가항목명 기준으로 대조할 것).
-# - 웹 특화 항목(WST-031~044, 102, 121~126 등)은 판단기준/방법 정독 후 분류:
-#     WST-126 (EOL 교체): D eol_check 후보 (eol.yaml 웹서버 테이블 추가 선행)
-#     WST-080 (보안패치): D patch_check 후보
-# - OS/웹 이중성 처리(PROGRESS.md ⑦ 게이트): 수집 포맷 확정 후 detect_variant 전략 결정.
-# - empty_means_good 후보도 수집 스크립트 분석 후 profile.WEBWAS에 보강.
+# TODO(후속 과제):
+# - server.yaml OS 항목 라벨을 항목명 기준으로 WST에 동기화(ID 직접 매핑 금지).
+# - WST-126 EOL: eol.yaml 웹서버 테이블 추가 후 D eol_check 전환.
+# - WST-080 보안패치: patch_check 후보.
+# - iis/webtob/tomcat/jeus 실수집 샘플 확보 후 합성 픽스처 → 실데이터 검증 업그레이드.
+
+# ── 웹 특화 WST 항목 (Phase 3 결정론화 대상) ─────────────────────────────────
+
+# WST-031: Directory Indexes — 3파서 DET (apache/iis/webtob)
+WST-031:
+  judgment_method: det_common
+  label: A
+
+# WST-032: IIS 스크립트 경로 Everyone 권한 — IIS 전용 DET
+WST-032:
+  judgment_method: det_common
+  label: A
+
+# WST-033: 웹서버 버전 — apache/iis DET, webtob MANUAL→LLM
+WST-033:
+  judgment_method: det_common
+  label: A
+
+# WST-034: 불필요한 파일 — apache/webtob MANUAL→LLM, iis DET
+WST-034:
+  judgment_method: det_common
+  label: A
+
+# WST-035: LimitRequestBody — 3파서 DET, config 미수집 시 handled=False
+WST-035:
+  judgment_method: det_common
+  label: A
+
+# WST-036: 프로세스 권한 — 3파서 DET, $환경변수→(*)→LLM
+WST-036:
+  judgment_method: det_common
+  label: A
+
+# WST-037: DocumentRoot/DOCROOT — 3파서 DET
+WST-037:
+  judgment_method: det_common
+  label: A
+
+# WST-038: FollowSymLinks/심볼릭링크 — apache/iis DET, webtob NA→MANUAL→LLM
+WST-038:
+  judgment_method: det_common
+  label: A
+
+# WST-039: 불필요한 모듈 — apache MANUAL→LLM, iis/webtob DET
+WST-039:
+  judgment_method: det_common
+  label: A
+
+# WST-040: IIS .asa/.asax 매핑 — xlsx 판단기준 역전 의심, 결정론 비활성
+# DET_SOURCE iis=MANUAL → gate가 항상 차단 → det_common 라우팅 무의미 → label A(LLM)만 유지.
+# needs_user_confirmation: "WST-040 xlsx 판단기준 양호/취약 역전 의심 — 기준셀 정정 필요(§17.6.4)"
+WST-040:
+  label: A
+  # ★ xlsx 역전 의심: DET_SOURCE iis=MANUAL(결정론 비활성). xlsx 확인 후 iis:DET 승격 및 det_common 복원 예정.
+
+# WST-041: IIS 실행파일 Everyone 권한 — IIS 전용 DET
+WST-041:
+  judgment_method: det_common
+  label: A
+
+# WST-042: IIS handlers 매핑 — IIS 전용 DET
+WST-042:
+  judgment_method: det_common
+  label: A
+
+# WST-043: IIS 버전 — IIS 전용 DET
+WST-043:
+  judgment_method: det_common
+  label: A
+
+# WST-044: Tomcat/JEUS 기본 계정 — 전파서 MANUAL(*), 기술적 판단 불가
+WST-044:
+  label: C
+  canned_message: "Tomcat/JEUS 기본 계정 변경 여부는 직접 접속 확인이 필요합니다. 자동 판단이 불가합니다."
+
+# WST-080: 보안패치 — 파서 없음 (ABSENT), EOL/패치 외부지식 필요
+WST-080:
+  label: D
+  canned_message: "웹서버 보안패치 적용 여부는 외부 취약점 DB(CVSS 등) 확인이 필요합니다."
+
+# WST-102: 서버 정보 노출 방지 — 3파서 DET (IIS 버그수정 완료)
+WST-102:
+  judgment_method: det_common
+  label: A
+
+# WST-121~124: 파서 미구현 — ABSENT, LLM 폴백
+WST-121:
+  label: A
+WST-122:
+  label: A
+WST-123:
+  label: A
+WST-124:
+  label: A
+
+# WST-125: 파서 미구현 — ABSENT, LLM 폴백 가능 (§15.4)
+WST-125:
+  label: A
+
+# WST-126: EOL — 파서 없음 (ABSENT), EOL 외부지식 필요
+WST-126:
+  label: D
+  canned_message: "웹서버/WAS EOL 여부는 제조사 공식 지원 주기 확인이 필요합니다."

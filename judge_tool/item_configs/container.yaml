@@ -4,27 +4,231 @@
 # label C: 기술적 한계 / 외부정보 필요 — 자동보류, canned_message 출력
 # label D: EOL/패치 결정론 — 자동보류 (eol.yaml 연계)
 #
-# 현재: 50항목 전부 기본 A(LLM 판정). 미등재 항목은 자동으로 A로 취급.
-# 실수집 샘플 데이터 확보 후 C/D/B 분류 및 등재할 것.
+# Phase 2 업데이트: PRCC-001~050 전수 라벨링 + det_common 지정.
+# DET_SOURCE에 등재된 DET/DET-PARTIAL variant를 가진 항목은 det_common.
+# gate가 variant별로 DET→결정론, MANUAL/ABSENT→LLM 폴백으로 자동 분기(§2.4).
+# label은 전 항목 A(LLM 폴백 기본): 결정론이 차단된 variant/항목은 LLM으로.
+#
+# 라벨 원칙(§5.1 설계 계약):
+#   - 결정론 분류는 DET_SOURCE(코드 근거)가 권위. 라벨은 폴백 경로 지정.
+#   - PRCC-004(§15.4 D언급): 코드는 k8s=M/ocp=DET → DET_SOURCE대로 det_common+A.
+#     EOL이 아니므로 D 부적합; §15.4 D언급은 코드 불일치 → 코드 우선(§13.2).
+#   - PRCC-039(§15.4 B언급): docker_linux=DET → det_common+A. B 고정은 docker
+#     결정론 손실이므로 부적합 → A 폴백 권장(§5.1).
+#   - PRCC-024/036(§15.4 A): 코드상 master/docker DET → det_common+A.
 #
 # 변형 키: k8s_master / k8s_worker / eks_master / eks_worker /
 #           aks_master / aks_worker / ocp_master / ocp_worker / docker_linux
-#
-# 컬럼 배치 (기준 xlsx '컨테이너 가상화 시스템' 시트):
-#   id=C2, name=C7, risk=C8
-#   평가대상: k8s_master=C12, k8s_worker=C13, eks_master=C14, eks_worker=C15,
-#             aks_master=C16, aks_worker=C17, ocp_master=C18, ocp_worker=C19,
-#             docker_linux=C20
-#   판단방법/판단기준(쌍):
-#     k8s_master=C21/C22, k8s_worker=C23/C24, eks_master=C25/C26,
-#     eks_worker=C27/C28, aks_master=C29/C30, aks_worker=C31/C32,
-#     ocp_master=C33/C34, ocp_worker=C35/C36, docker_linux=C37/C38
 
-# ─ 후속 과제 (실수집 데이터 확보 후 분류 예정) ──────────────────────────────
-# TODO(샘플 확보 후):
-# - PRCC-007/009 (파일권한/로그 설정): kubectl exec 접근 필요 → 수집 방식 확정 후 재분류
-# - PRCC-049/050 (PID/ulimit 제한): Docker 전용, cgroup 직접 조회 필요
-# - 버전/EOL 관련 항목 있으면 D(eol_check) + eol.yaml 확장 필요
-# - 인터뷰가 필요한 정책/절차 항목은 B로 재분류
-#
-# 현재 미등재 → 전 항목 기본 A(LLM 판정).
+# ─ PRCC-001~050 전수 (Phase 2, DET_SOURCE 기준 5-way 라벨) ─────────────────
+
+PRCC-001:
+  judgment_method: det_common
+  label: A  # DET(k8s/eks/aks/ocp master); worker/docker→gate→LLM
+
+PRCC-002:
+  judgment_method: det_common
+  label: A  # DET(master 4종); 나머지→gate→LLM
+
+PRCC-003:
+  judgment_method: det_common
+  label: A  # DET(master 4종); 나머지→gate→LLM
+
+PRCC-004:
+  judgment_method: det_common
+  label: A  # DET-PARTIAL(k8s_master=M→gate차단→LLM / ocp_master=DET).
+            # §15.4 D언급 vs 코드 M/DET 불일치 — 코드 우선(§13.2). EOL 아님.
+
+PRCC-005:
+  judgment_method: det_common
+  label: A  # DET(k8s_master/ocp_master); 나머지→gate→LLM
+
+PRCC-006:
+  judgment_method: det_common
+  label: A  # DET(k8s/eks/aks master); 나머지→gate→LLM
+
+PRCC-007:
+  judgment_method: det_common
+  label: A  # DET(master 4종+worker 5종+docker). 전 활성 variant DET.
+
+PRCC-008:
+  judgment_method: det_common
+  label: A  # DET(k8s_master/ocp_master); 나머지→gate→LLM
+
+PRCC-009:
+  judgment_method: det_common
+  label: A  # DET(전 활성 variant: k8s/eks/aks/ocp master·worker + docker).
+
+PRCC-010:
+  judgment_method: det_common
+  label: A  # DET-PARTIAL(k8s_master/k8s_worker/ocp_master=DET; ocp_worker=MANUAL→gate→LLM)
+
+PRCC-011:
+  judgment_method: det_common
+  label: A  # MANUAL(docker_linux, M경로 존재→gate차단→LLM 폴백). 결정론 미작동.
+
+PRCC-012:
+  judgment_method: det_common
+  label: A  # DET(k8s_master/k8s_worker/docker_linux/eks_master); 나머지→gate→LLM
+
+PRCC-013:
+  judgment_method: det_common
+  label: A  # DET(master/worker 다수 variant). 전 활성 variant DET.
+
+PRCC-014:
+  judgment_method: det_common
+  label: A  # DET(k8s_master/ocp_master/ocp_worker); 나머지→gate→LLM
+
+PRCC-015:
+  judgment_method: det_common
+  label: A  # DET(k8s_master/k8s_worker/ocp_master/eks_worker/aks_worker)
+
+PRCC-016:
+  judgment_method: det_common
+  label: A  # DET(k8s_master/ocp_master)
+
+PRCC-017:
+  judgment_method: det_common
+  label: A  # DET-PARTIAL(k8s_master pass/k8s_worker/ocp_worker/aks_worker=DET; eks_worker=MANUAL)
+
+PRCC-018:
+  judgment_method: det_common
+  label: A  # DET-PARTIAL(k8s_worker=MANUAL→gate→LLM; ocp_worker/eks_worker/aks_worker=DET)
+
+PRCC-019:
+  judgment_method: det_common
+  label: A  # DET(docker_linux); 나머지→gate→LLM
+
+PRCC-020:
+  judgment_method: det_common
+  label: A  # DET(docker_linux)
+
+PRCC-021:
+  judgment_method: det_common
+  label: A  # DET(docker_linux)
+
+PRCC-022:
+  judgment_method: det_common
+  label: A  # DET-PARTIAL(k8s/ocp/eks/aks all=MANUAL→LLM; docker_linux=DET).
+            # §15.4 B언급 미채택 — docker 결정론 손실 방지.
+
+PRCC-023:
+  judgment_method: det_common
+  label: A  # DET(docker_linux)
+
+PRCC-024:
+  judgment_method: det_common
+  label: A  # DET-PARTIAL(master 4종=MANUAL보수분류→LLM; docker_linux=DET).
+            # §15.4 A=코드일치. master는 M경로 지배적 → MANUAL 보수분류.
+
+PRCC-025:
+  judgment_method: det_common
+  label: A  # DET(k8s_master); 나머지→gate→LLM
+
+PRCC-026:
+  judgment_method: det_common
+  label: A  # DET(k8s/eks/aks master + docker_linux + ocp_master)
+
+PRCC-027:
+  judgment_method: det_common
+  label: A  # DET(k8s/eks/aks master + ocp_master)
+
+PRCC-028:
+  judgment_method: det_common
+  label: A  # DET(k8s/eks/aks master + ocp_master)
+
+PRCC-029:
+  judgment_method: det_common
+  label: A  # DET(k8s/eks/aks master + docker_linux + ocp_master)
+
+PRCC-030:
+  judgment_method: det_common
+  label: A  # DET(k8s_master + docker_linux)
+
+PRCC-031:
+  judgment_method: det_common
+  label: A  # DET(k8s/eks/aks master + docker_linux + ocp_master)
+
+PRCC-032:
+  judgment_method: det_common
+  label: A  # DET(docker_linux)
+
+PRCC-033:
+  judgment_method: det_common
+  label: A  # DET(k8s/eks/aks master + docker_linux + ocp_master)
+
+PRCC-034:
+  judgment_method: det_common
+  label: A  # DET(docker_linux)
+
+PRCC-035:
+  judgment_method: det_common
+  label: A  # DET(k8s/eks/aks master + docker_linux + ocp_master)
+
+PRCC-036:
+  judgment_method: det_common
+  label: A  # DET-PARTIAL(k8s_master/docker_linux=DET; ocp_master=MANUAL→LLM).
+            # §15.4 A=코드일치.
+
+PRCC-037:
+  judgment_method: det_common
+  label: A  # DET(k8s/eks/aks master + docker_linux + ocp_master)
+
+PRCC-038:
+  judgment_method: det_common
+  label: A  # DET(k8s/eks/aks master + docker_linux + ocp_master)
+
+PRCC-039:
+  judgment_method: det_common
+  label: A  # DET-PARTIAL(master 4종=MANUAL→LLM; docker_linux=DET).
+            # §15.4 B언급 미채택 — docker 결정론 보존(§5.1).
+
+PRCC-040:
+  judgment_method: det_common
+  label: A  # DET(k8s_worker/docker_linux/ocp_worker/eks_worker/aks_worker)
+
+PRCC-041:
+  judgment_method: det_common
+  label: A  # DET(docker_linux)
+
+PRCC-042:
+  judgment_method: det_common
+  label: A  # DET(k8s/eks/aks master + docker_linux + ocp_master)
+
+PRCC-043:
+  judgment_method: det_common
+  label: A  # DET(k8s/eks/aks master + docker_linux + ocp_master)
+
+PRCC-044:
+  judgment_method: det_common
+  label: A  # DET(k8s/eks/aks master + docker_linux + ocp_master)
+
+PRCC-045:
+  judgment_method: det_common
+  label: A  # DET(k8s_master + docker_linux + ocp_master)
+
+PRCC-046:
+  judgment_method: det_common
+  label: A  # DET(k8s/ocp/eks/aks master)
+
+PRCC-047:
+  judgment_method: det_common
+  label: A  # DET(k8s/eks/aks master + docker_linux + ocp_master)
+
+PRCC-048:
+  judgment_method: det_common
+  label: A  # DET(docker_linux)
+
+PRCC-049:
+  judgment_method: det_common
+  label: A  # DET(k8s_worker + docker_linux)
+
+PRCC-050:
+  judgment_method: det_common
+  label: A  # DET(docker_linux)
+
+# ─ 후속 과제 ─────────────────────────────────────────────────────────────────
+# - PRCC-014 ocp_master: timeout[0] IndexError 가능성(빈 리스트) → 예외 → handled=False 폴백.
+#   실데이터 검증 후 필요 시 MANUAL 재분류 고려.
+# - worker/eks/aks/ocp/docker variant 실데이터 미검증(k8s_master만 Phase 2 검증).
+# - 버전/EOL 관련 항목 발견 시 D(eol_check) + eol.yaml 확장 필요.

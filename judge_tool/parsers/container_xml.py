@@ -20,13 +20,18 @@ kubectl/docker 수집 스크립트가 출력하는 PROVISIONAL XML 엔벨로프�
     </script>
 
 계약:
-- detect_variant(): <asset><variant> 직접 키 우선, 없으면 <platform>+<role> 조합.
-  식별 불가면 None → main.run에서 --variant 유도 ReportError.
+- detect_variant(): <asset><variant> 직접 키 우선, 없으면 <asset><app> 폴백(실수집 샘플),
+  없으면 <platform>+<role> 조합. 식별 불가면 None → main.run에서 --variant 유도 ReportError.
 - parse(): 3-튜플 [(id, [ResourceEvidence], None), ...] — server_xml과 동일 계약.
 - 민감 마스킹: 컨테이너 전용 패턴(JWT·base64 YAML) 선적용 후
   server_xml._mask_server_evidence(crypt해시·PEM개인키·32+hex) 체이닝.
   network_xml과 동일한 체이닝 선례를 따른다.
 - resource_id: cid별 전역 카운터({cid}#0, ...)로 유일성 보장.
+- parse()는 evidence(공개 필드)에 마스킹된 출력을, raw_evidence(비공개)에
+  마스킹 전 원문을 각각 싣는다(§7 raw_evidence 분리 계약, server_xml 동형):
+    - evidence: _mask_container_evidence()로 JWT·base64·crypt·hex 마스킹.
+    - raw_evidence: 마스킹 전 원문. det_common 핸들러만 읽는다.
+      빈 출력이면 raw_evidence=None.
 """
 import re
 import xml.etree.ElementTree as ET
@@ -136,10 +141,13 @@ def _parse_root(xml_path: str) -> ET.Element:
 # ─ 변형 식별 ──────────────────────────────────────────────────────────────────
 
 def detect_variant(xml_path: str) -> Optional[str]:
-    """<asset><variant> 직접 키 우선, 없으면 <platform>+<role> 조합으로 변형 식별.
+    """<asset><variant> 직접 키 우선, 없으면 <asset><app> 폴백, 없으면 <platform>+<role> 조합.
 
     반환값: profile.CONTAINER.variants 키 중 하나.
     식별 불가 → None (main.run이 --variant 유도 ReportError).
+
+    <app> 폴백 근거(§4.2 R6): 실수집 샘플은 <asset><variant> 대신 <asset><app>k8s_master</app>
+    형태로 variant를 기록한다. _DIRECT_VARIANT_MAP을 재사용해 동일 조회 논리로 처리.
     """
     root = _parse_root(xml_path)
 
@@ -147,6 +155,11 @@ def detect_variant(xml_path: str) -> Optional[str]:
     direct = (root.findtext("./asset/variant") or "").strip().lower()
     if direct and direct in _DIRECT_VARIANT_MAP:
         return _DIRECT_VARIANT_MAP[direct]
+
+    # 1b) <asset><app> 폴백 (실수집 샘플: <app>k8s_master</app>)
+    app_val = (root.findtext("./asset/app") or "").strip().lower()
+    if app_val and app_val in _DIRECT_VARIANT_MAP:
+        return _DIRECT_VARIANT_MAP[app_val]
 
     # 2) <platform> + <role> 조합
     platform_raw = (root.findtext("./asset/platform") or "").strip().lower()
@@ -191,6 +204,8 @@ def parse(xml_path: str) -> List[Tuple[str, List[ResourceEvidence], Optional[str
         ids = [i for i in ids if i]
         raw_output = (dump.findtext("./output") or "").strip()
         masked = _mask_container_evidence(raw_output) if raw_output else raw_output
+        # §7 raw_evidence 분리: 빈 출력이면 raw_evidence=None(det_common 공급 없음)
+        raw_ev = raw_output if raw_output else None
 
         for cid in ids:
             n = cid_counter.get(cid, 0)
@@ -199,7 +214,8 @@ def parse(xml_path: str) -> List[Tuple[str, List[ResourceEvidence], Optional[str
             if masked:
                 resources.append(ResourceEvidence(
                     resource_id=f"{cid}#{n}", status="", detail="",
-                    evidence=masked))
+                    evidence=masked,
+                    raw_evidence=raw_ev))
             out.append((cid, resources, None))
 
     if not out:
