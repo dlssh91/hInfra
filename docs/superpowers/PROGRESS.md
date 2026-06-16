@@ -1,16 +1,132 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-16 (**상태저장. 이번 세션 완료: Phase 0~3(서버·컨테이너·웹서버WAS) 결정론 통합 SHIP + 듀얼런 하니스(det>LLM 실증) + Pre-flight 인코딩교정·LLM게이트 + 30b label-A 평가(B)·프롬프트튜닝. 980 passed, 3 skipped**). **"다음에 진행해줘" → 아래 ★다음 착수(Phase 4 DB)부터.**
+> 마지막 업데이트: 2026-06-17 (**상태저장. 이번 세션 완료: DBM-001 완전 결정론화(b+a SHIP) + DBM 분류검토 Batch1(003~009) 구현 SHIP(Opus적대리뷰 SHIP·Critical0). 1176 passed, 9 skipped. 거짓판정0·§7 불변.**). **"다음에 진행해줘" → 아래 ★다음 착수(DBM-011~ 분류 검토 재개)부터.**
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. 이 파일이 단일 진실원천.
->  재개 트리거: "개발진행해"/"이어서 진행"/"다음 작업"/**"다음에 진행해"** → 아래 TL;DR ★다음 착수부터.)
+>  재개 트리거: "개발진행해"/"개발해줘"/"이어서 진행"/"다음 작업"/**"다음에 진행해"** → 아래 TL;DR ★다음 착수부터.)
 
 ## ▶ 다음 세션 즉시 시작점 (TL;DR)
-- **★다음 착수 = Phase 4 DB(DBM) 결정론 통합** (로드맵 §9 다음 도메인). "다음에 진행해줘" → 여기부터.
-  **방법 = Phase 1/2/3에서 검증된 패턴 그대로**(vendor → DET_SOURCE 분류 → 어댑터 → gate{DET,DET-PARTIAL} → Low-1+증거존재 가드 → 5-way 라벨 → 실데이터 검증 → 듀얼런 불변확인 → Opus 적대리뷰 → 미듐이상 shift-left). 설계는 Fable 불가 시 Opus 대체.
-  **⚠️벤더링 소스 위치(2026-06-16 이동)**: `flus-main/`(Django 원본·`.env` secret 보유, 948M)을 **프로젝트 밖 `../flus-main/`(= `/Users/fsat/Documents/saptweb/flus-main/`)** 으로 이동(git 미추적·미push). 벤더링 시 이 외부 경로에서 복사. 런타임은 `judge_tool/vendor/common/`(자족 복사본)만 사용.
-  **DB 특이주의(§17.4)**: ⚠️**엔진별 STUB 산재** — `../flus-main/app/common/DatabaseConfigLoader/modules/database/{mysql,oracle,mssql,mariadb,postgresql}/analysis.py`를 벤더링하되 **DBM-005(mysql/oracle/mariadb/pg=STUB·mssql만 DET) 등 엔진별 DET/STUB를 DET_SOURCE에 정확히**(STUB→handled=False, 거짓양호 금지). DBM-034/035/036 전엔진 ABSENT. **DB는 기존 검증된 LLM 산출물 존재 → 듀얼런으로 전환 후 불변확인 필수**(Q4). 임계값은 JSON config(rules)에서 읽으므로 yaml thresholds 매핑 깔끔(§6). 실데이터: `collected/db/` 5엔진 네이티브 샘플.
-  **착수 0번**: criteria '데이터베이스' 시트 ID 체계 확인(DBM-NNN) + DET_SOURCE에 DBM 엔진별 분류 작성(autoAnalysis 아닌 각 analysis.py 코드 근거).
-  - **(병행 가능, 비차단) LLM 품질 트랙**: 인코딩 교정·프롬프트 튜닝(빈출력클래스) 안전레버 **소진 완료**. 남은 레버=**골드라벨 확보**(사용자 정답 → 30b/결정론 진짜 측정, 현재 Opus 대용 N=10). 30b는 label-A에 보수적 충분(거짓양호 0) 확인됨.
+- **★다음 착수 = DBM-011~ 분류 검토 재개** (사용자와 항목별 1:1 검토 중. 001~009 완료, 다음=DBM-011)
+  **검토 진행 방식**: 항목별로 [항목명/상세설명/판단기준/엔진별 벤더 결정론 로직(현행 동작)/내 분류 권고] 제시 → 사용자 결정. 남은 항목: 011/013/014/015/016/017/019/020/021/022/024/025/026/028/029/030/031/032/033/034/035/036.
+
+  **✅ DBM 분류검토 Batch1 (003~009) 구현 SHIP (2026-06-17, 1176 passed, Opus 적대리뷰 SHIP·Critical0)**:
+  - **DBM-003**: 현행 DET 자동판정 유지.
+  - **DBM-004**: 모드A detect-then-hold — 위반(후보)≥1→판단보류+후보목록, 0→양호. `db.py _DETECT_THEN_HOLD`(전 변형).
+  - **DBM-005**: 전엔진 LLM(mssql DET→STUB, 자동취약 해제). **⚠️나중에 검증 필요(LLM 암호화 판정 품질)**.
+  - **DBM-006**: mysql/oracle/mssql/mariadb DET / pg_native=모드B 구조적취약(코어 실패잠금 부재, needs_review).
+  - **DBM-007**: mysql/oracle/mssql DET / mariadb DET복원(STUB 오분류 정정·실증) / pg_native=모드B 구조적취약.
+  - **DBM-008**: 4엔진 DET / pg_native DET(db_json pg 정규화 후).
+  - **DBM-009**: mysql/oracle/mariadb DET / mssql LLM / pg=극성수정(VENDOR-EDIT, `==0 or >900`, KNOWN_BUGS R-PG009).
+  - **공통 인프라**: ① `db.py` 모드A(`_DETECT_THEN_HOLD`)·모드B(`_STRUCTURAL_VULN`={pg_native 006/007}) ② `db_json.py` pg 비표준JSON 정규화(`_pg_normalize`) + bare문자열 raw 보존(벤더 type(datum)==str 검사용) ③ `main.py` 미수집 det_common→어댑터 시도(실판정 취약/양호만 채택, 모드B가 무데이터 항목에도 fire) ④ 신규 테스트 `TestBatch1Classification` 9건.
+  - **미해결/이월**: pg/mariadb 나머지 R3-STUB(011/015/017/019/020/028 등)는 **항목 검토 때 각각 재감사**(mariadb는 대체로 과보수 오분류→DET복원 가능, pg는 정규화로 복원). DBM-005 LLM 품질 검증 TODO.
+
+  Phase 4c (b+a) hashcat 연동 SHIP.
+
+  **Phase 4c (b+a) 완료 상태**:
+  - (b) 레이어: 5엔진 정적 사전공격 (mysql_native/mariadb/mssql/pg/oracle-11g 포맷 지원)
+  - **(a) 레이어 SHIP**: `export_for_external` + `run_hashcat` + `crack_judge` hashcat 통합
+  - **graceful skip**: hashcat 미설치 → (b)-only 정상 동작, `pwcrack_a=skipped(no hashcat)` 표시
+  - **§7 보안**: potfile 평문 즉시 폐기, citation 고정문구 "사전/규칙 크랙으로 약한 비밀번호 확인(평문 비공개)", 임시파일 0600+finally 삭제
+  - **CLI 확장**: `--hashcat-path/--hashcat-wordlist/--hashcat-rules/--hashcat-timeout`
+  - **모듈 세임**: `set_hashcat_opts/clear_hashcat_opts` (단일프로세스 CLI 안전)
+  - **5엔진 실데이터 graceful skip 실증**: 전부 판단보류(거짓판정 0), oracle handled=False 유지
+
+  **잔여 미해결**:
+  - caching_sha2 (a) 모드 미확정 (hashcat 버전별 모드 번호 검증 필요 — 현재 주석처리)
+  - oracle DBM-001 실데이터 미수집 (SYSDBA spare4 접근 선결)
+  - 벤더 룰/keywords.txt 대용량 자산 경로 설정형(운영자 제공)
+
+  설계서: `docs/superpowers/DESIGN_phase4c_dbm001_pwcrack.md §A2`. 수정 파일: `det_adapters/db_pwcrack.py`, `main.py`, `tests/test_det_adapters_db_pwcrack.py`.
+  Opus 리뷰 집중 의심지점: subprocess 인자 주입 방지(리스트형), potfile 파싱 hash:plain 분리(rfind), 세임 단일프로세스 안전성.
+
+- **✅ Phase 4c-a 완료 = Phase 4c-a: DBM-001 hashcat 연동 (a 레이어) (Sonnet구현, 2026-06-16)**
+  - **신규/수정 파일**:
+    - `judge_tool/det_adapters/db_pwcrack.py`: `HashcatOpts` dataclass, `export_for_external`, `run_hashcat`, `_detect_hashcat`, `_map_cracked_to_accounts`, `set/clear/get_hashcat_opts` 세임 추가. `crack_judge`에 (a) 통합(b-only 폴백, graceful skip).
+    - `judge_tool/main.py`: `--hashcat-path/--hashcat-wordlist/--hashcat-rules/--hashcat-timeout` CLI 인자, `JudgeContext.hashcat_opts`, `run()` hashcat_opts 파라미터, 세임 주입/클리어.
+    - `tests/test_det_adapters_db_pwcrack.py`: 31건 신규 (§J Phase 4c-a 테스트 — HashcatOpts구조/detect/export/mock-run/통합/§7/graceful/실데이터)
+  - **(a) 오케스트레이션**: (b) 먼저 실행 → (b) 취약이면 early-return → (b) 미스 계정만 export_for_external → run_hashcat(potfile 파싱, hash만 추출) → _map_cracked_to_accounts → citations 합산
+  - **graceful skip**: `_detect_hashcat(None)` → PATH 자동탐지 → 부재 시 None → (a) 스킵, `pwcrack_a=skipped(no hashcat)` rationale 표시
+  - **§7 보안**: potfile `hash:plaintext`에서 `rfind(":")` 기준으로 hash만 추출·폐기, citation="사전/규칙 크랙으로 약한 비밀번호 확인(평문 비공개)", 임시파일 0600+finally 삭제, subprocess 인자 리스트형
+  - **pytest**: 1164 passed(+31), 9 skipped. (b) 회귀 0. 5엔진 실데이터 graceful skip 실증.
+
+  **⚠️ Opus 리뷰 집중 의심지점**:
+  1. **subprocess 인자 리스트형**: `cmd=[hashcat_path, "-m", str(mode), ...]` — 셸 인젝션 차단 확인. 경로 문자열에 공백·특수문자 포함 가능성.
+  2. **potfile hash:plain 분리**: `rfind(":")` — hash 자체에 `:` 포함(postgres md5=없음, SCRAM=없음, mssql=없음, mysql=없음). 올바른 분리 확인.
+  3. **세임 단일프로세스 안전성**: `_current_hashcat_opts` 모듈 글로벌 — CLI 단일프로세스라 안전. 다중스레드/병렬 실행 환경이면 threading.local() 필요.
+  4. **wordlist 폴백**: wordlist=None 또는 파일 없으면 pwdict 내장 사전을 임시파일로 기록. `os.fdopen(fd, "w")` 후 fd 이중닫기 방지(`os.fdopen`이 fd 소유권 이전).
+  5. **finally 삭제 안전성**: `os.unlink(tmp_path)` — 파일이 이미 없으면 OSError 무시(코드에 except OSError: pass 있음). 확인.
+
+- **✅ Phase 4c 완료 = Phase 4c: DBM-001 비밀번호 사전공격 결정론화 (사용자 지정, 2026-06-16)**
+  분류 검토 중 사용자 결정: DBM-001(취약 비밀번호)을 현행 MANUAL/canned에서 **자족 사전공격(b)**으로 전환.
+  - **벤더 구조 확인**: common의 dbm_001은 판정 안 함 — oracle만 해시를 hashcat 모드별(11g=112/12c=12300/10g=3100) 정리, 나머지 빈본문. 실제 크랙=외부 hashcat(common 스냅샷 밖, keywords.txt 은행키워드+25MB 변형룰). 
+  - **사용자 결정(계층형)**: **(b) 파이썬 자족 사전공격 먼저 전 엔진 완성·검증 SHIP → 이후 (a) 외부 hashcat 연동 별도 증분.** (a)=벤더 원래 방식.
+  - **(b) 설계**: 기본/공통 비번 사전 → 계정별 salt로 해싱·비교. 매치=취약(평문 마스킹·§7), 미스=판단보류(복잡도 입증불가, 자동양호 없음). hashcat 불필요·stdlib만.
+  - **실 해시 포맷(collected native 확인)**: mariadb=mysql_native_password(`*`+SHA1²40hex 쉬움) / mssql=`0x0200`+salt+SHA512 쉬움 / mysql=caching_sha2 `$A$005$` 중간 / pg=SCRAM-SHA-256 PBKDF2 중간 / oracle 11g SHA1+salt·12c PBKDF2-SHA512(spare4 확인).
+  - **라우팅**: DBM-001 DET_SOURCE MANUAL→DET 승격 + db.py 어댑터가 base=='DBM-001'이면 벤더 대신 신규 크랙 모듈 호출. needs_review=True.
+  - **리스크**: 크립토 정확성(틀리면 조용한 false-negative) → 포맷별 KAT 테스트벡터 필수. 평문 비번 §7 마스킹 필수.
+
+  **✅ Phase 4c Sonnet 구현 완료 (2026-06-16)**:
+  - **신규 파일**: `judge_tool/det_adapters/pwdict.py`(정적 사전 ~250항목), `judge_tool/det_adapters/db_pwcrack.py`(엔진별 verifier + crack_judge), `tests/test_det_adapters_db_pwcrack.py`(59건)
+  - **수정 파일**: `judge_tool/det_adapters/db.py`(라우팅 주석 현행화, 이미 결정5 구현됨), `judge_tool/vendor/common/DET_SOURCE.yaml`(DBM-001 DET 승격, 이미 적용됨), `judge_tool/item_configs/db_{mariadb,mysql,mssql,postgresql,oracle}.yaml`(judgment_method: det_common + needs_review: true 추가)
+  - **테스트 수정**: `tests/test_det_adapters_db.py`(MANUAL→DET 반영 3건), `tests/test_judgment_method.py`(DBM-001 det→det_common)
+  - **포맷별 (b) 활성화 상태**: mysql_native=DET / mariadb=DET / mssql=DET / postgres=DET / oracle=DET(코드준비, 현 native 무데이터→handled=False→canned) / caching_sha2=**비활성**(외부KAT미확보)
+  - **KAT 통과**: mysql_native 외부KAT 통과(`*2470C0C06DEE42FD1618BB99005ADCA2EC9D1E19`), mssql/postgres/oracle 라운드트립 통과, RFC5802 SCRAM-SHA-256 ServerKey 알고리즘 직접 검증 통과
+  - **postgres 혼합포맷 버그 수정**: `_parse_postgres_row`에 혼합형식(이중따옴표키+단따옴표값) 정규식 추가 — 실데이터 postgresql_native 파싱 복구
+  - **5엔진 실데이터 스모크**: mariadb/mysql/mssql/pg=판단보류(handled=True, 거짓취약 0), oracle=handled=False(DBM-001 부재, 정상), §7 평문비노출 확인
+  - **1130 passed, 9 skipped** (신규 59건 포함)
+
+  **⚠️ Phase 4c Opus 리뷰 집중 의심지점**:
+  1. **mssql 0x0200 salt 레이아웃**: `len(hx)==70` → `salt=hx[2:6]`, `hash=hx[6:70]`. 실데이터 확인(70bytes=version2+salt4+sha512_64). len!=70/72 폴백(`pre[-4:]`)이 엣지케이스에서 올바른가.
+  2. **oracle 11g S: 형식**: `body[40:60]` = 20 hex chars = 10 bytes salt. `len < 62` 가드. 실데이터 spare4 없어 실증 미완 — 11g S: 표준 레퍼런스 확인 권장.
+  3. **postgres 혼합포맷 파서**: `_PG_ROLNAME_MIX_RE = r'"rolname"\s*:\s*\'([^\']+)\''` — 실데이터에만 존재하는 비표준 형식. 파서 3종 시도 순서(JSON→혼합→Python_repr)가 올바른가.
+  4. **빈 해시 잠금 스킵**: mariadb `PASSWORD_EXPIRED=Y` → is_expired=True → 스킵. mysql `ACCOUNT_LOCKED=Y` → is_locked=True → 스킵. 설계의도대로 구현됐는가.
+  5. **판단보류 handled=True**: 사전 미매치 케이스에서 handled=True, verdict=판단보류, ev=review 반환. label C → det_common_handler → 라벨라우팅 없이 판단보류 verdict가 reconcile 경로로 가는가. `_det_common_handler` 코드(main.py ~line 478)의 handled=True 판단보류 처리 경로 확인.
+
+  **✅ Phase 4b Opus Medium 수정 완료 (2026-06-16)**:
+  - **M-1**: DET_SOURCE.yaml 클라우드 ABSENT 명시 — engine-token 폴백이 native값(DET/STUB/MANUAL)을 반환하는 버그 수정.
+    - DBM-026(전 엔진 cloud 9셀): mysql_rds/aurora/azure, oracle_rds, mssql_rds, mariadb_rds, pg_rds/aurora/azure → ABSENT
+    - DBM-033(mysql cloud 3셀): mysql_rds/aurora/azure → ABSENT
+    - DBM-031(mssql cloud 1셀): mssql_rds → ABSENT (폴백=DET였음)
+    - DBM-013(oracle cloud 1셀): oracle_rds: STUB→ABSENT (native=STUB이나 cloud run()에 없음)
+    - DBM-021(mssql cloud 1셀): mssql_rds → ABSENT (폴백=STUB였음)
+    - **전수 재확인 추가 4셀**: DBM-001 mssql_rds, pg_rds/aurora/azure → ABSENT (폴백=MANUAL였음)
+    - 합계: Opus 8셀 + 전수재확인 추가 4셀 = **총 19셀** 명시 ABSENT 추가
+  - **M-2**: tests/test_det_adapters_db.py — classify(item, variant)=='ABSENT' 직접 단언 추가.
+    - 기존 테스트 강화: DBM-026/mysql_rds, DBM-033/mysql_rds, DBM-031/mssql_rds
+    - 신규 테스트: DBM-013/oracle_rds, DBM-021/mssql_rds classify=ABSENT + gate 차단
+    - 종합 단언 2개: test_m1_classify_absent_all_opus_items, test_m1_classify_absent_additional_items
+    - 테스트 93→97건(+4), 전체 1067→1071 passed
+
+  **⚠️ Phase 4b 핵심 결정/주의사항 (Opus 리뷰 집중 의심지점)**:
+  1. **거짓양호 차단 구조**: `DET_SOURCE.yaml` variants에 각 클라우드 변형 키 명시 → exact-variant 매칭이 engine-token 폴백보다 우선 → ABSENT 명시 항목은 gate 차단 확인(합성테스트).
+  2. **native↔cloud 분류 차이 핵심**:
+     - mysql cloud: 025/026/033 = **ABSENT**(native=DET, cloud run() 미호출) → 거짓양호 구조 차단
+     - mysql cloud DBM-022: **STUB**(lambda True, native=DET) → gate 차단
+     - oracle cloud DBM-016: **STUB**(전체 주석처리, native=DET)
+     - pg cloud DBM-003/004/008/011/015/016/017/020/024: **DET**(native=STUB, cloud 다른 스키마로 직접비교)
+     - pg cloud DBM-006/019: **ABSENT**(native=STUB, cloud run() 미호출) 
+     - pg cloud DBM-009: **STUB**(polarity 의심 버그: <=900을 위반으로 판정)
+     - mssql cloud: 019/031 = **ABSENT**(native=DET/ABSENT, cloud run() 미호출)
+     - mariadb cloud DBM-019: **DET**(native=STUB, PASSWORD_REUSE_CHECK_INTERVAL 직접비교)
+     - mariadb cloud DBM-022/026: **ABSENT**(native=DET, cloud run() 미호출)
+  3. **캐시 키 분리**: `(engine, is_cloud, fingerprint)` — native/cloud가 같은 data를 공유 시 오판 방지 확인.
+  4. **pg cloud DBM-009 STUB 사유**: `int(datum['value']) <= 900` 조건이 "timeout <= 900초"를 위반으로 판정 — 실제론 900초 이하면 양호(설정 적절)이므로 polarity 의심 → 거짓취약 방지를 위해 STUB. KNOWN_BUGS.md 등재 필요(사용자 확인 대기).
+  5. **oracle cloud dbm_008 중복 호출**: cloud oracle run()에 `self.dbm_008()` 2회 호출됨(원본 버그). 결과는 무해(덮어쓰기 패턴). 벤더 원본 비트동일 복사이므로 수정 금지.
+  6. **mariadb cloud dbm_008 중복 호출**: 동일 패턴. 원본 그대로.
+  7. **클라우드 실데이터 검증 미완료**: results/DB 비어있음 → 구조 확인(합성)만. 실데이터 확보 후:
+     - pg_rds DBM-003/004/008 DET 경로 실증(native와 다른 데이터 스키마 확인)
+     - pg_rds DBM-011 pgaudit 복합 로직(AWS/Azure 분기) 실증
+     - mysql_rds DBM-006 FAILED_LOGIN_ATTEMPTS/PASSWORD_LOCK_TIME_DAYS 스키마 확인
+  8. **Opus 리뷰 우선순위**: (a) pg cloud DET 항목(003/004 등) native=STUB이 cloud=DET로 분류 타당성, (b) mysql_rds 025/026/033 ABSENT 차단 실증, (c) oracle_rds 016 STUB(주석) 타당성.
+
+  **⚠️ Phase 4 핵심 결정/주의사항 (다음 세션 인계)**:
+  1. **R3 거짓양호 보수처리**: pg 수집형식 `{"*": python_repr_str}` — analysis.py가 column key(`rolvaliduntil` 등) KeyError 삼킴 → `[]` → 거짓양호. pg DBM-003/004/008/011/015/017/020 = STUB(DET_SOURCE 정정). mariadb DBM-007/011/019 동일 패턴 → STUB. **수집형식 수정(flat dict rows) 후 DET 복원 가능 — TODO 잔존.**
+  2. **실데이터 검증 결과 요약**: mysql(21판정 det_common=18, 거짓양호 0), oracle(25/19), mssql(23/14), mariadb(20/12), postgresql(22/6). 전 엔진 거짓양호 = 0 확인.
+  3. **테스트**: `tests/test_det_adapters_db.py` 신규 64건(engine매핑·base정규화·gate차단·증거가드·noise필터·result매핑·예외내성·§7경계·raw_evidence·캐시·실파일E2E + R3차단 6건).
+  4. **설계서**: `docs/superpowers/DESIGN_phase4_db_deterministic.md`(아키텍처·DET_SOURCE 분류표·R1~R7). 어댑터 `det_adapters/db.py`(5 profile_key 공유), db_json raw_evidence 적재(결정1), `.run` 모듈캐시(결정2), KNOWN_BUGS R3 등재.
+  5. **⚠️벤더 소스 위치(이 머신)**: `/Users/hinno/Downloads/common/DatabaseConfigLoader/modules/`(database/{engine}/analysis.py + config/{engine}-config.json). PROGRESS의 `../flus-main/`은 이전 머신(fsat) 기준 — 향후 벤더링 시 이 Downloads 경로 사용. 런타임은 `judge_tool/vendor/common/db/`(비트동일 복사본)만 사용.
+  6. **Opus 재리뷰 SHIP 근거**: R3 13개 vendor print 전수 base 매칭, stderr/logging/whole-raise/캐시 경로 전부 fail-safe, 5엔진 실데이터 양호/취약 약화 0(과차단 가드 `violations>=1` 실증). 잔여 Low/dormant(`__AMBIGUOUS__` 발동불가·fail-safe 방향).
+
+  **(병행 가능, 비차단) LLM 품질 트랙**: 인코딩 교정·프롬프트 튜닝(빈출력클래스) 안전레버 **소진 완료**. 남은 레버=**골드라벨 확보**(사용자 정답 → 30b/결정론 진짜 측정, 현재 Opus 대용 N=10). 30b는 label-A에 보수적 충분(거짓양호 0) 확인됨.
 
   - **Pre-flight 인코딩 교정 + LLM 점검가능 게이트(2026-06-16, 980 passed)**: `judge_tool/preflight.py`.
     - **인코딩 자동교정(결정론)**: utf-8 strict 프로빙→cp949(단 mojibake>5%면 utf-8 replace 폴백)→replace. 선언 인코딩 불신(EUC-KR 선언+UTF-8 바이트 mojibake 버그 수정). server_xml `_read_text`→`preflight.read_text` 위임, container/webwas 자동적용. **실증: 컨테이너 mojibake 812→0(한글 정상).**
@@ -98,6 +214,56 @@
     - **실데이터 검증(web_apache-s-sample.xml)**: WST-033=양호(det_common, Apache 2.4.52) ✅. WST-044=판단보류(det, label C) ✅. WST-035/038/102=handled=False → LLM 시도(API 키 없음=정상) ✅. **거짓양호 0 확인**.
     - **테스트**: `tests/test_det_adapters_webwas.py` 57건 신규. 총 926 passed, 4 skipped.
     - **잔존 스킵 4건**: WST-040 IIS polarity(xlsx 역전 미해결), WST-102 IIS polarity(vendored 버그수정 완료 → 스킵 조건 재검토 가능), PRCV-027~036(도달불가 버그), NET-051(오타). 도메인 벤더링 순서에 따라 활성화.
+
+  - **Phase 4b 완료(2026-06-16, 1067 passed, 9 skipped)**: DB(DBM) 클라우드 변형(RDS/Aurora/Azure) 결정론 통합.
+    - **범위**: 5엔진 클라우드 변형 14개(mysql×3/oracle×1/mssql×1/mariadb×1/pg×3). tibero 제외.
+    - **벤더링**: `judge_tool/vendor/common/db/{mysql,oracle,mssql,mariadb,postgresql}/cloud_analysis.py` 원본 비트동일 복사(VENDOR-EDIT 없음). PROVENANCE.md Phase 4b 행 추가.
+    - **DET_SOURCE 클라우드 변형 명시 분류**: 각 DBM 항목의 variants에 cloud 키(mysql_rds/aurora/azure 등) 추가. native와 다른 셀 핵심:
+      - mysql cloud ABSENT: DBM-025/026/033(run() 미호출)
+      - mysql cloud STUB: DBM-005/022(lambda True)
+      - oracle cloud STUB: DBM-005/015(lambda True), DBM-016(전체주석)
+      - mssql cloud ABSENT: DBM-019/031, STUB: DBM-009(lambda True)/011/013/017/022(빈본문)
+      - mariadb cloud ABSENT: DBM-022/026, STUB: DBM-005(lambda True)/016/025(빈본문)
+      - pg cloud ABSENT: DBM-005/006/019(run() 미호출), STUB: DBM-007/009(polarity)/013/022/028/032(빈본문/lambda True)
+      - pg cloud DET 신규: DBM-003/004/008/011/015/016/017/020/024(native=STUB이나 cloud 다른 스키마로 DET)
+    - **db.py 확장(Phase 4b)**:
+      - `_ENGINE_CLOUD_CLASS`: 엔진별 CloudAnalysis 클래스 이름 맵
+      - `_CLOUD_SUFFIXES`: rds/aurora/azure
+      - `_is_cloud_variant(variant)`: suffix 판별
+      - `_run_analysis(engine, data, is_cloud)`: is_cloud에 따라 모듈 경로 분기, 캐시 키에 is_cloud 포함
+      - `judge()`: is_cloud 결정 + _run_analysis 전달
+    - **테스트 신규 29건(Phase 4b)**: TestCloudVariantRouting(6) + TestCloudAbsentGateBlock(6) + TestCloudStubGateBlock(6) + TestCloudDetDetermination(6) + TestCloudCacheSeparation(2) + TestCloudR3Guard(2).
+    - **활성화 게이트**: 실데이터 없음 → 합성 픽스처 단위테스트만. 거짓양호는 ABSENT/STUB 명시로 구조 차단. 실데이터 검증·듀얼런은 클라우드 수집 샘플 확보 후.
+    - **native 회귀**: 0 (기존 1038→1038 통과, 신규 29건 추가).
+
+  - **Phase 4 완료(2026-06-16, 1032 passed, 9 skipped)**: DB(DBM) common 결정론 통합.
+    - **범위**: 5엔진 네이티브(mysql/oracle/mssql/mariadb/postgresql) + RDS/Aurora/Azure 변형 전체.
+    - **벤더링**: `judge_tool/vendor/common/db/{mysql,oracle,mssql,mariadb,postgresql,tibero}/` — analysis.py + config/*.json 비트동일 복사(VENDOR-EDIT 없음, stdlib+dateutil+packaging만 사용). PROVENANCE.md 갱신.
+    - **DET_SOURCE DBM 전수 분류**: 7단계 분류(DET/STUB/ABSENT/MANUAL) 완료. 주요 정정:
+      - mysql/oracle/mariadb/pg DBM-005 = STUB(lambda datum: True)
+      - oracle DBM-013 = STUB(§B=ABSENT 오기재, 코드 확인 후 정정)
+      - oracle DBM-015_1/_2 = STUB(§B=DET 오기재, lambda True 확인)
+      - mssql DBM-011/013/017/021/022 = STUB(빈 본문)
+      - pg DBM-006/007/013/019/028/032 = STUB(빈 본문 또는 lambda True)
+      - **⚠️R3 보수처리**: pg DBM-003/004/008/011/015/017/020 = STUB(수집형식 `{"*": python_repr}` → analysis KeyError → 거짓양호)
+      - **⚠️R3 보수처리**: mariadb DBM-007/011/019 = STUB(동일 수집형식 패턴)
+    - **db_json.parse() 확장**: `_build_raw_data_dict()` 신규 — 비마스킹 data dict를 JSON으로 직렬화 → 모든 resource의 `raw_evidence`에 적재(결정1: 단일 빌드·전 resource 공유).
+    - **어댑터**: `det_adapters/db.py` — gate → _normalize_base → _engine_of → json.loads → _has_data_key_for(D3) → _run_analysis(캐시·예외내성) → _filter_noise → 결과매핑. 5개 profile_key 레지스트리 등록(`db_mysql/oracle/mssql/mariadb/postgresql`).
+    - **item_configs**: `db_{mysql,oracle,mssql,mariadb,postgresql}.yaml` DET 항목에 `judgment_method: det_common` + `needs_review: true` 부여. R3 보수처리 항목(pg 7개+mariadb 3개)은 `det_common` 제거(주석으로 사유 기록).
+    - **main.py**: `import judge_tool.det_adapters.db` 1줄 추가 → 5개 키 등록 부작용.
+    - **실데이터 검증(거짓양호 0 확인)**:
+      - mysql: 21판정, det_common=18, 양호6/취약7/보류8 — DBM-005(STUB) gate 차단 확인
+      - oracle: 25판정, det_common=19, 양호6/취약10/보류9
+      - mssql: 23판정, det_common=14, 양호11/취약1/보류11
+      - mariadb: 20판정, det_common=12, 양호5/취약4/보류11 — DBM-007/011/019 STUB gate 차단
+      - postgresql: 22판정, det_common=6, 양호2/취약1/보류19 — R3 보수처리 7항목 gate 차단
+      - **전 엔진 거짓양호 = 0 ✅**
+    - **noise 필터**: `@@@`/`***` 단일키 행 제거, `{"*": datum}` 위반행 유지 — mysql DBM-011(audit_log.so) 취약 정상 판정 확인.
+    - **테스트**: `tests/test_det_adapters_db.py` 신규 58건(engine매핑·base정규화·gate차단·증거가드·noise필터·result매핑·예외내성·§7경계·raw_evidence·캐시·실파일E2E-mysql/pg).
+    - **잔존 TODO**:
+      1. Opus 적대리뷰 미완료 — 리뷰 후 미듐이상 shift-left 필요.
+      2. R3 pg/mariadb 수집형식 수정 후 DET 복원: `{"*": python_repr_str}` → `{"col": val}` flat dict 형식으로 수집 스크립트 수정하면 7+3 항목 det_common 재승격 가능.
+      3. 듀얼런 하니스 DB 미실행(LLM API 미연결로 보류).
 
   - **Phase 2 완료(2026-06-16, Opus 적대리뷰 SHIP, 869 passed, 4 skipped)**: 컨테이너(PRCC) common 결정론 통합.
     - **Opus 리뷰 결과**: Critical/High/Medium 0, Low 3(프롬프트 수치오기·PRCC-011 과보수MANUAL·mojibake 안전측 — 거짓양호 무관). R1 디폴트-N 거짓양호 3경로 실호출 차단 확인. 벤더 diff 0. 실데이터 취약 7건(PRCC-001/002/006/009/010/013/025) 전수 참취약, 양호 표본 참양호(디폴트N 아님). PRCC-031 빈출력→증거가드로 LLM 라우팅(거짓양호 차단 정상). ★Sonnet이 설계 §2.3 오류(docker_linux outer-gate substring 오인) 적발→`_VARIANT_TO_SAPP` 변환으로 docker_linux 거짓양호 봉쇄.
@@ -311,6 +477,7 @@
 | ⑤ | 컨테이너 가상화 50항목/9변형 | **완료(구조·9변형·Opus재리뷰)** | 기준O/샘플X | container_xml PROVISIONAL. 마스킹 정밀화(_is_base64_like). 활성화 게이트 미해결(아래) |
 | ⑥ | OS 가상화 35항목/3변형 | **완료(구조·vcenter/esxi/xen·Opus리뷰)** | 기준O/샘플X | osvirt_xml 파서. 컬럼 역전 주의. 활성화 게이트 미해결(아래) |
 | ⑦ | 웹서버-WAS 126항목/11변형 | **완료(구조·OS5+웹서버6·Opus리뷰) + Phase 3 결정론 SHIP** | 기준O/샘플O(apache_linux) | webwas_xml 파서. 서버동형106+웹특화20. OS전용/웹공통 컬럼 비대칭. WST 웹특화 결정론 활성 — apache 실데이터 WST-033 양호 확인. WST-040 xlsx 역전 미해결(MANUAL 유지). |
+| DB | 데이터베이스 DBM 31항목/5엔진 | **완료(구조+결정론 SHIP) — Phase 4** | 기준O/샘플O(5엔진 네이티브) | db_json 파서+raw_evidence 확장+det_adapters/db.py. DET_SOURCE DBM 전수 분류. 거짓양호 0 확인. R3 pg/mariadb 보수처리 잔존(10항목 STUB — 수집형식 수정 후 복원 예정). Opus 리뷰 미완료. |
 
 ### ⑦ 웹서버-WAS 활성화 게이트 — **Phase 3 SHIP(2026-06-16, 926 passed, 4 skipped)**
 웹 특화 WST 결정론 통합 완료. 실데이터(web_apache-s-sample.xml) 검증: WST-033 양호(det_common) 확인.

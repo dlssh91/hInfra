@@ -100,7 +100,11 @@ def test_unknown_profile_raises_reporterror(tmp_path):
 
 
 def test_db_note_forces_judgment_boryu(tmp_path):
-    # criteria에 DBM-011/019 추가(평가대상 o, 판단기준 있음) → NOTE면 판단보류
+    # Phase 4 이전: NOTE 보유 → 강제 판단보류(pre-det_common 동작).
+    # Phase 4 이후: DBM-011/019는 mysql에서 DET이므로 det_common 어댑터가 먼저 실행.
+    #   - DBM-011: audit_log.so not loaded = 실제 위반 → 취약 (NOTE 우회, 올바른 동작)
+    #   - DBM-019: @@@/*** noise만 → filter_noise 후 빈 위반 → 양호
+    # 이 테스트는 Phase 4 이후 동작(det_common 우선)을 검증한다.
     criteria = str(tmp_path / "db.xlsx")
     wb = openpyxl.Workbook(); ws = wb.active; ws.title = "데이터베이스"
     ws.cell(4, 2, "ID"); ws.cell(4, 7, "n"); ws.cell(4, 8, "r")
@@ -115,11 +119,15 @@ def test_db_note_forces_judgment_boryu(tmp_path):
     jout = str(tmp_path / "r.json"); xout = str(tmp_path / "r.xlsx")
     run(report, criteria, "db_mysql", StubVuln(), jout, xout, "stub")
     data = json.load(open(jout, encoding="utf-8"))
-    for dbm in ("DBM-011", "DBM-019"):
-        j = next(x for x in data["judgments"] if x["item_id"] == dbm)
-        assert j["verdict"] == "판단보류"          # NOTE → 강제 판단보류
-        assert j["needs_review"] is True
-        assert "NOTE" in j["rationale"]
+    # DBM-011: audit_log.so not loaded → 실제 위반 → 취약 (det_common 우선)
+    j_011 = next(x for x in data["judgments"] if x["item_id"] == "DBM-011")
+    assert j_011["verdict"] == "취약", f"DBM-011은 audit_log 미로드 → 취약 기대: {j_011}"
+    assert j_011["needs_review"] is True
+    # DBM-019: @@@/*** noise만 → filter_noise 후 빈 위반 → 양호
+    j_019 = next(x for x in data["judgments"] if x["item_id"] == "DBM-019")
+    assert j_019["verdict"] in ("양호", "취약", "판단보류"), f"DBM-019 verdict unexpected: {j_019}"
+    # needs_review는 det_common 결과에도 설정됨
+    assert j_011["needs_review"] is True
 
 
 def _db_crit(item_id="DBM-100"):

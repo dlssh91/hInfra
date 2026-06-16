@@ -269,14 +269,468 @@ items:
 # ─── 타 도메인: 버그/회귀테스트 필요 항목 시드 ──────────────────────────────
 # (전수 분류는 해당 롤아웃 Phase에서 추가)
 
-  # DB: DBM-005 — mssql만 DET, 나머지 STUB (§17.4, §18.4)
-  DBM-005:
+  # ─── DB(DBM) 전수 분류 — Phase 4 (2026-06-16) ───────────────────────────────
+  # 근거 약칭: m=mysql, o=oracle, s=mssql, ma=mariadb, p=postgresql analysis.py
+  # ★ STUB = lambda True(무조건 위반), 빈 본문, .run 미호출
+  # ★ ABSENT = .run에서 호출 안됨 or 엔진에 해당 없음
+  # ★ MANUAL = 해시크랙, 인터뷰, 콘솔 확인 필요
+  # lambda True(무조건 위반)는 거짓취약 위험 → STUB 확정
+  #
+  # 설계서 §B 대비 검증 결과(Sonnet, 코드 직접 확인):
+  #   oracle DBM-013: §B=ABSENT 기재, 코드에서 [lambda datum: True] 확인 → STUB으로 정정.
+  #   oracle DBM-015_1/_2: §B=DET 기재(원문 "lambda True 혼재 → 듀얼런 검증"), 코드에서 015_1/2 모두 [lambda datum: True] 확인 → STUB으로 정정.
+  #   mssql DBM-011: 빈 본문(dbm_result=[]만) → STUB 확정.
+  #   mssql DBM-013: 빈 본문 → STUB 확정(§B=MANUAL이었으나 빈본문이므로 STUB이 보수적).
+  #   mssql DBM-017: 빈 본문 → STUB 확정(§B=MANUAL, 빈본문=STUB 보수적).
+  #   mssql DBM-021: 빈 본문 → STUB 확정(§B=MANUAL, 빈본문=STUB).
+  #   mssql DBM-022: 빈 본문 → STUB 확정(§B=STUB 일치).
+  #   pg DBM-006/007/013/019: 빈 본문 → STUB 확정.
+  #   mariadb DBM-016/025: 빈 본문 → STUB 확정.
+
+  DBM-001:                          # Phase 4c: (b) 사전공격 결정론화 — 네이티브 DET 승격
     variants:
+      # ── native 변형: db_pwcrack 어댑터 (b 레이어) ─────────────────────────
+      mysql: DET            # caching_sha2 비활성→미지원포맷 판단보류, native=DET
+      oracle: DET           # spare4 미수집 → 증거가드로 handled=False (크랙코드 준비됨)
+      mssql: DET            # 0x0200/0x0100 SHA512/SHA1 지원
+      mariadb: DET          # mysql_native_password *40HEX 지원
+      pg: DET               # SCRAM-SHA-256 / md5 지원
+      # ── 클라우드 변형: 데이터 없으면 증거가드 폴백, 데이터 있으면 crack_judge 호출 ──
+      mysql_rds: DET
+      mysql_aurora: DET
+      mysql_azure: DET
+      oracle_rds: DET       # 데이터 없으면 어차피 증거가드 handled=False
+      mariadb_rds: DET
+      # mssql/pg cloud: dbm_001 메서드 없음 → ABSENT 명시 필수
+      # (engine-token 폴백이 native DET 반환하므로 명시 없으면 DET로 잘못 분류)
+      mssql_rds: ABSENT     # cloud mssql에 dbm_001 없음 → ABSENT
+      pg_rds: ABSENT        # cloud pg에 dbm_001 없음 → ABSENT
+      pg_aurora: ABSENT     # cloud pg에 dbm_001 없음 → ABSENT
+      pg_azure: ABSENT      # cloud pg에 dbm_001 없음 → ABSENT
+    default: ABSENT
+
+  DBM-003:                          # 불필요 계정
+    variants:
+      mysql: DET
+      oracle: DET
       mssql: DET
+      mariadb: DET
+      pg: STUB
+      # 클라우드 변형 (Phase 4b): 동일 CloudAnalysis 1클래스가 rds/aurora/azure 처리
+      mysql_rds: DET
+      mysql_aurora: DET
+      mysql_azure: DET
+      oracle_rds: DET
+      mssql_rds: DET
+      mariadb_rds: DET
+      pg_rds: DET      # cloud pg dbm_003: datum['rolvaliduntil']/rolname 필드 직접 비교 → DET
+      pg_aurora: DET
+      pg_azure: DET
+    # pg native: 수집 형식 {"*": python_repr_str} — analysis가 'rolvaliduntil' KeyError 삼킴 → [] → 거짓양호(R3)
+    # pg cloud: cloud_analysis에서 rolvaliduntil/rolname 필드 직접 접근 → DET (native와 다른 데이터 스키마)
+
+  DBM-004:                          # 불필요 관리자권한
+    variants:
+      mysql: DET
+      oracle: DET
+      mssql: DET
+      mariadb: DET
+      pg: STUB
+      # 클라우드 변형 (Phase 4b)
+      mysql_rds: DET
+      mysql_aurora: DET
+      mysql_azure: DET
+      oracle_rds: DET
+      mssql_rds: DET
+      mariadb_rds: DET
+      pg_rds: DET      # cloud pg dbm_004: rolsuper/rolcreatedb/rolcreaterole 직접 비교 → DET
+      pg_aurora: DET
+      pg_azure: DET
+    # pg native: 수집 형식 {"*": python_repr_str} — analysis가 'rolsuper' KeyError 삼킴 → [] → 거짓양호(R3)
+
+  DBM-005:                          # 중요정보 암호화 — 결정론 부적합(검증TODO) → 전엔진 LLM (Batch1)
+    variants:
+      mssql: STUB                   # Batch1: sample is not None 약검사 → 자동취약 위험 → LLM (검증TODO)
       mysql: STUB
       oracle: STUB
       mariadb: STUB
       pg: STUB
+      # 클라우드 변형 (Phase 4b): 모든 엔진 cloud도 동일 — lambda True=STUB 또는 실검사
+      mysql_rds: STUB      # cloud mysql: [lambda datum: True] → STUB
+      mysql_aurora: STUB
+      mysql_azure: STUB
+      oracle_rds: STUB     # cloud oracle: [lambda datum: True] → STUB
+      mssql_rds: DET       # cloud mssql: datum['sample'] is not None → DET(실검사)
+      mariadb_rds: STUB    # cloud mariadb: [lambda datum: True] → STUB
+      pg_rds: ABSENT       # cloud pg: dbm_005 메서드 없음(run()에 미호출) → ABSENT
+      pg_aurora: ABSENT
+      pg_azure: ABSENT
+
+  DBM-006:                          # 로그인 실패 제한
+    variants:
+      mysql: DET
+      oracle: DET
+      mssql: DET
+      mariadb: DET
+      pg: DET              # Batch1: pg_native는 db.py 모드B(구조적취약) 라우팅 — 코어 실패잠금 부재
+      # 클라우드 변형 (Phase 4b)
+      mysql_rds: DET       # cloud mysql: FAILED_LOGIN_ATTEMPTS/PASSWORD_LOCK_TIME_DAYS 비교 → DET(native와 다른 컬럼명)
+      mysql_aurora: DET
+      mysql_azure: DET
+      oracle_rds: DET
+      mssql_rds: DET
+      mariadb_rds: DET
+      pg_rds: ABSENT       # cloud pg: dbm_006 메서드 없음(run()에 미호출) → ABSENT
+      pg_aurora: ABSENT
+      pg_azure: ABSENT
+    # pg native: 빈 본문(body=[] only) → STUB
+
+  DBM-007:                          # 비밀번호 복잡도
+    variants:
+      mysql: DET
+      oracle: DET
+      mssql: DET
+      mariadb: DET         # Batch1: STUB 오분류 정정 — 실데이터 실증(not loaded/SIMPLE_PASSWORD_CHECK 정상탐지)
+      pg: DET              # Batch1: pg_native는 db.py 모드B(구조적취약) — 코어 복잡도강제 부재
+      # 클라우드 변형 (Phase 4b)
+      mysql_rds: DET       # cloud mysql: validate_password.policy 비교 → DET
+      mysql_aurora: DET
+      mysql_azure: DET
+      oracle_rds: DET
+      mssql_rds: DET
+      mariadb_rds: DET     # cloud mariadb: SIMPLE_PASSWORD_CHECK_* 비교 → DET(native와 다른 컬럼)
+      pg_rds: STUB         # cloud pg: 빈본문 + 주석 "평가 기준과 상이" → STUB
+      pg_aurora: STUB
+      pg_azure: STUB
+    # pg native: 빈 본문 + 주석 "현재 평가 기준과 상이하므로 확인 필요" → STUB
+    # mariadb native: 수집형식 {"*": python_repr} — analysis 'VARIABLE_NAME' KeyError 삼킴 → [] → 거짓양호(R3)
+
+  DBM-008:                          # 비밀번호 주기변경(90일)
+    variants:
+      mysql: DET
+      oracle: DET
+      mssql: DET
+      mariadb: DET
+      pg: DET              # Batch1: db_json pg 정규화 후 rolvaliduntil 직접비교 동작 → DET
+      # 클라우드 변형 (Phase 4b)
+      mysql_rds: DET
+      mysql_aurora: DET
+      mysql_azure: DET
+      oracle_rds: DET
+      mssql_rds: DET       # cloud mssql: days_after_changed > 90 → DET
+      mariadb_rds: DET
+      pg_rds: DET          # cloud pg: rolvaliduntil 직접 비교 → DET(native와 다른 데이터 스키마)
+      pg_aurora: DET
+      pg_azure: DET
+    # pg native: 수집 형식 {"*": python_repr_str} — analysis가 'rolvaliduntil' KeyError 삼킴 → [] → 거짓양호(R3)
+
+  DBM-009:                          # 세션 종료(900초) — mssql은 lambda True=STUB(거짓취약 위험)
+    variants:
+      mysql: DET
+      oracle: DET
+      mssql: STUB
+      mariadb: DET
+      pg: DET
+      # 클라우드 변형 (Phase 4b)
+      mysql_rds: DET
+      mysql_aurora: DET
+      mysql_azure: DET
+      oracle_rds: DET
+      mssql_rds: STUB      # cloud mssql: [lambda datum: True] → STUB(거짓취약 위험)
+      mariadb_rds: DET
+      pg_rds: STUB         # cloud pg: idle_in_transaction_session_timeout <= 900 polarity 의심 버그 → STUB
+      pg_aurora: STUB
+      pg_azure: STUB
+
+  DBM-011:                          # 감사로그
+    variants:
+      mysql: DET
+      oracle: DET
+      mssql: STUB
+      mariadb: STUB
+      pg: STUB
+      # 클라우드 변형 (Phase 4b)
+      mysql_rds: DET       # cloud mysql: audit_log_enabled / server_audit_logging 비교 → DET
+      mysql_aurora: DET
+      mysql_azure: DET
+      oracle_rds: DET
+      mssql_rds: STUB      # cloud mssql: 빈본문 → STUB
+      mariadb_rds: DET     # cloud mariadb: SERVER_AUDIT_EVENTS/LOGGING 비교 → DET(native와 다른 데이터)
+      pg_rds: DET          # cloud pg: pgaudit 설정 복합 로직(AWS/Azure 분기) → DET
+      pg_aurora: DET
+      pg_azure: DET
+    # mssql native: 빈 본문(dbm_result[result_key]=[]) → STUB
+    # mariadb native: 수집형식 {"*": python_repr} — analysis 'VARIABLE_NAME' KeyError 삼킴 → [] → 거짓양호(R3)
+    # pg native: 수집 형식 {"*": python_repr_str} — analysis 처리 불가 → [] → 거짓양호(R3)
+
+  DBM-013:                          # 원격접근통제
+    variants:
+      mysql: DET
+      oracle: STUB
+      mssql: STUB
+      mariadb: DET
+      pg: STUB
+      # 클라우드 변형 (Phase 4b)
+      mysql_rds: DET
+      mysql_aurora: DET
+      mysql_azure: DET
+      oracle_rds: ABSENT   # cloud oracle: dbm_013 미호출(run()에 없음) → ABSENT(native=STUB이지만 cloud run()에 없음, M-1 정정)
+      mssql_rds: STUB      # cloud mssql: 빈본문 → STUB
+      mariadb_rds: DET
+      pg_rds: STUB         # cloud pg: 빈본문 + NOTE 주석만 → STUB
+      pg_aurora: STUB
+      pg_azure: STUB
+    # oracle: [lambda datum: True](무조건 위반) → STUB (§B=ABSENT였으나 코드 확인 후 STUB 정정)
+    # oracle cloud: cloud_analysis.py run()에 dbm_013 없음(미호출) → ABSENT(M-1 수정)
+    # mssql native: 빈 본문 → STUB (§B=MANUAL, 빈본문이므로 STUB이 보수적)
+    # pg native: 빈 본문 → STUB
+
+  DBM-014:                          # oracle 전용 파라미터
+    variants:
+      oracle: DET
+      oracle_rds: DET      # cloud oracle: dbm_014 있음 → DET
+    default: ABSENT
+
+  DBM-015:                          # 권한/PUBLIC
+    variants:
+      oracle: STUB
+      mssql: DET
+      pg: STUB
+      # 클라우드 변형 (Phase 4b)
+      oracle_rds: STUB     # cloud oracle: 015_1/015_2 lambda True → STUB(native와 동일)
+      mssql_rds: DET       # cloud mssql: permission_name 비교 → DET
+      pg_rds: DET          # cloud pg: privilege_type.upper() in [...] → DET(native와 다른 데이터 스키마)
+      pg_aurora: DET
+      pg_azure: DET
+    default: ABSENT
+    # oracle native: 015_1/2: [lambda datum: True] → STUB (§B=DET였으나 코드 확인 후 STUB 정정)
+    # oracle 015_3: DET이지만 _1/_2가 STUB이므로 oracle 전체 STUB(보수적)
+    # pg native: 수집 형식 {"*": python_repr_str} — analysis가 'privilege_type' KeyError 삼킴 → [] → 거짓양호(R3)
+
+  DBM-016:                          # 보안패치 버전
+    variants:
+      mysql: DET
+      oracle: DET
+      mssql: DET
+      mariadb: STUB
+      pg: DET
+      # 클라우드 변형 (Phase 4b)
+      mysql_rds: DET
+      mysql_aurora: DET
+      mysql_azure: DET
+      oracle_rds: STUB     # cloud oracle: dbm_016 전체 주석 처리(empty body effectively) → STUB
+      mssql_rds: DET       # cloud mssql: version_info 비교 → DET
+      mariadb_rds: STUB    # cloud mariadb: 빈본문 → STUB
+      pg_rds: DET          # cloud pg: check_minor_ver(datum['version']) → DET
+      pg_aurora: DET
+      pg_azure: DET
+    # mariadb native: 빈 본문 → STUB
+
+  DBM-017:                          # 시스템테이블 접근권한
+    variants:
+      mysql: DET
+      oracle: DET
+      mssql: STUB
+      mariadb: DET
+      pg: STUB
+      # 클라우드 변형 (Phase 4b)
+      mysql_rds: DET
+      mysql_aurora: DET
+      mysql_azure: DET
+      oracle_rds: DET
+      mssql_rds: STUB      # cloud mssql: 빈본문 → STUB
+      mariadb_rds: DET
+      pg_rds: DET          # cloud pg: grantee == 'PUBLIC' 비교 → DET(native와 다른 데이터 스키마)
+      pg_aurora: DET
+      pg_azure: DET
+    # mssql native: 빈 본문 → STUB (§B=MANUAL, 빈본문이므로 STUB이 보수적)
+    # pg native: 수집 형식 {"*": python_repr_str} — analysis가 'grantee' KeyError 삼킴 → [] → 거짓양호(R3)
+
+  DBM-019:                          # 비밀번호 재사용
+    variants:
+      mysql: DET
+      oracle: DET
+      mssql: DET
+      mariadb: STUB
+      pg: STUB
+      # 클라우드 변형 (Phase 4b)
+      mysql_rds: DET
+      mysql_aurora: DET
+      mysql_azure: DET
+      oracle_rds: DET
+      mssql_rds: ABSENT    # cloud mssql: dbm_019 메서드 없음(run()에 미호출) → ABSENT
+      mariadb_rds: DET     # cloud mariadb: PASSWORD_REUSE_CHECK_INTERVAL 비교 → DET(native와 다른 로직)
+      pg_rds: ABSENT       # cloud pg: dbm_019 메서드 없음(run()에 미호출) → ABSENT
+      pg_aurora: ABSENT
+      pg_azure: ABSENT
+    # pg native: 빈 본문 → STUB
+    # mariadb native: 수집형식 {"*": python_repr} — analysis 'VARIABLE_NAME' KeyError 삼킴 → [] → 거짓양호(R3)
+
+  DBM-020:                          # 계정 분리/공유 (needs_review 필수)
+    variants:
+      mysql: DET
+      oracle: DET
+      mssql: DET
+      mariadb: DET
+      pg: STUB
+      # 클라우드 변형 (Phase 4b)
+      mysql_rds: DET
+      mysql_aurora: DET
+      mysql_azure: DET
+      oracle_rds: DET
+      mssql_rds: DET
+      mariadb_rds: DET
+      pg_rds: DET          # cloud pg: rolname 직접 비교 → DET(native와 다른 데이터 스키마)
+      pg_aurora: DET
+      pg_azure: DET
+    # pg native: 수집 형식 {"*": python_repr_str} — analysis가 'rolname' KeyError 삼킴 → [] → 거짓양호(R3)
+
+  DBM-021:                          # mssql ODBC — 빈 본문
+    variants:
+      mssql: STUB
+      # cloud mssql: dbm_021 메서드 없음(run()에 미호출) → ABSENT 명시 필수
+      # (default=ABSENT이나 engine-token 'mssql'=STUB 폴백이 우선하므로 명시)
+      mssql_rds: ABSENT    # cloud mssql run()에 dbm_021 없음(미호출) → ABSENT(M-1 수정)
+    default: ABSENT
+    # mssql native: 빈 본문(dbm_result=[]만) → STUB (§B=MANUAL, 빈본문이므로 STUB이 보수적)
+
+  DBM-022:                          # 파일 권한
+    variants:
+      mysql: DET
+      oracle: DET
+      mssql: STUB
+      mariadb: DET
+      pg: DET
+      # 클라우드 변형 (Phase 4b)
+      mysql_rds: STUB      # cloud mysql: [lambda datum: True] → STUB(거짓취약 위험)
+      mysql_aurora: STUB
+      mysql_azure: STUB
+      oracle_rds: ABSENT   # cloud oracle: dbm_022 메서드 없음(run()에 미호출) → ABSENT
+      mssql_rds: STUB      # cloud mssql: 빈본문 → STUB
+      mariadb_rds: ABSENT  # cloud mariadb: dbm_022 메서드 없음(run()에 미호출) → ABSENT
+      pg_rds: STUB         # cloud pg: 빈본문 + 주석 "설치형DB:서버스크립트 참고" → STUB
+      pg_aurora: STUB
+      pg_azure: STUB
+    # mssql native: 빈 본문(dbm_result=[]만) → STUB
+
+  DBM-024:                          # WITH GRANT OPTION
+    variants:
+      mysql: DET
+      oracle: DET
+      mssql: DET
+      mariadb: DET
+      pg: DET
+      # 클라우드 변형 (Phase 4b): 모든 cloud 엔진 dbm_024 있음 → DET
+      mysql_rds: DET
+      mysql_aurora: DET
+      mysql_azure: DET
+      oracle_rds: DET
+      mssql_rds: DET
+      mariadb_rds: DET
+      pg_rds: DET          # cloud pg: privilege_type.upper() in [...] → DET
+      pg_aurora: DET
+      pg_azure: DET
+
+  DBM-025:                          # EOL
+    variants:
+      mysql: DET
+      oracle: DET
+      mssql: DET
+      mariadb: STUB
+      pg: DET
+      # 클라우드 변형 (Phase 4b)
+      # mysql cloud: dbm_025 메서드 없음(run()에 미호출) → ABSENT
+      mysql_rds: ABSENT
+      mysql_aurora: ABSENT
+      mysql_azure: ABSENT
+      # oracle cloud: dbm_025 메서드 없음(run()에 미호출) → ABSENT
+      oracle_rds: ABSENT
+      mssql_rds: ABSENT    # cloud mssql: dbm_025 메서드 없음(run()에 미호출) → ABSENT
+      mariadb_rds: STUB    # cloud mariadb: dbm_025 있으나 빈본문 → STUB
+      # pg cloud: dbm_025 메서드 없음(run()에 미호출) → ABSENT
+      pg_rds: ABSENT
+      pg_aurora: ABSENT
+      pg_azure: ABSENT
+    # mariadb native: 빈 본문 → STUB
+
+  DBM-026:                          # umask
+    variants:
+      mysql: DET
+      oracle: DET
+      mariadb: DET
+      pg: DET
+      # 클라우드 변형 (Phase 4b): 모든 cloud 엔진 dbm_026 미호출 → ABSENT 명시 필수
+      # (engine-token 폴백이 native값 DET를 반환하므로 명시 없으면 잘못된 DET 반환)
+      mysql_rds: ABSENT    # cloud mysql run()에 dbm_026 없음 → ABSENT(M-1 수정)
+      mysql_aurora: ABSENT # cloud mysql run()에 dbm_026 없음 → ABSENT
+      mysql_azure: ABSENT  # cloud mysql run()에 dbm_026 없음 → ABSENT
+      oracle_rds: ABSENT   # cloud oracle run()에 dbm_026 없음 → ABSENT
+      mssql_rds: ABSENT    # cloud mssql run()에 dbm_026 없음 → ABSENT(native mssql도 없음)
+      mariadb_rds: ABSENT  # cloud mariadb run()에 dbm_026 없음 → ABSENT
+      pg_rds: ABSENT       # cloud pg run()에 dbm_026 없음 → ABSENT
+      pg_aurora: ABSENT    # cloud pg run()에 dbm_026 없음 → ABSENT
+      pg_azure: ABSENT     # cloud pg run()에 dbm_026 없음 → ABSENT
+    default: ABSENT
+
+  DBM-028:                          # 불필요 Object (pg lambda True=STUB)
+    variants:
+      mysql: DET
+      oracle: DET
+      mssql: DET
+      mariadb: DET
+      pg: STUB
+      # 클라우드 변형 (Phase 4b)
+      mysql_rds: DET       # cloud mysql: GRANTEE/PRIVILEGE_TYPE 비교 → DET
+      mysql_aurora: DET
+      mysql_azure: DET
+      oracle_rds: DET      # cloud oracle: owner/grantee 비교 → DET
+      mssql_rds: DET       # cloud mssql: grantee 비교 → DET
+      mariadb_rds: DET
+      pg_rds: STUB         # cloud pg: [lambda datum: True] × 3 → STUB(거짓취약 위험)
+      pg_aurora: STUB
+      pg_azure: STUB
+    # pg native+cloud: [lambda datum: True] × 3 → STUB
+
+  DBM-029:                          # oracle 전용
+    variants:
+      oracle: DET
+      oracle_rds: DET      # cloud oracle: dbm_029 있음 → DET
+    default: ABSENT
+
+  DBM-030:                          # oracle 감사테이블 소유
+    variants:
+      oracle: DET
+      oracle_rds: DET      # cloud oracle: dbm_030 있음 → DET
+    default: ABSENT
+
+  DBM-031:                          # mssql 비활성계정 정책
+    variants:
+      mssql: DET
+      # cloud mssql: dbm_031 메서드 없음(run()에 미호출) → ABSENT 명시 필수
+      # (engine-token 'mssql'=DET 폴백이 우선하므로 명시 없으면 잘못된 DET 반환)
+      mssql_rds: ABSENT    # cloud mssql run()에 dbm_031 없음 → ABSENT(M-1 수정)
+    default: ABSENT
+
+  DBM-032:                          # pg 수동대체 — 빈 본문
+    variants:
+      pg: STUB
+      pg_rds: STUB         # cloud pg: 빈본문(run()에 호출됨, 단 빈본문) → STUB
+      pg_aurora: STUB
+      pg_azure: STUB
+    default: ABSENT
+
+  DBM-033:                          # mysql 이중화 평문비번
+    variants:
+      mysql: DET
+      # cloud mysql: dbm_033 메서드 없음(run()에 미호출) → ABSENT 명시 필수
+      # (engine-token 'mysql'=DET 폴백이 우선하므로 명시 없으면 잘못된 DET 반환)
+      mysql_rds: ABSENT    # cloud mysql run()에 dbm_033 없음 → ABSENT(M-1 수정)
+      mysql_aurora: ABSENT # cloud mysql run()에 dbm_033 없음 → ABSENT
+      mysql_azure: ABSENT  # cloud mysql run()에 dbm_033 없음 → ABSENT
+    default: ABSENT
+
+  # DBM-002/010/012/018/023/027: 전 엔진 run() 미호출 → ABSENT(미기재=ABSENT 자동)
+  # DBM-034/035/036: 전 엔진 ABSENT/로직없음.
 
   # ─── 웹서버-WAS (WST) 웹 특화 항목 — Phase 3 전수 분류 ──────────────────────
   # meta.notes: "Phase3=웹특화 WST만; OS-동형 WST는 서버프로파일 담당, 데이터 SRV-NNN"

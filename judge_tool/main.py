@@ -29,6 +29,8 @@ import judge_tool.det_adapters.server as _server_adapter  # noqa: F401,E402
 import judge_tool.det_adapters.container as _container_adapter  # noqa: F401,E402
 # 웹서버-WAS 어댑터 등록 — import 시 _DET_ADAPTERS["webwas"] 등록 부작용 발생 (Phase 3)
 import judge_tool.det_adapters.webwas as _webwas_adapter  # noqa: F401,E402
+# DB 어댑터 등록 — import 시 _DET_ADAPTERS["db_mysql/oracle/mssql/mariadb/postgresql"] 5개 등록 (Phase 4)
+import judge_tool.det_adapters.db as _db_adapter  # noqa: F401,E402
 
 log = logging.getLogger(__name__)
 
@@ -63,6 +65,9 @@ class JudgeContext:
     # 항목별 임계값 맵 {item_id: {param: value, ...}}. 기본 빈 dict.
     # run()에서 _build_thresholds(criteria)로 채워짐(§6). 기존 생성 호출 불변.
     thresholds: Dict = field(default_factory=dict)
+    # (a) hashcat 연동 옵션. None → hashcat 비활성(graceful skip). Phase 4c-a.
+    # HashcatOpts는 db_pwcrack 모듈에서 import; None이면 (b)-only 동작.
+    hashcat_opts: Optional[object] = None  # 타입: db_pwcrack.HashcatOpts | None
 
 
 def _auto_defer(crit, item, profile) -> Judgment:
@@ -551,7 +556,12 @@ def _guard_out_dir(out_dir: str, report_path: str, criteria_path: str) -> None:
 def run(report_path: str, criteria_path: str, profile_key: str, client,
         json_out: str, xlsx_out: str, model_name: str,
         now: Optional[str] = None, variant_override: Optional[str] = None,
-        skip_preflight: bool = False) -> Dict:
+        skip_preflight: bool = False,
+        hashcat_opts: Optional[object] = None) -> Dict:
+    """판정 실행 함수.
+
+    hashcat_opts: HashcatOpts 또는 None (None → (a) 비활성, (b)-only 동작).
+    """
     # 잘못된 --profile 입력은 사용자 입력 오류이므로 ReportError로 변환해
     # main()에서 깔끔히 안내한다(raw KeyError 트레이스백 노출 방지).
     try:
@@ -623,69 +633,92 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
     judged_ids: set = set()
     ctx = JudgeContext(profile=profile, profile_key=profile_key, client=client,
                        items=items, variant=variant,
-                       thresholds=_build_thresholds(criteria))
+                       thresholds=_build_thresholds(criteria),
+                       hashcat_opts=hashcat_opts)
 
-    # TODO(네이티브 OS레벨 항목): DBM-012(lsnrctl)/022(파일권한)/026(umask)/
-    # 034(구동권한)/021(ODBC) 등은 SQL이 섹션 자체를 출력하지 않아 아래 루프에서
-    # items에 없고, 후단의 '증거 미수집' 보충 루프에서 _missing_evidence_defer로
-    # 자동 판단보류된다(현행 유지). 실제 수집·판정은 서버 스크립트 연계 후속 과제.
-    # 단 MSSQL DBM-031(SA)·MySQL DBM-033(이중화)은 실제 섹션을 내므로 default A로
-    # LLM 판정된다 — 라벨 적정성은 실데이터 확보 후 재검토(item_configs TODO 참조).
-    for item_id, item in items.items():
-        crit = criteria.get((item_id, variant))
-        if crit is None or not crit.is_judgeable:
-            continue  # 기준에 없거나 스크립트 대상 아님/빈 판단기준 → 스킵
-        # 판단방식 → 핸들러 디스패치. 미지 method는 LLM 판정으로 폴백.
-        # 미등록 method가 조용히 LLM 판정으로 은폐되지 않도록 경고를 남긴다.
-        if crit.judgment_method not in _HANDLERS:
-            log.warning("미등록 judgment_method=%s item=%s → LLM 폴백",
-                        crit.judgment_method, item_id)
-        handler = _HANDLERS.get(crit.judgment_method, _judge_one)
-        judgment = handler(crit, item, ctx)
-        if judgment is not None:
-            judgment.judgment_method = crit.judgment_method  # 정적 전파
-            judgments.append(judgment)
-            judged_ids.add(item_id)
+    # Phase 4c-a: hashcat 옵션을 db_pwcrack 모듈 세임에 주입.
+    # CLI 단일 프로세스이므로 모듈 글로벌 변수가 안전함.
+    # M-1: try/finally 로 감싸 예외 발생 시에도 세임이 반드시 클리어됨을 보장.
+    from judge_tool.det_adapters import db_pwcrack as _db_pwcrack_seam
+    _db_pwcrack_seam.set_hashcat_opts(hashcat_opts)
+    try:
+        # TODO(네이티브 OS레벨 항목): DBM-012(lsnrctl)/022(파일권한)/026(umask)/
+        # 034(구동권한)/021(ODBC) 등은 SQL이 섹션 자체를 출력하지 않아 아래 루프에서
+        # items에 없고, 후단의 '증거 미수집' 보충 루프에서 _missing_evidence_defer로
+        # 자동 판단보류된다(현행 유지). 실제 수집·판정은 서버 스크립트 연계 후속 과제.
+        # 단 MSSQL DBM-031(SA)·MySQL DBM-033(이중화)은 실제 섹션을 내므로 default A로
+        # LLM 판정된다 — 라벨 적정성은 실데이터 확보 후 재검토(item_configs TODO 참조).
+        for item_id, item in items.items():
+            crit = criteria.get((item_id, variant))
+            if crit is None or not crit.is_judgeable:
+                continue  # 기준에 없거나 스크립트 대상 아님/빈 판단기준 → 스킵
+            # 판단방식 → 핸들러 디스패치. 미지 method는 LLM 판정으로 폴백.
+            # 미등록 method가 조용히 LLM 판정으로 은폐되지 않도록 경고를 남긴다.
+            if crit.judgment_method not in _HANDLERS:
+                log.warning("미등록 judgment_method=%s item=%s → LLM 폴백",
+                            crit.judgment_method, item_id)
+            handler = _HANDLERS.get(crit.judgment_method, _judge_one)
+            judgment = handler(crit, item, ctx)
+            if judgment is not None:
+                judgment.judgment_method = crit.judgment_method  # 정적 전파
+                judgments.append(judgment)
+                judged_ids.add(item_id)
 
-    # 보고서에 증거 섹션이 없는 판정대상 항목도 빠짐없이 행을 만든다.
-    # - det(C/D): canned_message·EOL 결정론 (기존 동작 유지)
-    # - 그 외(llm/llm_det/interview*): '증거 미수집' 자동보류 — 고위험 항목이
-    #   조용히 누락되는 것을 방지(예: PG 보고서에 DBM-005 섹션 자체가 없는 경우)
-    # 단, 증거 섹션이 있었는데 처리 실패(judgment=None)로 빠진 항목은
-    # '미수집'이 아니므로 제외한다(coverage missing으로 남아 실패가 보임).
-    for (crit_id, crit_variant), crit in criteria.items():
-        if crit_variant != variant or not crit.is_judgeable:
-            continue
-        if crit_id in judged_ids or crit_id in items:
-            continue
-        if crit.judgment_method == "det":
-            dummy_item = EvidenceItem(item_id=crit_id, variant=variant,
-                                      resources=[])
-            # 버전 증거가 다른 항목(DBM-016 등)에 있을 수 있으므로
-            # 자기 섹션이 없어도 EOL 결정론 판정을 시도한다.
-            judgment = _defer_or_eol(crit, dummy_item, ctx)
-        else:
-            judgment = _missing_evidence_defer(crit, variant, profile)
-        if judgment is not None:
-            judgment.judgment_method = crit.judgment_method  # 정적 전파
-            judgments.append(judgment)
-            judged_ids.add(crit_id)
+        # 보고서에 증거 섹션이 없는 판정대상 항목도 빠짐없이 행을 만든다.
+        # - det(C/D): canned_message·EOL 결정론 (기존 동작 유지)
+        # - 그 외(llm/llm_det/interview*): '증거 미수집' 자동보류 — 고위험 항목이
+        #   조용히 누락되는 것을 방지(예: PG 보고서에 DBM-005 섹션 자체가 없는 경우)
+        # 단, 증거 섹션이 있었는데 처리 실패(judgment=None)로 빠진 항목은
+        # '미수집'이 아니므로 제외한다(coverage missing으로 남아 실패가 보임).
+        for (crit_id, crit_variant), crit in criteria.items():
+            if crit_variant != variant or not crit.is_judgeable:
+                continue
+            if crit_id in judged_ids or crit_id in items:
+                continue
+            if crit.judgment_method == "det":
+                dummy_item = EvidenceItem(item_id=crit_id, variant=variant,
+                                          resources=[])
+                # 버전 증거가 다른 항목(DBM-016 등)에 있을 수 있으므로
+                # 자기 섹션이 없어도 EOL 결정론 판정을 시도한다.
+                judgment = _defer_or_eol(crit, dummy_item, ctx)
+            else:
+                judgment = None
+                # det_common 구조적취약(데이터 무관) 항목은 섹션이 없어도 어댑터로 시도한다.
+                # (예: pg_native DBM-006/007 — PostgreSQL 코어 기능 부재 = 데이터 없이 취약.)
+                # 어댑터가 실판정(취약/양호)을 낸 경우에만 채택하고, 판단보류 폴백이면
+                # 아래 '증거 미수집' 경로로 보낸다(비구조적 det_common 동작 불변).
+                if crit.judgment_method == "det_common":
+                    dummy_item = EvidenceItem(item_id=crit_id, variant=variant,
+                                              resources=[])
+                    j = _det_common_handler(crit, dummy_item, ctx)
+                    if j is not None and j.verdict in ("취약", "양호"):
+                        judgment = j
+                if judgment is None:
+                    judgment = _missing_evidence_defer(crit, variant, profile)
+            if judgment is not None:
+                judgment.judgment_method = crit.judgment_method  # 정적 전파
+                judgments.append(judgment)
+                judged_ids.add(crit_id)
 
-    judgments.sort(key=lambda j: j.item_id)
-    coverage = build_coverage(criteria, judgments, variant)
-    meta = {
-        "tool_version": __version__,
-        "criteria_version": _extract_criteria_version(criteria_path),
-        "model": model_name,
-        "generated_at": now or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "source_file": os.path.basename(report_path),
-        "source_sha256": _sha256(report_path),
-        "profile": profile_key,
-        "variant": variant,
-    }
-    write_json(judgments, meta, coverage, json_out)
-    write_excel(judgments, meta, coverage, xlsx_out)
-    return coverage
+        judgments.sort(key=lambda j: j.item_id)
+        coverage = build_coverage(criteria, judgments, variant)
+        meta = {
+            "tool_version": __version__,
+            "criteria_version": _extract_criteria_version(criteria_path),
+            "model": model_name,
+            "generated_at": now or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "source_file": os.path.basename(report_path),
+            "source_sha256": _sha256(report_path),
+            "profile": profile_key,
+            "variant": variant,
+        }
+        write_json(judgments, meta, coverage, json_out)
+        write_excel(judgments, meta, coverage, xlsx_out)
+        return coverage
+    finally:
+        # Phase 4c-a: hashcat 세임 클리어 (모듈 글로벌 초기화)
+        # M-1: finally 블록으로 예외 발생 시에도 반드시 클리어.
+        _db_pwcrack_seam.clear_hashcat_opts()
 
 
 def main(argv=None):
@@ -704,6 +737,23 @@ def main(argv=None):
                     action="store_true", default=False,
                     help="pre-flight 인코딩 교정·LLM 게이트를 건너뜀 "
                          "(테스트/오프라인 모드용). 기본은 활성화.")
+    # ── Phase 4c-a: hashcat 연동 옵션 ─────────────────────────────────────────
+    ap.add_argument(
+        "--hashcat-path", default=None, metavar="PATH",
+        help="hashcat 바이너리 경로 (미지정 시 PATH 자동탐지; 없으면 (a) 비활성).",
+    )
+    ap.add_argument(
+        "--hashcat-wordlist", default=None, metavar="PATH",
+        help="hashcat wordlist 파일 경로 (미지정 시 내장 pwdict 사전 사용).",
+    )
+    ap.add_argument(
+        "--hashcat-rules", default=None, metavar="PATH",
+        help="hashcat rules 파일 경로 (선택; 벤더 fsi_custom.rule 등).",
+    )
+    ap.add_argument(
+        "--hashcat-timeout", default=600, type=int, metavar="SEC",
+        help="hashcat 단일 모드 실행 timeout(초). 기본 600.",
+    )
     args = ap.parse_args(argv)
 
     _guard_out_dir(args.out_dir, args.report, args.criteria)
@@ -712,12 +762,22 @@ def main(argv=None):
     json_out = os.path.join(args.out_dir, f"result_{base}.json")
     xlsx_out = os.path.join(args.out_dir, f"result_{base}.xlsx")
 
+    # Phase 4c-a: hashcat 옵션 조립 (바이너리 지정 또는 PATH 자동탐지; 없으면 None)
+    from judge_tool.det_adapters.db_pwcrack import HashcatOpts as _HashcatOpts
+    hashcat_opts = _HashcatOpts(
+        hashcat_path=args.hashcat_path,
+        wordlist=args.hashcat_wordlist,
+        rules=args.hashcat_rules,
+        timeout=args.hashcat_timeout,
+    )
+
     client = OllamaClient(url=args.ollama_url, model=args.model)
     try:
         cov = run(args.report, args.criteria, args.profile, client,
                   json_out, xlsx_out, args.model,
                   variant_override=args.variant,
-                  skip_preflight=args.skip_preflight)
+                  skip_preflight=args.skip_preflight,
+                  hashcat_opts=hashcat_opts)
     except (ReportError, OSError) as e:
         # 사용자 입력 오류(손상 XML/파일 부재 등)만 깔끔히 안내한다.
         # ReportError 는 의도된 입력/보고서 문제, OSError(FileNotFoundError

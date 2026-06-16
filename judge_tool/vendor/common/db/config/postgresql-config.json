@@ -1,0 +1,197 @@
+{
+  "exception": {
+    "DBM-001": {
+    },
+    "DBM-002": {
+    },
+    "DBM-003": {
+      "rolname": []
+    },
+    "DBM-004": {
+      "grantee": [],
+      "username": [],
+      "privilege": [],
+      "rolname": []
+    },
+    "DBM-005": {
+    },
+    "DBM-006": {
+      "profile": []
+    },
+    "DBM-007": {
+      "profile": [],
+      "limit": []
+    },
+    "DBM-008": {
+      "profile": []
+    },
+    "DBM-009": {
+      "profile": []
+    },
+    "DBM-010": {
+    },
+    "DBM-011": {
+    },
+    "DBM-012": {
+    },
+    "DBM-013": {
+    },
+    "DBM-014": {
+    },
+    "DBM-015": {
+      "owner": []
+    },
+    "DBM-016": {
+    },
+    "DBM-017": {
+      "grantee": []
+    },
+    "DBM-018": {
+    },
+    "DBM-019": {
+    },
+    "DBM-020": {
+      "rolname": [
+        "pg_database_owner", 
+        "pg_read_all_data",
+        "pg_write_all_data",
+        "pg_read_server_files",
+        "pg_write_server_files",
+        "pg_execute_server_program",
+        "pg_monitor",
+        "pg_read_all_settings",
+        "pg_read_all_stats",
+        "pg_stat_scan_tables",
+        "pg_signal_backend"
+      ]
+    },
+    "DBM-021": {
+    },
+    "DBM-022": {
+    },
+    "DBM-023": {
+    },
+    "DBM-024": {
+    },
+    "DBM-025": {
+    },
+    "DBM-026": {
+    },
+    "DBM-027": {
+    },
+    "DBM-028": {
+      "OBJECT_NAME": [],
+      "owner": []
+    },
+    "DBM-029": {
+    },
+    "DBM-030": {
+      "grantee": [],
+      "owner": []
+    },
+    "DBM-031": {
+    },
+    "DBM-032": {
+    }
+  },
+  "rules": {
+    "DBM-001": {
+    }
+    ,
+    "DBM-002": {
+    },
+    "DBM-003": {
+      "last_login": []
+    },
+    "DBM-004": {
+    },
+    "DBM-005": {
+    },
+    "DBM-006": {
+      "resource_name": ["FAILED_LOGIN_ATTEMPTS"],
+      "limit": ["UNLIMITED"]
+    },
+    "DBM-007": {
+    },
+    "DBM-008": {
+      "limit": ["UNLIMITED"]
+    },
+    "DBM-009": {
+      "resource_name": ["IDLE_TIME"],
+      "limit": ["UNLIMITED"]
+    },
+    "DBM-010": {
+    },
+    "DBM-011": {
+    },
+    "DBM-012": {
+    },
+    "DBM-013": {
+    },
+    "DBM-014": {
+    },
+    "DBM-015": {
+      "owner": []
+    },
+    "DBM-016": {
+      "update": "2025.09",
+      "version":{
+        "10":"10.23",
+        "11":"11.22",
+        "12":"12.22",
+        "13":"13.22",
+        "14":"14.19",
+        "15":"15.14",
+        "16":"16.10",
+        "17":"17.6"
+      }
+    },
+    "DBM-017": {
+      "grantee": []
+    },
+    "DBM-018": {
+    },
+    "DBM-019": {
+    },
+    "DBM-020": {
+    },
+    "DBM-021": {
+    },
+    "DBM-022": {
+    },
+    "DBM-023": {
+    },
+    "DBM-024": {
+    },
+    "DBM-025": {
+      "update": "2025.09",
+      "version":{
+        "10":"2022-11-10",
+        "11":"2023-11-09",
+        "12":"2024-11-21",
+        "13":"2025-11-13",
+        "14":"2026-11-12",
+        "15":"2027-11-11",
+        "16":"2028-11-09",
+        "17":"2029-11-08"
+      }
+    },
+    "DBM-026": {
+    },
+    "DBM-027": {
+    },
+    "DBM-028": {
+      "OBJECT_NAME": ["test"],
+      "owner": ["test"]
+    },
+    "DBM-029": {
+      "value": ["FALSE"]
+    },
+    "DBM-030": {
+    },
+    "DBM-031": {
+    },
+    "DBM-032": {
+    }
+  }
+}

@@ -1,0 +1,162 @@
+{
+  "exception": {
+    "DBM-001": {
+    },
+    "DBM-002": {
+    },
+    "DBM-003": {
+      "USER": ["root", "mariadb.sys", "healthcheck"],
+      "HOST": []
+    },
+    "DBM-004": {
+      "GRANTEE": ["root@localhost", "root@%", "mysql.infoschema@localhost", "mysql.session@localhost", "mysql.sys@localhost", "root@localhost"],
+      "PRIVILEGE_TYPE": [""]
+    },
+    "DBM-005": {
+    },
+    "DBM-006": {
+      "VARIABLE_NAME": []
+    },
+    "DBM-007": {
+    },
+    "DBM-008": {
+    },
+    "DBM-009": {
+      "VARIABLE_NAME": ["root", "mariadb.sys", "healthcheck"]
+    },
+    "DBM-010": {
+    },
+    "DBM-011": {
+    },
+    "DBM-012": {
+    },
+    "DBM-013": {
+      "USER": ["root", "mariadb.sys", "healthcheck"]
+    },
+    "DBM-014": {
+    },
+    "DBM-015": {
+    },
+    "DBM-016": {
+    },
+    "DBM-017": {
+      "GRANTEE": [""],
+      "PRIVILEGE_TYPE": ["SELECT", "READ"]
+    },
+    "DBM-018": {
+    },
+    "DBM-019": {
+    },
+    "DBM-020": {
+      "USER": ["root"]
+    },
+    "DBM-021": {
+    },
+    "DBM-022": {
+    },
+    "DBM-023": {
+    },
+    "DBM-024": {
+      "GRANTEE": [""],
+      "PRIVILEGE_TYPE": ["SELECT", "READ"]
+    },
+    "DBM-025": {
+    },
+    "DBM-026": {
+    },
+    "DBM-027": {
+    },
+    "DBM-028": {
+      "GRANTEE": [""],
+      "PRIVILEGE_TYPE": ["SELECT", "READ"]
+    },
+    "DBM-029": {
+    },
+    "DBM-030": {
+    },
+    "DBM-031": {
+    },
+    "DBM-032": {
+    }
+  },
+  "rules": {
+    "DBM-001": {
+    },
+    "DBM-002": {
+    },
+    "DBM-003": {
+      "PASSWORD_EXPIRED": ["Y"]
+    },
+    "DBM-004": {
+      "PRIVILEGE_TYPE": ["CREATE","DROP", "RELOAD", "SHUTDOWN", "PROCESS", "FILE", "REFERENCES", "ALTER", "SUPER", "EXECUTE"]
+    },
+    "DBM-005": {
+    },
+    "DBM-006": {
+      "VARIABLE_NAME": ["MAX_PASSWORD_ERRORS"],
+      "VARIABLE_VALUE": ["5"]
+    },
+    "DBM-007": {
+      "SIMPLE_PASSWORD_CHECK_DIGITS": ["1"],
+      "SIMPLE_PASSWORD_CHECK_LETTERS_SAME_CASE": ["1"],
+      "SIMPLE_PASSWORD_CHECK_OTHER_CHARACTERS": ["1"],
+      "SIMPLE_PASSWORD_CHECK_MINIMAL_LENGTH": ["8"]
+    },
+    "DBM-008": {
+       "DAY": ["90"]
+    },
+    "DBM-009": {
+      "VARIABLE_NAME": ["WAIT_TIMEOUT", "INTERACTIVE_TIMEOUT"],
+      "TIME": ["900"]
+    },
+    "DBM-010": {
+    },
+    "DBM-011": {
+      "VARIABLE_VALUE": ["NULL", ""]
+    },
+    "DBM-012": {
+    },
+    "DBM-013": {
+      "HOST": ["%"]
+    },
+    "DBM-014": {
+    },
+    "DBM-015": {
+    },
+    "DBM-016": {
+    },
+    "DBM-017": {
+    },
+    "DBM-018": {
+    },
+    "DBM-019": {
+      "DAY": ["30"]
+    },
+    "DBM-020": {
+    },
+    "DBM-021": {
+    },
+    "DBM-022": {
+    },
+    "DBM-023": {
+    },
+    "DBM-024": {
+    },
+    "DBM-025": {
+    },
+    "DBM-026": {
+    },
+    "DBM-027": {
+    },
+    "DBM-028": {
+    },
+    "DBM-029": {
+    },
+    "DBM-030": {
+    },
+    "DBM-031": {
+    },
+    "DBM-032": {
+    }
+  }
+}

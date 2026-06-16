@@ -1,0 +1,177 @@
+{
+  "exception": {
+    "DBM-001": {
+    }
+    ,
+    "DBM-002": {
+    },
+    "DBM-003": {
+      "username": ["SYS", "SYSCAT", "SYSGIS", "OUTLN", "CONNECT", "RESOURCE"],
+      "account_status": ["CLOSE"]
+    },
+    "DBM-004": {
+      "grantee": ["SYS", "DBA" ,"SYSCAT", "SYSGIS", "OUTLN", "CONNECT", "RESOURCE"],
+      "username": [],
+      "privilege": []
+    },
+    "DBM-005": {
+      "table_name": ["DBA_ROLES", "DBA_USERS"]
+    },
+    "DBM-006": {
+      "username": [],
+      "profile": [],
+      "limit": []
+    },
+    "DBM-007": {
+      "username": [],
+      "profile": [],
+      "limit": []
+    },
+    "DBM-008": {
+      "username": [],
+      "profile": [],
+      "limit": []
+    },
+    "DBM-009": {
+      "name": []
+    },
+    "DBM-010": {
+    },
+    "DBM-011": {
+    },
+    "DBM-013": {
+    },
+    "DBM-015": {
+      "privilege": [],
+      "owner": [],
+      "TABLE_NAME": []
+    },
+    "DBM-016": {
+    },
+    "DBM-017": {
+      "privilege": [],
+      "grantee": [],
+      "TABLE_NAME": []
+    },
+    "DBM-018": {
+    },
+    "DBM-019": {
+      "username": [],
+      "profile": []
+    },
+    "DBM-020": {
+      "username": []
+
+    },
+    "DBM-021": {
+    },
+    "DBM-022": {
+    },
+    "DBM-023": {
+    },
+    "DBM-024": {
+      "grantee": ["SYS", "DBA" ,"SYSCAT", "SYSGIS", "OUTLN", "CONNECT", "RESOURCE"]
+    },
+    "DBM-025": {
+    },
+    "DBM-026": {
+    },
+    "DBM-027": {
+    },
+    "DBM-028": {
+      "OBJECT_NAME": [],
+      "owner": [],
+      "grantee": []
+    },
+    "DBM-029": {
+      "value": []
+    },
+    "DBM-030": {
+      "owner": []
+    },
+    "DBM-031": {
+    },
+    "DBM-032": {
+    }
+  },
+  "rules": {
+    "DBM-001": {
+    }
+    ,
+    "DBM-002": {
+    },
+    "DBM-003": {
+      "last_login": []
+    },
+    "DBM-004": {
+      "grantee": [],
+      "username": [],
+      "privilege": []
+    },
+    "DBM-006": {
+      "resource_name": ["FAILED_LOGIN_ATTEMPTS"],
+      "limit": ["UNLIMITED"]
+    },
+    "DBM-007": {
+      "limit": ["NULL_VERIFY_FUNCTION"]
+    },
+    "DBM-008": {
+      "name": [],
+      "limit": ["UNLIMITED"]
+    },
+    "DBM-009": {
+    },
+    "DBM-010": {
+    },
+    "DBM-011": {
+      "default": {"name": "audit_trail", "value": "NONE"}
+    },
+    "DBM-013": {
+    },
+    "DBM-015": {
+      "owner": []
+    },
+    "DBM-016": {
+    },
+    "DBM-017": {
+    },
+    "DBM-018": {
+    },
+    "DBM-019": {
+      "username": [],
+      "profile": []
+    },
+    "DBM-020": {
+    },
+    "DBM-021": {
+    },
+    "DBM-022": {
+    },
+    "DBM-023": {
+    },
+    "DBM-024": {
+    },
+    "DBM-025": {
+    },
+    "DBM-026": {
+    },
+    "DBM-027": {
+    },
+    "DBM-028": {
+      "default": {"DBM-028": "Need check objects do not use"},
+      "OBJECT_NAME": ["test"],
+      "owner": ["test"],
+      "grantee": []
+    },
+    "DBM-029": {
+      "value": ["FALSE"]
+    },
+    "DBM-030": {
+      "owner": []
+    },
+    "DBM-031": {
+    },
+    "DBM-032": {
+    }
+  }
+}

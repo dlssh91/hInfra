@@ -1,0 +1,259 @@
+{
+  "exception": {
+    "DBM-001": {
+    },
+    "DBM-002": {
+    },
+    "DBM-003": {
+      "USER": ["root", "mysql.infoschema", "mysql.session", "mysql.sys"],
+      "HOST": [""]
+    },
+    "DBM-004": {
+      "GRANTEE": ["root@localhost", "root@%", "mysql.infoschema@localhost", "mysql.session@localhost", "mysql.sys@localhost", "root@localhost"],
+      "PRIVILEGE_TYPE": [""]
+    },
+    "DBM-005": {
+    },
+    "DBM-006": {
+      "USER": ["root"],
+      "HOST": []
+    },
+    "DBM-007": {
+    },
+    "DBM-008": {
+      "HOST": ["root", "mysql.infoschema", "mysql.session", "mysql.sys"],
+      "USER": []
+    },
+    "DBM-009": {
+      "VARIABLE_NAME": ["mysql.infoschema","mysql.session","mysql.sys","root"]
+    },
+    "DBM-010": {
+    },
+    "DBM-011": {
+    },
+    "DBM-012": {
+    },
+    "DBM-013": {
+      "USER": ["root", "mysql.infoschema", "mysql.session", "mysql.sys"]
+    },
+    "DBM-014": {
+    },
+    "DBM-015": {
+    },
+    "DBM-016": {
+    },
+    "DBM-017": {
+      "GRANTEE": [""],
+      "PRIVILEGE_TYPE": ["SELECT, READ"]
+    },
+    "DBM-018": {
+    },
+    "DBM-019": {
+    },
+    "DBM-020": {
+      "USER": ["root"]
+    },
+    "DBM-021": {
+    },
+    "DBM-022": {
+    },
+    "DBM-023": {
+    },
+    "DBM-024": {
+      "GRANTEE": [""],
+      "PRIVILEGE_TYPE": ["SELECT, READ"]
+    },
+    "DBM-025": {
+    },
+    "DBM-026": {
+    },
+    "DBM-027": {
+    },
+    "DBM-028": {
+      "GRANTEE": [""],
+      "PRIVILEGE_TYPE": ["SELECT, READ"]
+    },
+    "DBM-029": {
+    },
+    "DBM-030": {
+    },
+    "DBM-031": {
+    },
+    "DBM-032": {
+    },
+    "DBM-033": {
+      "HOST": [""]
+    }
+  },
+  "rules": {
+    "DBM-001": {
+    },
+    "DBM-002": {
+    },
+    "DBM-003": {
+      "Note": {
+        "***": "계정이 잠겨있거나, 사용 기간이 만료된 계정을 취약으로 판단"
+      },
+      "ACCOUNT_LOCKED": ["Y"],
+      "PASSWORD_EXPIRED": ["Y"]
+    },
+    "DBM-004": {
+      "Note": {
+        "***": "권한을 확인하여 기본 관리자 계정외 권한이 할당되는 경우 취약으로 판단"
+      },
+      "PRIVILEGE_TYPE": ["CREATE","DROP", "RELOAD", "SHUTDOWN", "PROCESS", "FILE", "REFERENCES", "ALTER", "SUPER", "EXECUTE","APPLICATION_PASSWORD_ADMIN","AUTHENTICATION_POLICY_ADMIN"]
+    },
+    "DBM-005": {
+      "Note": {
+        "***": "스크립트 분석에서 PASS, PWD, PSWD 등이 포함된 스크립트 결과 활용"
+      }
+    },
+    "DBM-006": {
+      "Note": {
+        "***": "failed_login_attempts 값이 설정이 안되어 있거나 특정 숫자 이하면 취약으로 판단"
+      },
+      "USER_ATTRIBUTES": ["5"]
+    },
+    "DBM-007": {
+      "Note": {
+        "***": "패스워드 검증 플러그인이 없거나, validate_password_policy 정책이 LOW, MEDIUM이면 취약"
+      },
+      "VARIABLE_VALUE": ["LOW", "MEDIUM"]
+    },
+    "DBM-008": {
+      "Note": {
+        "***": "PASSWORD_LAST_CHANGED 시간을 확인하여 90일 초과시 취약"
+      },
+      "DAY": ["90"]
+    },
+    "DBM-009": {
+      "Note": {
+        "***": "wait_timeout 시간을 확인하여 900초 초과시 취약"
+      },
+      "VARIABLE_NAME": ["wait_timeout"],
+      "TIME": ["900"]
+    },
+    "DBM-010": {
+    },
+    "DBM-011": {
+      "Note": {
+        "***": "audit_log.so 플러그인을 호출하지 못하거나 audit_log_file이 설정이 NULL이면 취약"
+      },
+      "VARIABLE_VALUE": ["NULL"]
+    },
+    "DBM-012": {
+    },
+    "DBM-013": {
+      "Note": {
+        "***": "mysql.user 테이블에서 계정별 Host 칼럼이 %인 경우 취약"
+      },
+      "HOST": ["%"]
+    },
+    "DBM-014": {
+    },
+    "DBM-015": {
+    },
+    "DBM-016": {
+      "Note": {
+        "***": "2025.9.18 확인"
+      },
+      "DATE": "2025.9.18 Release Notes",
+      "VERSION": {
+        "9.4": "9.4.0",
+        "9.3": "9.3.0",
+        "9.2": "9.2.0",
+        "9.1": "9.1.0",
+        "9.0": "9.0.1",
+        "8.4": "8.4.6",
+        "8.3": "8.3.0",
+        "8.2": "8.2.0",
+        "8.1": "8.1.0",
+        "8.0": "8.0.43",
+        "5.7": "5.7.44",
+        "None": "99.99.99"
+      },
+      "flags": [],
+      "status": [],
+      "action": []
+    },
+    "DBM-017": {
+      "Note": {
+        "***": "PRIVILEGE_TYPE 예외 처리된 권한 외 모든 권한을 취약으로 판단하여, 수동분석 필요"
+      }
+    },
+    "DBM-018": {
+    },
+    "DBM-019": {
+      "Note": {
+        "***": "password_history, password_reuse_interval 비밀번호 기록 갯수와 재사용 횟수를 확인하여 취약으로 판단"
+      },
+      "HISTORY": ["0"],
+      "REUSE": ["0"]
+    },
+    "DBM-020": {
+      "Note": {
+        "***": "예외 처리한 계정외에는 취약으로 판단하며, 수동 분석 필요"
+      }
+    },
+    "DBM-021": {
+    },
+    "DBM-022": {
+      "Note": {
+        "***": "스크립트에서 가져온 파일별 권한을 확인하고 권한에 따라 취약 여부 판단"
+      }
+    },
+    "DBM-023": {
+    },
+    "DBM-024": {
+      "Note": {
+        "***": "IS_GRANTABLE가 Y인 권한을 가진 계정들 중 PRIVILEGE_TYPE 예외 처리된 권한 외 모든 권한을 취약으로 판단하여, 수동분석 필요"
+      }
+    },
+    "DBM-025": {
+      "Note": {
+        "***": "2025.9 기준"
+      },
+      "DATE": "2025.9 Extended Support \uae30\uc900",
+      "VERSION": {
+        "9.3": "2025-07-22",
+        "9.2": "2025-04-15",
+        "9.1": "2025-01-21",
+        "9.0": "2024-10-15",
+        "8.4": "2032-04-30",
+        "8.3": "2024-04-10",
+        "8.2": "2023-12-14",
+        "8.1": "2023-10-25",
+        "8.0": "2026-04-30",
+        "5.7": "2023-10-31",
+        "5.6": "2021-02-28",
+        "5.5": "2018-12-31"
+      },
+      "flags": [],
+      "status": [],
+      "action": []
+    },
+    "DBM-026": {
+      "Note": {
+        "***": "스크립트에서 가져온 UMASK 권한을 확인하고 권한에 따라 취약 여부 판단"
+      }
+    },
+    "DBM-027": {
+    },
+    "DBM-028": {
+      "Note": {
+        "***": "PRIVILEGE_TYPE 예외 처리된 권한 외 모든 권한을 취약으로 판단하여, 수동분석 필요"
+      }
+    },
+    "DBM-029": {
+    },
+    "DBM-030": {
+    },
+    "DBM-031": {
+    },
+    "DBM-033": {
+      "Note": {
+        "***": "이중화 구성시 mysql.slave_master_info 테이블에 패스워드가 NULL이 아닌 평문으로 저장되어 있으면 취약으로 판단"
+      }
+    }
+  }
+}

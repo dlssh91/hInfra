@@ -1,0 +1,309 @@
+{
+  "exception": {
+    "DBM-001": {},
+    "DBM-002": {},
+    "DBM-003": {
+      "username": [],
+      "account_status": [],
+      "expiry_date": [],
+      "last_login": []
+    },
+    "DBM-004": {
+      "grantee": [],
+      "granted_role": [],
+      "admin_option": [],
+      "default_role": [],
+      "username": [],
+      "privilege": []
+    },
+    "DBM-005": {
+      "owner": [],
+      "table_name": [],
+      "column_name": [],
+      "column_data": []
+    },
+    "DBM-006": {
+      "username": [],
+      "profile": [],
+      "resource_name": [],
+      "limit": []
+    },
+    "DBM-007": {
+      "username": [],
+      "profile": [],
+      "resource_name": [],
+      "limit": []
+    },
+    "DBM-008": {
+      "name": [],
+      "ptime": [],
+      "username": [],
+      "profile": [],
+      "resource_name": [],
+      "limit": []
+    },
+    "DBM-009": {
+      "username": [],
+      "profile": [],
+      "resource_name": [],
+      "limit": []
+    },
+    "DBM-010": {},
+    "DBM-011": {
+      "name": [],
+      "value": []
+    },
+    "DBM-012": {},
+    "DBM-013": {},
+    "DBM-014": {
+      "name": [],
+      "value": []
+    },
+    "DBM-015": {
+      "grantee": [],
+      "privilege": [],
+      "owner": [],
+      "TABLE_NAME": []
+    },
+    "DBM-016": {
+      "version": [],
+      "flags": [],
+      "status": [],
+      "action": []
+    },
+    "DBM-017": {
+      "grantee": [],
+      "privilege": [],
+      "owner": [],
+      "TABLE_NAME": []
+    },
+    "DBM-018": {},
+    "DBM-019": {
+      "username": [],
+      "profile": [],
+      "resource_name": [],
+      "limit": []
+    },
+    "DBM-020": {
+      "username": [],
+      "account_status": [],
+      "expiry_date": [],
+      "last_login": []
+    },
+    "DBM-021": {},
+    "DBM-022": {},
+    "DBM-023": {},
+    "DBM-024": {
+      "grantee": [],
+      "privilege": [],
+      "ADMIN_OPTION": []
+    },
+    "DBM-025": {
+      "version_info": []
+    },
+    "DBM-026": {},
+    "DBM-027": {},
+    "DBM-028": {
+      "OBJECT_NAME": [],
+      "owner": [],
+      "grantee": [],
+      "privilege": [],
+      "table_name": []
+    },
+    "DBM-029": {
+      "name": [],
+      "value": []
+    },
+    "DBM-030": {
+      "table": [],
+      "owner": [],
+      "grantee": [],
+      "privilege": []
+    },
+    "DBM-031": {},
+    "DBM-032": {}
+  },
+  "rules": {
+    "DBM-001": {
+      "notice": {
+        "DBM-001": "Need to crack password"
+      }
+    },
+    "DBM-002": {},
+    "DBM-003": {
+      "username": [],
+      "account_status": [],
+      "expiry_date": [],
+      "last_login": [""],
+      "date_range": 6
+    },
+    "DBM-004": {
+      "grantee": [],
+      "granted_role": [],
+      "admin_option": [],
+      "default_role": [],
+      "username": [],
+      "privilege": []
+    },
+    "DBM-005": {
+      "notice": {
+        "DBM-005": "Need check Plain Text Info in data"
+      },
+      "owner": [],
+      "table_name": [],
+      "column_name": [],
+      "column_data": []
+    },
+    "DBM-006": {
+      "username": [],
+      "profile": [],
+      "resource_name": [
+        "FAILED_LOGIN_ATTEMPTS"
+      ],
+      "limit": [
+        "UNLIMITED"
+      ]
+    },
+    "DBM-007": {
+      "username": [],
+      "profile": [],
+      "resource_name": [],
+      "limit": []
+    },
+    "DBM-008": {
+      "name": [],
+      "ptime": [],
+      "username": [],
+      "profile": [],
+      "resource_name": [],
+      "limit": [
+        "UNLIMITED"
+      ],
+      "date_range": 6
+    },
+    "DBM-009": {
+      "username": [],
+      "profile": [],
+      "resource_name": [
+        "IDLE_TIME"
+      ],
+      "limit": [
+        "UNLIMITED"
+      ]
+    },
+    "DBM-010": {},
+    "DBM-011": {
+      "name": [],
+      "value": []
+    },
+    "DBM-012": {
+      "notice": {
+        "DBM-012": "Need check Listener Control Utility set and Listenr cannot change"
+      },
+      "version": "11.2.0.0.0"
+    },
+    "DBM-013": {
+      "notice": {
+        "DBM-013": "Need check TCP.VALIDNODE_CHECKING not set or yes"
+      }
+    },
+    "DBM-014": {
+      "name": [],
+      "value": "FALSE"
+    },
+    "DBM-015": {
+      "grantee": [],
+      "privilege": [],
+      "owner": [],
+      "TABLE_NAME": []
+    },
+    "DBM-016": {
+      "alert": {
+        "DBM-016": "\uc0c1\uc704 \ubc84\uc804 \ud328\uce58 \ud544\uc694"
+      },
+      "date": "2025.09 \uae30\uc900",
+      "version": {
+        "10": "10.2.0.5",
+        "11g": "11.2.0.4",
+        "12c": "12.2.0.1",
+        "19c": "19.28.0.0.250715"
+      },
+      "flags": [],
+      "status": [],
+      "action": []
+    },
+    "DBM-017": {
+      "grantee": [],
+      "privilege": [],
+      "owner": [],
+      "TABLE_NAME": []
+    },
+    "DBM-018": {},
+    "DBM-019": {
+      "username": [],
+      "profile": [],
+      "resource_name": [],
+      "limit": []
+    },
+    "DBM-020": {
+      "username": [],
+      "account_status": [],
+      "expiry_date": [],
+      "last_login": []
+    },
+    "DBM-021": {},
+    "DBM-022": {
+      "notice": {
+        "DBM-022": "Need check access right in xml"
+      }
+    },
+    "DBM-023": {},
+    "DBM-024": {
+      "grantee": [],
+      "privilege": [],
+      "ADMIN_OPTION": []
+    },
+    "DBM-025": {
+      "alert": {
+        "DBM-025": "EoS Database version"
+      },
+      "date": "2023.06 \uae30\uc900",
+      "version": "12",
+      "version_info": []
+    },
+    "DBM-026": {
+      "notice": {
+        "DBM-026": "Need check umask in xml"
+      }
+    },
+    "DBM-027": {},
+    "DBM-028": {
+      "notice": {
+        "DBM-028": "Need check objects do not use"
+      },
+      "OBJECT_NAME": [
+        "test"
+      ],
+      "owner": [
+        "test"
+      ],
+      "grantee": [],
+      "privilege": [],
+      "table_name": []
+    },
+    "DBM-029": {
+      "name": [],
+      "value": [
+        "FALSE"
+      ]
+    },
+    "DBM-030": {
+      "table": [],
+      "owner": [],
+      "grantee": [],
+      "privilege": []
+    },
+    "DBM-031": {},
+    "DBM-032": {}
+  }
+}

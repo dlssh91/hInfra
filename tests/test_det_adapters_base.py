@@ -250,13 +250,19 @@ class TestGetAdapter:
     """get_adapter() — Phase 0→Phase 1 전환 확인."""
 
     def test_phase1_server_adapter_registered(self):
-        """Phase 1: server 어댑터가 등록되어 있어야 한다."""
+        """Phase 1+: server 어댑터가 등록되어 있어야 한다. Phase 4에서 db_* 5개 추가."""
         # server.py import 시 _DET_ADAPTERS["server"] 등록 부작용 발생
         import judge_tool.det_adapters.server  # noqa: F401
+        import judge_tool.det_adapters.db  # noqa: F401 — Phase 4: db_* 5개 등록
         from judge_tool.det_adapters.base import get_adapter
         assert get_adapter("server") is not None, "Phase 1: server 어댑터가 등록되지 않음"
-        # db_mysql / cloud 어댑터는 아직 미등록(Phase 2+)
-        assert get_adapter("db_mysql") is None
+        # Phase 4: db_* 5개 어댑터 등록 확인
+        assert get_adapter("db_mysql") is not None, "Phase 4: db_mysql 어댑터 미등록"
+        assert get_adapter("db_oracle") is not None, "Phase 4: db_oracle 어댑터 미등록"
+        assert get_adapter("db_mssql") is not None, "Phase 4: db_mssql 어댑터 미등록"
+        assert get_adapter("db_mariadb") is not None, "Phase 4: db_mariadb 어댑터 미등록"
+        assert get_adapter("db_postgresql") is not None, "Phase 4: db_postgresql 어댑터 미등록"
+        # cloud / 빈 문자열은 미등록
         assert get_adapter("cloud") is None
         assert get_adapter("") is None
 

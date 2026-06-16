@@ -235,12 +235,106 @@ def _parse_rows(result_block: str, check_id: str) -> List[ResourceEvidence]:
     return rows
 
 
+def _pg_normalize(s: str) -> str:
+    r"""PostgreSQL 비표준 JSON 행을 표준 JSON으로 정규화(Batch1, 고가치 레버).
+
+    pg 수집 행 형식: `{"rolname": 'x', "rolcanlogin": 'f', "rolvaliduntil": NULL}`
+      — 키는 큰따옴표지만 값이 작은따옴표 + NULL 베어워드 → 표준 json.loads 실패.
+    정규화: 값 위치 작은따옴표 → 큰따옴표(내부 "/\ 이스케이프), NULL 베어워드 → null.
+    표준 JSON·타 엔진 행에는 영향 없음(이미 json.loads 성공해 이 경로에 도달 안 함).
+    """
+    # NULL/None 베어워드(값 위치) → null
+    s2 = re.sub(r"(:\s*)NULL\b", r"\1null", s)
+    s2 = re.sub(r"(:\s*)None\b", r"\1null", s2)
+    # 값 위치 작은따옴표 문자열 → 큰따옴표 (내부 \ 와 " 이스케이프)
+    def _q(m):
+        inner = m.group(1).replace("\\", "\\\\").replace('"', '\\"')
+        return ': "' + inner + '"'
+    s2 = re.sub(r":\s*'((?:[^'\\]|\\.)*)'", _q, s2)
+    return s2
+
+
+def _build_raw_data_dict(arr_text: str) -> Optional[str]:
+    """변형 전체 비마스킹 data dict JSON을 조립한다(결정론 §6 / 결정1).
+
+    반환: `{data_key: {RESULT:[원행dict..], NOTE:..}}` 형태 JSON 문자열.
+          컬렉션이 비어 있으면 None.
+
+    §7 안전: 이 값은 ResourceEvidence.raw_evidence에만 싣고, LLM/citation 경로에는
+    전달되지 않는다(main.py _raw_evidence_for_det → det_adapters/db.py만 소비).
+
+    주의: 이 함수는 파싱 중 수집된 원본(비마스킹) RESULT 행을 그대로 포함한다.
+    어댑터 내 citations에는 _mask_row 처리된 행만 사용해야 한다(§7 위반 행 마스킹).
+    """
+    data: dict = {}
+    for cid, segment in _split_items(arr_text):
+        # 원본 NOTE 추출 (마스킹 없음)
+        note = _extract_note(segment)
+        result_block = _extract_result_block(segment)
+        if not result_block.strip() and '"RESULT"' not in segment:
+            result_rows: list = []
+        else:
+            # 원본 행을 비마스킹으로 수집 (JSON 파싱 가능한 obj만, bare 문자열은 {"*":val})
+            result_rows = []
+            for kind, text in _iter_top_result_items(result_block):
+                if kind == "obj":
+                    san = _json_safe(text)
+                    san = re.sub(r",\s*([}\]])", r"\1", san)
+                    try:
+                        d = json.loads(san)
+                        if isinstance(d, dict):
+                            result_rows.append(d)
+                            continue
+                    except json.JSONDecodeError:
+                        pass
+                    # pg 비표준 JSON(값 작은따옴표 / NULL 베어워드) 정규화 후 재시도 (Batch1)
+                    try:
+                        d2 = json.loads(re.sub(r",\s*([}\]])", r"\1", _pg_normalize(san)))
+                        if isinstance(d2, dict):
+                            result_rows.append(d2)
+                            continue
+                    except json.JSONDecodeError:
+                        pass
+                    # 파싱 실패는 raw 문자열로 {"*": ...}
+                    result_rows.append({"*": _json_safe(text)[:500]})
+                else:  # bare 문자열
+                    val = _sanitize_scalar(text)
+                    if len(val) >= 3 and val.upper() != "NOTE":
+                        # Batch1: raw 문자열로 보존(벤더 dbm_process_data가 type(datum)==str
+                        # 검사 후 자체적으로 {"*":datum} 래핑). {"*":val} 선래핑하면 벤더의
+                        # str 검사가 빗나가 'not loaded' 등 탐지 실패(mariadb DBM-007/011 등).
+                        result_rows.append(val)
+        entry: dict = {"RESULT": result_rows}
+        if note:
+            entry["NOTE"] = note
+        data[cid] = entry
+
+    if not data:
+        return None
+    try:
+        return json.dumps(data, ensure_ascii=False)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def parse(txt_path: str) -> List[Tuple[str, List[ResourceEvidence], Optional[str]]]:
-    """DB 결과 .txt → [(check_id, [ResourceEvidence], context), ...]."""
+    """DB 결과 .txt → [(check_id, [ResourceEvidence], context), ...].
+
+    Phase 4 확장(결정1): parse() 가 변형 전체 비마스킹 data dict를 JSON으로 조립해
+    모든 ResourceEvidence.raw_evidence에 동일 문자열로 적재한다.
+    기존 마스킹 evidence / 파싱 동작은 변경 없음(핀고정).
+    """
     try:
         with open(txt_path, encoding="utf-8", errors="replace") as fh:
             raw = fh.read()
         arr = _strip_leading_noise(raw)
+
+        # ── Phase 4: 변형 전체 비마스킹 data dict 1회 조립 (결정1) ─────────────
+        # 모든 ResourceEvidence.raw_evidence에 동일 JSON 문자열을 적재한다.
+        # _raw_evidence_for_det이 첫 resource의 raw_evidence를 반환하면
+        # 어댑터는 전체 data dict를 얻는다.
+        raw_data_json: Optional[str] = _build_raw_data_dict(arr)
+
         out = []
         # 최상위 항목을 brace-balance 가 아니라 항목 시작 마커로 경계 분할한다.
         # 한 항목이 손상(예: outer 미닫힘)돼도 다음 항목 경계에서 복원되어
@@ -252,6 +346,9 @@ def parse(txt_path: str) -> List[Tuple[str, List[ResourceEvidence], Optional[str
             note = _extract_note(inner)
             result_block = _extract_result_block(inner)
             resources = _parse_rows(result_block, cid) if result_block.strip() or '"RESULT"' in inner else []
+            # Phase 4: 각 resource에 전체 비마스킹 data dict JSON 적재 (결정1)
+            for res in resources:
+                res.raw_evidence = raw_data_json
             ctx_parts = []
             if query:
                 ctx_parts.append(f"QUERY: {query}")

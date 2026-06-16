@@ -307,3 +307,64 @@ if "service tcp-keepalives-in" in line:   # ← 오타 수정
 - **입력**: `"service tcp-keepalives-in"` 포함 Cisco raw → **기대: result='N'(양호)**
 - **입력**: `"no service tcp-keepalives-in"` 포함 → **기대: result='Y'(취약)**
 - 오타 문자열(`tcp-kepalives-in`) 검색은 위 두 입력 어디서도 매치하지 않음을 단언.
+
+---
+
+## R3. `dbm-process-data-exc-swallow`
+
+**id**: `dbm-process-data-exc-swallow`  
+**위치**: `judge_tool/vendor/common/db/{mysql,oracle,mssql,mariadb,postgresql}/analysis.py` — `dbm_process_data` 메서드 및 일부 개별 메서드  
+**엔진별 print 포맷**:
+- mysql/mssql: `f"[!] Exception Occurred MySQL {result_key}: {str(e)}"`  
+- oracle(generic): `f"[!] Exception Occurred Oracle {result_key}: {str(e)}"`  
+- oracle(DBM-001): `"[!] Exception Occurred oracle DBM-001: " + str(e)` (소문자, 하드코딩)  
+- oracle(DBM-022): `"[!] Exception Occurred Oracle DBM-022: " + str(e)` (하드코딩)  
+- mariadb: `f"[!] Exception Occurred MariaDB {result_key}: {str(e)}"`  
+- postgresql: `f"[!] Exception Occurred PostgreSQL {result_key}: {str(e)}"` 및 `"[!] Exception Occurred PostgreSQL DBM-022: " + str(e)` (하드코딩)
+
+### 증상
+`dbm_process_data`(및 일부 전용 메서드)의 `try/except` 블록이 예외(KeyError, ValueError, strptime 등)를 `print("[!] Exception Occurred ...")` 만 하고 삼킨다. `dbm_result[result_key]` 리스트는 빈 채로 남는다.
+
+어댑터(`db.py`)는 `.run` 반환 dict의 빈 result_key 값을 **위반 없음 → 양호(conf 0.9)**로 매핑하므로, `data_key`가 존재해 D3 증거가드도 통과한 상태에서 **구조적 거짓양호**가 발생한다.
+
+재현(수정 전):
+```python
+data = {"DBM-007": {"RESULT": [{"SOME_OTHER_KEY":"x","X":"LOW"}]}}
+judge("DBM-007", json.dumps(data), "mysql_native", {})
+# → verdict='양호' handled=True conf=0.9  ← 거짓양호 (KeyError('VARIABLE_NAME') 삼킴)
+```
+
+### 어댑터 수정 (벤더 비트동일 유지)
+`judge_tool/det_adapters/db.py` `_run_analysis()` 에서 `contextlib.redirect_stdout`으로 `.run` 실행 중 stdout을 캡처한다. 캡처 텍스트에서 `DBM-NNN` 패턴을 정규식으로 추출해 `exc_keys: frozenset`를 구성하고, `(dbm_result, exc_keys)` 튜플로 `_RUN_CACHE`에 저장한다.
+
+result 매핑 직전에 **`len(violations)==0 and base in exc_keys`** 이면 `handled=False`(rationale: `"[결정론 내부 예외 — 양호 판정 불가, LLM 폴백]"`)를 반환한다. `__AMBIGUOUS__` sentinel: DBM 패턴 파싱 불가 시 보수적 차단.
+
+**과차단 방지**: `violations >= 1`이면 exc_keys 무관하게 취약 판정 유지 (다른 sub-call이 정상 위반 탐지한 경우).
+
+### Corrected 동작 명세
+- `len(violations)==0 and (base in exc_keys or '__AMBIGUOUS__' in exc_keys)` → `handled=False`, `conf=0.0`, `ev_status='review'`
+- `len(violations) >= 1` → 취약 판정 유지 (exc_keys 무관)
+- `exc_keys` 비어있고 `violations==0` → 양호 판정 불변 (R3 무간섭)
+
+### 회귀테스트 핀 (tests/test_det_adapters_db.py::TestR3FalsePositiveBlock)
+- `{"DBM-007": {"RESULT": [{"SOME_OTHER_KEY": "x"}]}}` → `handled=False`, `verdict != "양호"` (거짓양호 차단)
+- 실위반 있는 항목(예: DBM-004 SUPER 권한) → `verdict='취약'` 유지 (과차단 없음)
+- 정상 빈 RESULT(`{"DBM-003": {"RESULT": []}}`) → `verdict='양호'` 불변
+- `_parse_exc_keys`: MySQL/Oracle/MariaDB/PostgreSQL/oracle소문자 5포맷 키 추출 단언
+- `_parse_exc_keys`: 예외 없는 stdout → `frozenset()`, DBM 미포함 예외 → `__AMBIGUOUS__` sentinel
+
+---
+
+## R-PG009. pg dbm_009 idle_in_transaction_session_timeout 극성 버그 (Batch1, VENDOR-EDIT(bug))
+
+**파일**: `judge_tool/vendor/common/db/postgresql/analysis.py` `dbm_009`
+
+**증상**: 원본은 `int(value) <= 900` 이면 취약으로 판정 — 극성이 거꾸로다. timeout=300(5분 종료=양호)도 `300<=900`이라 취약으로 오판(거짓취약). timeout=0(비활성=진짜 취약)은 우연히 잡히나 양호 케이스를 전부 취약으로 본다.
+
+**판단기준(xlsx)**: 일정시간(미명시 시 15분=900초) 미사용 세션 자동종료 → 양호 / 미설정 → 취약.
+
+**수정(VENDOR-EDIT(bug))**: `int(value) == 0 (비활성) 또는 int(value) > 900 (너무 김)` → 취약. 정상 범위(0 < value <= 900)는 양호.
+
+**한계**: pg `idle_in_transaction_session_timeout`은 트랜잭션 유휴만 커버. 일반 유휴세션 타임아웃은 PG14+ `idle_session_timeout` 별도(미수집 시 needs_review). DBM-009 pg는 needs_review로 사람 재확인.
+
+**회귀 핀**: value=0→취약, value=300→양호, value=900→양호, value=1000→취약.

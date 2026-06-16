@@ -28,3 +28,6 @@ ref/~$*
 flus-main/
 flus-main.zip
 read_xlsx.py
+
+# 에이전트 worktree/세션 상태 — git 미추적
+.claude/

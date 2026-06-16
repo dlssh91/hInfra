@@ -58,10 +58,12 @@ def test_all_classified_methods_are_registered():
 
 def test_loader_assigns_method_db(criteria_xlsx_path):
     crit = load_criteria(criteria_xlsx_path, DB_MYSQL, profile_key="db_mysql")
-    assert crit[("DBM-005", "mysql_rds")].judgment_method == "llm_det"   # A+empty
-    assert crit[("DBM-016", "mysql_rds")].judgment_method == "det"        # D(patch)
-    assert crit[("DBM-003", "mysql_rds")].judgment_method == "interview"  # B+요약
-    assert crit[("DBM-006", "mysql_rds")].judgment_method == "llm"        # A
+    # Phase 4: DET 항목에 judgment_method: det_common 부여 (label 유지).
+    # mysql_rds 포함 전 mysql 변형에 적용됨.
+    assert crit[("DBM-005", "mysql_rds")].judgment_method == "llm_det"   # A+empty, STUB, yaml 미설정
+    assert crit[("DBM-016", "mysql_rds")].judgment_method == "det_common" # D(patch), Phase4 det_common 부여
+    assert crit[("DBM-003", "mysql_rds")].judgment_method == "det_common" # B+요약, Phase4 det_common 부여
+    assert crit[("DBM-006", "mysql_rds")].judgment_method == "det_common" # A, Phase4 det_common 부여
 
 
 def test_loader_assigns_method_cloud_holdonly(criteria_xlsx_path):
@@ -153,5 +155,6 @@ def test_e2e_json_has_judgment_method(tmp_path):
     run(report, criteria, "db_mysql", _StubGood(), jout, xout, "stub")
     data = json.load(open(jout, encoding="utf-8"))
     by_id = {j["item_id"]: j for j in data["judgments"]}
-    assert by_id["DBM-001"]["judgment_method"] == "det"        # label C
-    assert by_id["DBM-004"]["judgment_method"] == "interview"  # label B+요약
+    assert by_id["DBM-001"]["judgment_method"] == "det_common"  # Phase 4c: DBM-001 det_common 부여 (사전공격 어댑터)
+    # Phase 4: DBM-004는 DET → judgment_method: det_common (label B+요약 유지, det_common 우선)
+    assert by_id["DBM-004"]["judgment_method"] == "det_common"  # Phase4 det_common 부여

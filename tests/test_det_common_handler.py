@@ -134,12 +134,13 @@ class TestDetCommonPhase0Fallback:
         assert result is fake_judgment
 
     def test_phase1_server_adapter_in_registry(self):
-        """Phase 1: server 어댑터가 레지스트리에 등록되어 있어야 한다.
-        db_mysql / cloud 어댑터는 Phase 2+에서 등록 예정."""
+        """Phase 1+: server 어댑터 등록. Phase 4: db_* 5개 어댑터 추가 등록."""
         import judge_tool.det_adapters.server  # noqa: F401 — 등록 부작용
+        import judge_tool.det_adapters.db  # noqa: F401 — Phase 4 등록 부작용
         from judge_tool.det_adapters import base as det_base
         # Phase 1: server 어댑터 등록됨
         assert det_base.get_adapter("server") is not None, "Phase 1: server 어댑터 미등록"
-        # db_mysql / cloud 어댑터는 아직 미등록
-        assert det_base.get_adapter("db_mysql") is None
+        # Phase 4: db_* 어댑터 등록됨
+        assert det_base.get_adapter("db_mysql") is not None, "Phase 4: db_mysql 어댑터 미등록"
+        # cloud 어댑터는 미등록
         assert det_base.get_adapter("cloud") is None

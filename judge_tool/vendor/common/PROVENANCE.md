@@ -10,11 +10,12 @@
 **Phase 1 완료**: 서버 모듈 벤더링 완료. `judge_tool/vendor/common/server/` 아래 3개 파일 존재.
 **Phase 2 완료**: 컨테이너 모듈 벤더링 완료. `judge_tool/vendor/common/container/` 아래 `autoAnalysis.py` 존재.
 **Phase 3 완료**: 웹서버-WAS 모듈 벤더링 완료. `judge_tool/vendor/common/webwas/` 아래 4개 파일 존재.
+**Phase 4 완료**: DB 모듈 벤더링 완료. `judge_tool/vendor/common/db/` 아래 5엔진 analysis.py + config/*.json 존재.
 
 ```
 judge_tool/vendor/common/
 ├── __init__.py
-├── DET_SOURCE.yaml          ← Phase 0 산출 (§18.0), Phase 3에서 WST 웹특화 22항목 추가
+├── DET_SOURCE.yaml          ← Phase 0 산출 (§18.0), Phase 3/4에서 WST/DBM 항목 추가
 ├── KNOWN_BUGS.md            ← Phase 0 산출 (§18.0)
 ├── PROVENANCE.md            ← 본 파일
 ├── server/
@@ -25,12 +26,44 @@ judge_tool/vendor/common/
 ├── container/
 │   ├── __init__.py
 │   └── autoAnalysis.py      ← Phase 2: 원본 비트동일 복사 (VENDOR-EDIT 없음)
-└── webwas/
+├── webwas/
+│   ├── __init__.py
+│   ├── wslib.py             ← Phase 3: Django 의존 제거, get_remove_line 순수함수만 추출
+│   ├── WST_Apache_parse.py  ← Phase 3: 원본 복사 + VENDOR-EDIT(a) import 경로 수정
+│   ├── WST_IIS_parse.py     ← Phase 3: 원본 복사 + VENDOR-EDIT(a) + VENDOR-EDIT(bug) WST-102
+│   └── WST_WebtoB_parse.py  ← Phase 3: 원본 복사 + VENDOR-EDIT(a) import 경로 수정
+└── db/
     ├── __init__.py
-    ├── wslib.py             ← Phase 3: Django 의존 제거, get_remove_line 순수함수만 추출
-    ├── WST_Apache_parse.py  ← Phase 3: 원본 복사 + VENDOR-EDIT(a) import 경로 수정
-    ├── WST_IIS_parse.py     ← Phase 3: 원본 복사 + VENDOR-EDIT(a) + VENDOR-EDIT(bug) WST-102
-    └── WST_WebtoB_parse.py  ← Phase 3: 원본 복사 + VENDOR-EDIT(a) import 경로 수정
+    ├── config/
+    │   ├── mysql-config.json     ← Phase 4: 원본 비트동일 복사 (VENDOR-EDIT 없음)
+    │   ├── oracle-config.json    ← Phase 4: 원본 비트동일 복사
+    │   ├── mssql-config.json     ← Phase 4: 원본 비트동일 복사
+    │   ├── mariadb-config.json   ← Phase 4: 원본 비트동일 복사
+    │   ├── postgresql-config.json← Phase 4: 원본 비트동일 복사
+    │   └── tibero-config.json    ← Phase 4: 원본 비트동일 복사
+    ├── mysql/
+    │   ├── __init__.py
+    │   ├── analysis.py          ← Phase 4: 원본 비트동일 복사 (VENDOR-EDIT 없음)
+    │   └── cloud_analysis.py    ← Phase 4b: 원본 비트동일 복사 (VENDOR-EDIT 없음)
+    ├── oracle/
+    │   ├── __init__.py
+    │   ├── analysis.py          ← Phase 4: 원본 비트동일 복사 (VENDOR-EDIT 없음)
+    │   └── cloud_analysis.py    ← Phase 4b: 원본 비트동일 복사 (VENDOR-EDIT 없음)
+    ├── mssql/
+    │   ├── __init__.py
+    │   ├── analysis.py          ← Phase 4: 원본 비트동일 복사 (VENDOR-EDIT 없음)
+    │   └── cloud_analysis.py    ← Phase 4b: 원본 비트동일 복사 (VENDOR-EDIT 없음)
+    ├── mariadb/
+    │   ├── __init__.py
+    │   ├── analysis.py          ← Phase 4: 원본 비트동일 복사 (VENDOR-EDIT 없음)
+    │   └── cloud_analysis.py    ← Phase 4b: 원본 비트동일 복사 (VENDOR-EDIT 없음)
+    ├── postgresql/
+    │   ├── __init__.py
+    │   ├── analysis.py          ← Phase 4: 복사 + VENDOR-EDIT(bug) dbm_009 극성 수정 (Batch1, KNOWN_BUGS R-PG009)
+    │   └── cloud_analysis.py    ← Phase 4b: 원본 비트동일 복사 (VENDOR-EDIT 없음)
+    └── tibero/
+        ├── __init__.py
+        └── analysis.py          ← Phase 4: 원본 비트동일 복사 (tibero excluded, 미등록)
 ```
 
 ### Phase 1 벤더링 상세
@@ -118,6 +151,9 @@ flus-main/app/common/
 | Phase 3 | `webwas/WST_IIS_parse.py` | (a) import 없음 (IIS는 원본에 wslib import 없음) | 경로 수정 불필요 | 2026-06-16 |
 | Phase 3 | `webwas/WST_IIS_parse.py` | (bug) WST-102-iis-polarity | `check_WST_102` line 688: `result = "Y"` → `result = "N"` (위반0건→양호) | 2026-06-16 |
 | Phase 3 | `webwas/WST_IIS_parse.py` | (bug) WST-040-polarity 주석 | `check_WST_040` 함수에 VENDOR-EDIT(bug) 주석 추가. xlsx 역전 미해결, 결정론 비활성. | 2026-06-16 |
+| Phase 4 | `db/{5엔진}/analysis.py` | **없음** | 원본 비트동일 복사. stdlib(`re`, `datetime`) + dateutil + packaging 의존, Django/lxml 없음. | 2026-06-16 |
+| Phase 4 | `db/config/{6엔진}-config.json` | **없음** | 원본 비트동일 복사. 임계값 단일출처. | 2026-06-16 |
+| Phase 4b | `db/{5엔진}/cloud_analysis.py` | **없음** | 원본 비트동일 복사 (mysql/oracle/mssql/mariadb/postgresql). VENDOR-EDIT 없음 확인: 외부 import 없음(stdlib+dateutil+packaging만), 로직/임계값 수정 없음. pg DBM-009 polarity 의심 버그(KNOWN_BUGS.md 등재 대상) 는 수정 금지. | 2026-06-16 |
 
 ---
 
