@@ -30,6 +30,21 @@
 - 판단방식 라우팅은 `main.py _HANDLERS`(judgment_method→핸들러). 새 판정 엔진은
   if/elif 추가가 아니라 `_HANDLERS` 등록 + `classify_method` 분류로 확장.
 
+## LLM 판정 품질 검토 프로토콜 (모든 도메인 공통 — 필수)
+도메인 결정론 통합 후 "로컬 LLM이 얼마나 제대로 판단하나"를 검토할 때 **반드시 아래 순서**로 한다.
+이 프로토콜은 서버 도메인에서 확립됨(2026-06-17, PROGRESS.md LLM 품질 트랙 참조).
+1. **분류 전수 파악**: 해당 variant의 모든 judgeable 항목을 `(label, judgment_method)`로 분류하고,
+   **LLM이 production 1차 판정자인 항목**(`judgment_method != det_common`, 보통 label A 순수LLM)을 식별한다.
+   ⚠️ **det_common 항목의 LLM 일치율로 LLM 품질을 단정 금지** — 거기선 결정론이 production이고
+   LLM은 대조용(듀얼런 `det_dual_run.py`도 det_common만 보고 LLM-production 항목은 `skipped` 처리).
+2. **양극성 커버리지 확인**: 양호/취약 샘플 쌍이 **LLM-production 항목 각각에 대해
+   양호 결과와 취약 결과를 모두** 제공하는지 확인. 두 샘플 증거가 동일한 항목(=한 극성만)·
+   증거 없는 항목은 **"미커버"로 명시**하고 품질 측정 불가 → 샘플 보강 필요로 기록(추측 금지).
+3. **과최적화(overfitting) 가드**: 프롬프트/LLM 튜닝이 det_common(결정론=정답) 항목에서 검증되더라도,
+   **실제 LLM-production(label A 등) 항목을 수정 전/후로 재판정**해 회귀·과적합이 없는지 별도 확인.
+   위험방향(양호↔취약) 회귀 **0** 확인을 SHIP 조건으로 한다.
+4. 결과(커버리지 표·미커버 항목·전후 비교)는 **PROGRESS.md LLM 품질 트랙**에 기록.
+
 ## 자주 쓰는 명령
 ```bash
 python3 -m pytest tests/ -q                      # 전체 테스트
