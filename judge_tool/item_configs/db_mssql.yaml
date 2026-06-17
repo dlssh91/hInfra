@@ -64,10 +64,17 @@ DBM-013:
   # det_common 미부여. 양호 자동판정 절대 금지.
   label: A
 DBM-015:
-  judgment_method: det_common
-  needs_review: true
+  # label B(인터뷰)로 이관. judgment_method: det_common 제거.
+  # 사유: mssql config rules['DBM-015']['permission_name']=[] (빈 목록) → datum['permission_name'] in [] 항상 False
+  # → 위반 0건 → handled=True + 양호(거짓양호). label B → classify_method=interview → _summarize_one 라우팅.
   label: B
-  summary_instruction: PUBLIC에 부여된 권한을 유형별로 요약. SELECT 외 쓰기/실행 권한 별도 표시. 판정하지 말 것.
+  summary_instruction: "PUBLIC Role에 부여된 권한/Role을 담당자 인터뷰가 쉽도록 정리하라.\
+    \ ① 시스템 기본 권한(sys·INFORMATION_SCHEMA·master·msdb·tempdb 등,\
+    \ 모든 DB에 기본 존재=정상)과 업무 객체(사용자 스키마/테이블) 권한을 구분.\
+    \ ② 업무 테이블/객체에 부여된 DML(INSERT·UPDATE·DELETE·TRUNCATE 등) 권한을\
+    \ '업무상 불필요 의심'으로 우선 나열.\
+    \ ③ 권한 유형·대상 객체별로 묶어 간결히 요약.\
+    \ 판정(양호/취약)은 내리지 말고 담당자가 '업무상 불필요 여부'를 빠르게 확인하도록 정리만 하라."
 DBM-016:
   judgment_method: det_common
   needs_review: true

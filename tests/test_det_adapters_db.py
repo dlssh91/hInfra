@@ -13,6 +13,8 @@
   (j) 모듈 캐시 동작: 동일 data에 대해 .run 1회
   (k) 실파일 E2E: mysql_native 실데이터 판정 확인
   (l) Phase 4b: cloud 변형 라우팅/gate/DET/캐시 분리 (합성 픽스처)
+  (m) DBM-015 label B 라우팅: oracle/mssql/pg native → det_common 어댑터 미호출,
+      classify=STUB, judgment_method=interview
 """
 import json
 import os
@@ -2257,3 +2259,233 @@ class TestDBM013HostWildcard:
             assert fv.verdict == "양호", (
                 f"mysql_native DBM-013 특정호스트만인데 양호가 아님: {fv}"
             )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (m) DBM-015 label B 라우팅 — oracle/mssql/pg native
+#
+# 설계 계약:
+#   - oracle/mssql/pg native DBM-015 → DET_SOURCE = STUB → gate 차단(handled=False).
+#   - mssql native: 이전에 DET(rules['permission_name']=[]) → 항상 양호(거짓양호).
+#     label B + judgment_method: det_common 제거 → classify_method=interview → _summarize_one.
+#     DET_SOURCE mssql→STUB으로 정정 → gate도 차단.
+#   - pg native: R3 보수처리로 이미 STUB. label B + no det_common → interview 경로.
+#   - oracle native: 015_1/2 lambda:True STUB. label B + no det_common → interview 경로.
+#   - classify_method: label='B', has_summary=True → 'interview' (det_common 어댑터 미호출).
+#   - mysql/mariadb: DBM-015 N/A(applicable=False) → 스킵.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestDBM015LabelBRouting:
+    """DBM-015 label B(인터뷰) 라우팅 검증.
+
+    핵심 불변식:
+      1. classify('DBM-015', 'mssql_native') == 'STUB'  (label B이관 후 DET_SOURCE 정정)
+      2. classify('DBM-015', 'oracle_native') == 'STUB'
+      3. classify('DBM-015', 'pg_native') == 'STUB'
+      4. judge('DBM-015', ..., 'mssql_native') → handled=False (gate STUB 차단)
+         → det_common 어댑터 미호출 → 거짓양호(permission_name=[]) 경로 차단
+      5. classify_method('B', has_summary=True) → 'interview' (det_common 아님)
+      6. DB 항목 yaml: mssql/oracle/pg DBM-015 summary_instruction 보유
+    """
+
+    def setup_method(self):
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        reload_det_source()
+
+    def test_mssql_dbm015_classify_stub(self):
+        """mssql native DBM-015: label B이관 후 DET_SOURCE=STUB → gate 차단 확인."""
+        result = classify("DBM-015", "mssql_native")
+        assert result == "STUB", (
+            f"mssql DBM-015가 DET로 분류되면 거짓양호(permission_name=[]) 경로 탐!\n"
+            f"got: {result}"
+        )
+
+    def test_oracle_dbm015_classify_stub(self):
+        """oracle native DBM-015: 015_1/2 lambda:True → STUB."""
+        assert classify("DBM-015", "oracle_native") == "STUB"
+
+    def test_pg_dbm015_classify_stub(self):
+        """pg native DBM-015: R3 보수처리(수집형식 불일치) → STUB."""
+        assert classify("DBM-015", "pg_native") == "STUB"
+
+    def test_mssql_dbm015_gate_blocked(self):
+        """mssql native DBM-015: STUB → gate 차단 → handled=False (det_common 어댑터 미호출).
+
+        이전 동작: rules['permission_name']=[] → datum in [] 항상 False → 위반 0 →
+          handled=True + verdict=양호(거짓양호).
+        수정 후: STUB → gate 차단 → handled=False → label B 라우팅(_summarize_one).
+        """
+        raw = _make_raw_ev({
+            "DBM-015": {"RESULT": [
+                {"permission_name": "SELECT", "grantee": "PUBLIC", "object_name": "orders"},
+                {"permission_name": "INSERT", "grantee": "PUBLIC", "object_name": "payments"},
+            ]}
+        })
+        fv = judge("DBM-015", raw, "mssql_native", {})
+        assert fv.handled is False, (
+            "mssql DBM-015: STUB → gate 차단되어야 함. "
+            "handled=True이면 거짓양호(permission_name=[]) 경로를 타고 있음!"
+        )
+
+    def test_oracle_dbm015_gate_blocked(self):
+        """oracle native DBM-015: STUB → gate 차단 → handled=False."""
+        raw = _make_raw_ev({
+            "DBM-015": {"RESULT": [{"object_type": "TABLE", "privilege": "SELECT"}]}
+        })
+        fv = judge("DBM-015", raw, "oracle_native", {})
+        assert fv.handled is False, (
+            "oracle DBM-015: STUB → gate 차단되어야 함 — 거짓양호 방지"
+        )
+
+    def test_pg_dbm015_gate_blocked(self):
+        """pg native DBM-015: STUB(R3) → gate 차단 → handled=False (기존 테스트 보강)."""
+        raw = _make_raw_ev({
+            "DBM-015": {"RESULT": [{"privilege_type": "SELECT", "grantee": "PUBLIC"}]}
+        })
+        fv = judge("DBM-015", raw, "pg_native", {})
+        assert fv.handled is False, (
+            "pg DBM-015: STUB → gate 차단되어야 함 — 거짓양호 방지"
+        )
+
+    def test_label_b_routes_to_interview_not_det_common(self):
+        """label='B', has_summary=True → classify_method='interview' (det_common 아님).
+
+        mssql DBM-015에서 judgment_method: det_common이 제거된 결과:
+        yaml_method=None → classify_method(label='B', has_summary=True) → 'interview'.
+        """
+        from judge_tool.criteria_loader import classify_method
+        result = classify_method("B", has_summary=True, in_empty_means_good=False)
+        assert result == "interview", (
+            f"label B + has_summary=True → 'interview'이어야 함, got '{result}'"
+        )
+        # empty_means_good=True도 여전히 interview (B가 우선)
+        result_emg = classify_method("B", has_summary=True, in_empty_means_good=True)
+        assert result_emg == "interview"
+
+    def test_mssql_dbm015_no_false_good_from_empty_rules(self):
+        """mssql dbm_015 rules=['permission_name':[]] 버그 경로가 실행되지 않음을 확인.
+
+        det_common 어댑터가 호출되면 벤더 analysis.dbm_015()가 실행돼
+        rules['permission_name']=[] → 위반 0 → handled=True+양호(거짓양호).
+        STUB gate 차단으로 이 경로가 실행되지 않음 = handled=False 단언.
+        """
+        # 악의적 케이스: mssql PUBLIC에 INSERT/DELETE 권한 부여돼도
+        raw = _make_raw_ev({
+            "DBM-015": {"RESULT": [
+                {"permission_name": "INSERT", "grantee": "PUBLIC", "object_name": "customer"},
+                {"permission_name": "DELETE", "grantee": "PUBLIC", "object_name": "transactions"},
+            ]}
+        })
+        fv = judge("DBM-015", raw, "mssql_native", {})
+        # STUB gate → handled=False. handled=True+양호는 거짓양호.
+        assert fv.handled is False, (
+            "거짓양호 경로 차단 실패! mssql PUBLIC에 INSERT/DELETE 있는데 "
+            "det_common 어댑터가 '양호'로 판정함. "
+            "DET_SOURCE mssql:DET→STUB 또는 yaml judgment_method 제거 확인 필요."
+        )
+
+    def test_db_yaml_dbm015_summary_instruction_content(self):
+        """oracle/mssql/pg yaml DBM-015 summary_instruction 키워드 포함 확인."""
+        import yaml
+        for fname, engine_kw in [
+            ("db_oracle.yaml", "SYS"),
+            ("db_mssql.yaml", "sys"),
+            ("db_postgresql.yaml", "pg_catalog"),
+        ]:
+            path = f"judge_tool/item_configs/{fname}"
+            with open(path, encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            item = data.get("DBM-015", {})
+            assert item.get("label") == "B", f"{fname} DBM-015 label != B"
+            assert "judgment_method" not in item, (
+                f"{fname} DBM-015에 judgment_method가 있으면 det_common이 우선 → 거짓양호 위험!"
+            )
+            si = item.get("summary_instruction", "")
+            assert si, f"{fname} DBM-015 summary_instruction 비어있음"
+            assert engine_kw in si, (
+                f"{fname} DBM-015 summary_instruction에 '{engine_kw}' 없음 "
+                f"(시스템권한 구분 지시 필요)"
+            )
+            assert "판정" in si and "말고" in si or "내리지 말" in si, (
+                f"{fname} DBM-015 summary_instruction에 '판정 금지' 지시 없음"
+            )
+            assert "업무상 불필요" in si, (
+                f"{fname} DBM-015 summary_instruction에 '업무상 불필요' 없음"
+            )
+
+    def test_mssql_dbm015_no_judgment_method_in_yaml(self):
+        """mssql yaml DBM-015에 judgment_method 키가 없어야 함 — 있으면 det_common 우선."""
+        import yaml
+        with open("judge_tool/item_configs/db_mssql.yaml", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        item = data.get("DBM-015", {})
+        assert "judgment_method" not in item, (
+            "db_mssql.yaml DBM-015에 judgment_method가 있음! "
+            "criteria_loader yaml_method 우선 → det_common 어댑터 호출 → 거짓양호."
+        )
+
+    def test_detsource_mssql_dbm015_is_stub(self):
+        """DET_SOURCE mssql DBM-015 = STUB (label B 이관, 거짓양호 회피 명기)."""
+        reload_det_source()
+        result = classify("DBM-015", "mssql_native")
+        assert result == "STUB", (
+            f"DET_SOURCE mssql DBM-015 = {result}. "
+            "STUB이어야 gate 차단 → label B 라우팅 → _summarize_one 경로."
+        )
+
+    def test_cloud_mssql_rds_dbm015_still_det(self):
+        """cloud mssql_rds DBM-015는 DET 유지 — native만 label B 이관."""
+        result = classify("DBM-015", "mssql_rds")
+        assert result == "DET", (
+            f"mssql_rds DBM-015는 DET여야 함(cloud 변형, permission_name 비교 가능), got {result}"
+        )
+
+    def test_cloud_pg_rds_dbm015_still_det(self):
+        """cloud pg_rds DBM-015는 DET 유지 — native만 label B 이관."""
+        result = classify("DBM-015", "pg_rds")
+        assert result == "DET"
+
+    def test_fake_llm_summarize_path(self):
+        """fake LLM client로 label B → _summarize_one → verdict=판단보류 + interview_summary 채움.
+
+        실 Ollama 미필요 — FakeSummarizeClient가 요약 텍스트 반환.
+        """
+        from judge_tool.main import _summarize_one, JudgeContext
+        from judge_tool.models import Criterion, EvidenceItem, ResourceEvidence
+        from judge_tool.profile import DB_MSSQL
+
+        class FakeSummarizeClient:
+            """LLM을 흉내 내는 fake client: summary_instruction 응답."""
+            def chat(self, system, user):
+                return "시스템 권한: sys.tables(SELECT) — 기본 권한(정상). 업무 객체: dbo.orders(INSERT) — 업무상 불필요 의심."
+
+        crit = Criterion(
+            item_id="DBM-015", item_name="PUBLIC Role 권한", risk=4.0,
+            variant="mssql_native",
+            eval_type="스크립트", standard="양호: 불필요한 권한 없음", method="인터뷰",
+            applicable=True, label="B",
+            summary_instruction="PUBLIC Role에 부여된 권한을 정리하라. 판정하지 말 것.",
+            judgment_method="interview")
+        item = EvidenceItem(
+            item_id="DBM-015", variant="mssql_native",
+            resources=[ResourceEvidence(
+                resource_id="r1", status="review",
+                detail="PUBLIC: INSERT on dbo.orders",
+                evidence="PUBLIC: INSERT on dbo.orders")])
+        ctx = JudgeContext(
+            profile=DB_MSSQL, profile_key="db_mssql",
+            client=FakeSummarizeClient(), items={}, variant="mssql_native")
+
+        j = _summarize_one(crit, item, ctx)
+        assert j is not None, "_summarize_one이 None 반환 — 라우팅 실패"
+        assert j.verdict == "판단보류", (
+            f"label B → verdict='판단보류' 고정이어야 함, got '{j.verdict}'"
+        )
+        assert j.interview_summary is not None, (
+            "interview_summary가 None — LLM 요약 호출 실패"
+        )
+        assert "불필요" in j.interview_summary or "sys" in j.interview_summary or "orders" in j.interview_summary, (
+            f"interview_summary에 요약 내용 없음: {j.interview_summary!r}"
+        )
+        assert j.label == "B"

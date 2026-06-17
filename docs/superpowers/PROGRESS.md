@@ -1,12 +1,26 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-17 (**상태저장. 이번 세션 완료: DBM-013 확정 분류 구현 SHIP — mysql/mariadb HOST 와일드카드 보강(R-MY013/R-MA013), oracle/mssql/pg STUB gate 차단 확인, 1270 passed. ★다음 착수=DBM-014~ 분류검토 재개.**). **"다음에 진행해줘" → 아래 ★다음 착수(DBM-014~ 분류 검토 재개)부터.**
+> 마지막 업데이트: 2026-06-17 (**상태저장. 이번 세션 완료: DBM-015 label B(인터뷰)+LLM요약 구현 SHIP — mssql 거짓양호(permission_name=[])/pg 과탐 해소, 1291 passed. ★다음 착수=DBM-014~ 분류검토 재개(016~부터).**). **"다음에 진행해줘" → 아래 ★다음 착수(DBM-016~ 분류 검토 재개)부터.**
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. 이 파일이 단일 진실원천.
 >  재개 트리거: "개발진행해"/"개발해줘"/"이어서 진행"/"다음 작업"/**"다음에 진행해"** → 아래 TL;DR ★다음 착수부터.)
 
 ## ▶ 다음 세션 즉시 시작점 (TL;DR)
-- **★다음 착수 = DBM-014~ 분류 검토 재개** (사용자와 항목별 1:1 검토 중. 001~009·011·013 완료, 다음=DBM-014)
-  **검토 진행 방식**: 항목별로 [항목명/상세설명/판단기준/엔진별 벤더 결정론 로직(현행 동작)/내 분류 권고] 제시 → 사용자 결정. 남은 항목: 014/015/016/017/019/020/021/022/024/025/026/028/029/030/031/032/033/034/035/036.
+- **★다음 착수 = DBM-016~ 분류 검토 재개** (사용자와 항목별 1:1 검토 중. 001~009·011·013·015 완료, 다음=DBM-016)
+  **검토 진행 방식**: 항목별로 [항목명/상세설명/판단기준/엔진별 벤더 결정론 로직(현행 동작)/내 분류 권고] 제시 → 사용자 결정. 남은 항목: 016/017/019/020/021/022/024/025/026/028/029/030/031/032/033/034/035/036.
+
+  **✅ DBM-015 label B(인터뷰)+LLM요약 구현 SHIP (2026-06-17, 1291 passed, 양호자동판정 0건)**:
+  - **문제**: mssql DET였으나 `rules['permission_name']=[]`(빈) → `datum in []` 항상 False → 위반 0 → handled=True+양호(거짓양호). pg STUB이나 `privilege_type` KeyError → pg_catalog 기본 PUBLIC SELECT 과탐(거짓취약). oracle 015_1/2 `lambda:True` 과탐.
+  - **해결: label B(인터뷰)로 이관** — `judgment_method: det_common` 제거(mssql), label B + summary_instruction → `classify_method=interview` → `_summarize_one` 라우팅(det_common 어댑터 미호출).
+  - **db_mssql.yaml DBM-015**: `judgment_method: det_common` + `needs_review: true` 제거. `label: B` + 상세 `summary_instruction` 추가. 코멘트: "label B이관, rules['permission_name']=[] 거짓양호 회피".
+  - **db_oracle.yaml DBM-015**: `label: B` 유지(기존). `summary_instruction` 상세화(SYS·시스템권한 구분, 업무상 불필요 의심 DML 우선, 판정 금지).
+  - **db_postgresql.yaml DBM-015**: `label: B` 유지(기존). `summary_instruction` 상세화(pg_catalog·information_schema 구분, 업무 객체 DML 우선, 판정 금지).
+  - **DET_SOURCE.yaml DBM-015 mssql**: `DET → STUB` + 주석 "label B 이관(빈 rules 거짓양호 회피)". cloud mssql_rds/pg_rds/pg_aurora/pg_azure는 DET 유지.
+  - **라우팅 확인**: label B + summary_instruction → `classify_method(B, has_summary=True)='interview'` → `_summarize_one` → `verdict=판단보류`, `interview_summary` 채움. det_common 어댑터(mssql 거짓양호 경로) 완전 우회.
+  - **실데이터 3엔진 검증**: oracle/mssql/pg native → `verdict=판단보류`, `judgment_method=interview`, `interview_summary` 생성, 양호 자동판정 0건.
+  - **mysql/mariadb N/A 유지**: applicable=False → 스킵 정상.
+  - **실LLM 품질(qwen3-coder:30b)**: mssql DBM-015 `verdict=판단보류` + `interview_summary`에 PUBLIC 권한 목록 생성 확인.
+  - **신규 테스트(14건)**: `TestDBM015LabelBRouting` — classify=STUB(oracle/mssql/pg), gate 차단(3엔진), label B→interview 라우팅, mssql 거짓양호 경로 미호출, yaml 키워드 확인, DET_SOURCE mssql=STUB, cloud mssql_rds/pg_rds DET 유지, fake LLM summary 생성경로.
+  - **수정 파일**: `item_configs/db_mssql.yaml`, `item_configs/db_oracle.yaml`, `item_configs/db_postgresql.yaml`, `vendor/common/DET_SOURCE.yaml`, `tests/test_det_adapters_db.py`(+14건, docstring 갱신).
 
   **✅ DBM-013 확정 분류 구현 SHIP (2026-06-17, 1270 passed, 양호자동판정 0건)**:
   - **mysql/mariadb DET + HOST 와일드카드 보강(R-MY013/R-MA013)**: `vendor/common/db/{mysql,mariadb}/analysis.py dbm_013` 기존 `datum['HOST'] in rules['HOST']`(정확매칭) → `'%' in datum['HOST']`(포함 매칭)으로 변경. `'%'`(전체), `'10.%'`(서브넷), `'%.dom'`(도메인) 등 부분 와일드카드 미탐 거짓양호 갭 차단. localhost/특정IP/특정호스트 → 양호 유지. exception USER 제외 보존. VENDOR-EDIT(c) 등재.

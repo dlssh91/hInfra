@@ -505,7 +505,10 @@ items:
   DBM-015:                          # 권한/PUBLIC
     variants:
       oracle: STUB
-      mssql: DET
+      # mssql native: label B(인터뷰)로 이관. DET였으나 rules['permission_name']=[] 빈목록 → 항상 양호(거짓양호 회피).
+      # db_mssql.yaml DBM-015에서 judgment_method: det_common 제거 → classify_method=interview → _summarize_one.
+      # 이 DET_SOURCE 항목은 무의미해지나 혼란 방지용 STUB/주석으로 유지.
+      mssql: STUB           # label B 이관(거짓양호 회피): judgment_method=interview, DET 어댑터 미호출
       pg: STUB
       # 클라우드 변형 (Phase 4b)
       oracle_rds: STUB     # cloud oracle: 015_1/015_2 lambda True → STUB(native와 동일)
