@@ -107,6 +107,11 @@ DBM-021:
   # 점검 스크립트(mssql.sql)도 "Self-Managed: 콘솔에서 확인, CSP-Managed: N/A"로 명시, 벤더 analysis.py도 동일.
   label: C
   canned_message: "ODBC/OLE-DB 데이터소스·드라이버는 SQL 질의로 점검 불가(OS 레지스트리/관리콘솔 레벨) → 관리콘솔에서 업무상 불필요한 데이터소스·드라이버 제거 여부 확인 필요(판단보류)."
+DBM-022:
+  # label C: MSSQL 설정·데이터 파일 권한은 Windows 파일 ACL이라 SQL 질의로 점검 불가.
+  # mssql.sql에 DBM-022 항목 없음, 서버(Windows) 스크립트(fsi_win.bat)도 DBM-022 전용 수집 없음.
+  label: C
+  canned_message: "MSSQL 설정·데이터 파일 권한은 Windows 파일 ACL이라 SQL 질의로 점검 불가 → 서버(Windows) 점검 또는 콘솔에서 파일 접근권한 적절성 확인 필요(판단보류)."
 DBM-024:
   judgment_method: det_common
   needs_review: true

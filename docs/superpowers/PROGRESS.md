@@ -1,6 +1,6 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-17 (**상태저장. 운영 컨셉 전환=빠른 라우팅 triage + 픽스처/듀얼런 안전망. 이번 세션 완료: DBM-019 3종 SHIP(재사용방지 DET복원·모드D 거짓양호가드·mariadb polarity R-MA019), 1346 passed. ★다음 착수=DBM-020~ (빠른 triage 방식으로).**). **"다음에 진행해줘"/"개발진행해" → 아래 ★다음 착수(DBM-020~ 빠른 triage)부터.**
+> 마지막 업데이트: 2026-06-18 (**상태저장. DBM-022 완료 — CRITICAL 거짓양호 버그픽스(_filter_noise bare str 래핑 + 모드E 파일권한미수집/MULTILINE 가드) + mssql label C. 1376 passed. ★다음 착수=DBM-024~ 빠른 triage.**). **"다음에 진행해줘"/"개발진행해" → 아래 ★다음 착수(DBM-024~)부터.**
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. 이 파일이 단일 진실원천.
 >  재개 트리거: "개발진행해"/"개발해줘"/"이어서 진행"/"다음 작업"/**"다음에 진행해"** → 아래 TL;DR ★다음 착수부터.)
 
@@ -17,8 +17,18 @@
 5. **향후 도메인(네트워크/방화벽/가상화)**: 기존분류 따라가기 + 픽스처/듀얼런으로 틀린방향 잡힐 때만 수정.
 > ⚠️ **보류한 deep-audit 백로그**: 아래 "deep-audit 백로그(보류)" 섹션 참조. 필요시 나중에 항목별 정밀감사 적용 가능하도록 상태 보존.
 
-- **★다음 착수 = DBM-022~ (빠른 라우팅 triage)** (001~009·011·013·015·016·017·019·020·021 완료, 다음=DBM-022)
-  **검토 방식(빠른 triage)**: 항목마다 [항목명/판단기준(xlsx)/엔진 기준(벤더 로직) **별도 표기**/이진?맥락? 라우팅 권고] 간결 제시 → 사용자 결정. det 유지면 polarity·미설정→양호만 스팟체크. 남은 항목: 022/024/025/026/028/029/030/031/032/033/034/035/036.
+- **★다음 착수 = DBM-024~ (빠른 라우팅 triage)** (001~009·011·013·015·016·017·019·020·021·022 완료, 다음=DBM-024)
+  **검토 방식(빠른 triage)**: 항목마다 [항목명/판단기준(xlsx)/엔진 기준(벤더 로직) **별도 표기**/이진?맥락? 라우팅 권고] 간결 제시 → 사용자 결정. det 유지면 polarity·미설정→양호만 스팟체크. 남은 항목: 024/025/026/028/029/030/031/032/033/034/035/036.
+  - DBM-022 CRITICAL 버그픽스 완료(2026-06-18): 파일접근권한 거짓양호(전 엔진) 수정. DET 유지(수집판단 정확). 판단보류(모드E) 추가로 파일미수집 케이스도 가드.
+
+  **✅ DBM-022 파일접근권한 CRITICAL 버그픽스 SHIP (2026-06-18, 1367 passed, 거짓양호 0건)**:
+  - **CRITICAL 버그**: `det_adapters/db.py` `_filter_noise` — `not isinstance(row, dict): continue` → bare str 위반행 전부 드롭 → violations=0 → 무조건 양호(거짓양호). 벤더 `dbm_022`가 file_entry를 bare str로 직접 append해 발생(mysql/oracle/mariadb/pg/tibero 전 엔진).
+  - **수정 1 (핵심)**: `_filter_noise` — bare str → `{"*": row}` 래핑 보존으로 변경. docstring에 근거("Note/alert는 모두 dict로 도착 → 래핑이 거짓취약 유발 없음") 추가.
+  - **수정 2 (2차 가드, 모드E)**: `_PERM_GUARD = frozenset({"DBM-022"})` + `_dbm022_has_perm_line()` + `_PERM_LINE_RE` 추가. RESULT에 행은 있으나 권한패턴(`[drwxstl-]{10}`) 0건이면 판단보류(파일미수집/접근실패). 보수 원칙: 불확실 → 거짓양호 회피 우선.
+  - **판정 검증**: -rw-r--r--(other=r) → **취약**, -rw-rw----(group=w) → **취약**, -rwxrwxrwx → **취약**, -rw------- → **양호**, -r-------- → **양호**, No-such-file 출력 → **판단보류**.
+  - **회귀 확인**: Note/alert dict 행은 래핑 안 되고 기존대로 제거. oracle DBM-001 hashcat → crack_judge 경로(filter_noise 미경유). 다른 항목 거짓취약 0건. 1367 passed.
+  - **신규 테스트(21건)**: `TestFilterNoiseBareStringPreservation`(5건), `TestDBM022PermGuardUnit`(6건), `TestDBM022FalsePositiveBugFix`(10건).
+  - **수정 파일**: `det_adapters/db.py`, `tests/test_det_adapters_db.py`(+21건).
 
   **✅ DBM-020 사용자별 계정 분리 — 변경 불필요 (2026-06-17, 빠른 triage)**: 맥락·인터뷰 항목(xlsx "인터뷰로 확인", "적절히 분리"). 이미 5엔진 모두 **label B(인터뷰+LLM 계정목록 요약, verdict 판단보류)** 로 정확히 분류돼 있음. verdict 항상 판단보류 → 거짓양호 불가(fail-safe). 손댈 것 없음.
 

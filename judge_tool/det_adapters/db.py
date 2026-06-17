@@ -240,10 +240,18 @@ def _filter_noise(rows: list) -> list:
     """noise 행 제거: @@@(NOTE), ***(config Note) 단일키 항목 제거.
 
     {"*": datum}(문자열 위반행 래핑), alert 항목, 일반 위반행은 유지.
+
+    ⚠️ bare 문자열 행(str)은 드롭하지 말고 {"*": row}로 래핑해 유지한다.
+    DBM-022 file_entry, oracle DBM-001 hashcat 결과 등 진짜 위반이 bare str로
+    도착하므로 드롭하면 거짓양호가 발생한다 (CRITICAL, 2026-06-18 수정).
+    Note/alert/notice는 모두 dict({@@@}/{***}/{DBM-xxx})로 도착하므로
+    래핑 유지가 거짓취약을 일으키지 않는다.
     """
     filtered = []
     for row in rows:
         if not isinstance(row, dict):
+            # bare 문자열(또는 기타 non-dict) → {"*": row}로 래핑해 위반행 보존
+            filtered.append({"*": row})
             continue
         keys = set(row.keys())
         # 단일 "@@@" 키 = NOTE 행 → 제거
@@ -319,6 +327,38 @@ _DBM019_EXPECTED_CHECKER: dict = {
     "mysql":   _dbm019_mysql_has_expected,
     "mariadb": _dbm019_mariadb_has_expected,
 }
+
+# ── 모드 E: 파일권한 미수집 거짓양호 가드 (DBM-022 — 파일 접근권한) ──────────
+# DBM-022 위반행은 벤더 analysis.py가 bare 문자열(file_entry)로 생성한다.
+# _filter_noise 수정(2026-06-18)으로 bare str → {"*": row} 래핑 유지 → 위반 탐지 복원.
+# 추가 가드: RESULT에 행은 있지만 권한패턴(`^[drwxstl-]{10}`) 매칭이 0건인 경우
+# (예: "No such file or directory", 빈 출력) → 파일 미수집/접근실패 → 거짓양호 방지.
+# 보수 원칙: 파일 부존재를 "정상 양호"로 볼 수도 있지만, 불확실성 > 거짓양호 위험
+# → 판단보류 채택. 적용: mysql/oracle/mariadb/pg/tibero 전 엔진.
+_PERM_GUARD: frozenset = frozenset({"DBM-022"})
+
+# 권한 패턴: 유닉스 10자리 권한 문자열 시작. 벤더 analysis.py와 동일한 패턴 기준.
+# re.MULTILINE 필수: `ls -al` 출력이 "total N\n-rw-------..." 처럼 헤더로 시작하면
+# MULTILINE 없이는 ^ 가 첫 줄(헤더)만 매칭 → 권한라인 미탐 → 거짓보류 발생.
+_PERM_LINE_RE = re.compile(r"^[drwxstDRWXSTlL\-]{10}", re.IGNORECASE | re.MULTILINE)
+
+
+def _dbm022_has_perm_line(result_rows: list) -> bool:
+    """DBM-022 RESULT에서 유닉스 권한 패턴이 매칭되는 행이 1개 이상 있는지 확인.
+
+    result_rows는 data['DBM-022']['RESULT'] — 원본 수집 행들(dict, output 키 포함).
+    각 행의 'output' 값에서 권한 패턴을 탐색한다.
+    """
+    for row in result_rows:
+        if not isinstance(row, dict):
+            continue
+        output = row.get("output", "")
+        if not isinstance(output, str):
+            continue
+        if _PERM_LINE_RE.search(output):
+            return True
+    return False
+
 
 # ── 모드 B: 구조적 취약 (DBM 분류 검토 Batch1) ─────────────────────────────
 # PostgreSQL 코어에 네이티브 기능(실패잠금/복잡도강제)이 없어 데이터 없이도 구조적 취약.
@@ -686,6 +726,53 @@ def judge(
                     f"RESULT에 {len(raw_result_rows)}행이 있으나 "
                     f"재사용 방지 기대 변수가 포함되지 않음 — "
                     f"자동 양호 판정 불가 (engine={engine}, item={base})"
+                ),
+                citations=[],
+                ev_status="review",
+                handled=True,
+            )
+
+    # ── 모드 E: DBM-022 파일권한 미수집 거짓양호 가드 ────────────────────────
+    # 위반0인 경우 두 가지 케이스를 판단보류로 처리:
+    #   (1) RESULT 0행(빈 배열) → 파일권한 미수집(모드D DBM-019와 일관성)
+    #   (2) RESULT 행 있으나 권한 패턴 0건 → "No such file" 등 접근 실패
+    # 보수 원칙: 불확실한 경우 판단보류 채택(거짓양호 회피 우선).
+    if base in _PERM_GUARD and not violations:
+        raw_result_rows = data.get(base, {}).get("RESULT", [])
+        # (1) RESULT 빈배열 → 파일권한 미수집
+        if not raw_result_rows:
+            log.warning(
+                "모드E 가드: base=%s engine=%s RESULT 0행(빈배열) → 판단보류(파일권한 미수집)",
+                base, engine,
+            )
+            return ForcedVerdict(
+                verdict="판단보류",
+                confidence=0.0,
+                rationale=(
+                    f"[파일권한 미수집 → 판단보류] "
+                    f"RESULT가 빈 배열(0행) — "
+                    f"파일 권한 수집 자체가 이루어지지 않아 자동 양호 판정 불가 "
+                    f"(engine={engine}, item={base})"
+                ),
+                citations=[],
+                ev_status="review",
+                handled=True,
+            )
+        # (2) RESULT 행 있으나 권한 패턴 0건 → 접근 실패 또는 수집 오류
+        if not _dbm022_has_perm_line(raw_result_rows):
+            log.warning(
+                "모드E 가드: base=%s engine=%s RESULT %d행 존재하나 권한라인 0건 → 판단보류(파일권한 미수집)",
+                base, engine, len(raw_result_rows),
+            )
+            return ForcedVerdict(
+                verdict="판단보류",
+                confidence=0.0,
+                rationale=(
+                    f"[파일권한 미수집 → 판단보류] "
+                    f"RESULT에 {len(raw_result_rows)}행이 있으나 "
+                    f"권한 문자열(drwxrwxrwx 형식)이 포함되지 않음 — "
+                    f"파일 접근 실패 또는 수집 오류 가능성, 자동 양호 판정 불가 "
+                    f"(engine={engine}, item={base})"
                 ),
                 citations=[],
                 ev_status="review",
