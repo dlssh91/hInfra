@@ -112,7 +112,9 @@ DBM-017:
     \ ③ 간결히 묶어 요약.\
     \ 판정(양호/취약)은 내리지 말고 담당자가 '업무상 불필요 여부'를 빠르게 확인하도록 정리만 하라."
 DBM-019:
-  label: A
+  # label C: PostgreSQL native 비밀번호 재사용 방지 기능 부재 — 자동판정 불가
+  label: C
+  canned_message: "PostgreSQL은 비밀번호 재사용 방지를 native 지원하지 않음(passwordcheck 등 확장/외부 정책 필요) → 자동 점검 불가, 추가 확인 필요(판단보류)."
 DBM-020:
   # det_common 제거 (R3 보수처리): pg 수집형식 {"*": python_repr} → analysis 'rolname' KeyError → 거짓양호
   needs_review: true

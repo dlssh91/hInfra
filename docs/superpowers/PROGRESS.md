@@ -1,12 +1,32 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-17 (**상태저장. 이번 세션 완료: DBM-017 label B(인터뷰)+LLM요약 SHIP, 1316 passed. ★다음 착수=DBM-017 이후 분류검토 재개(019~부터).**). **"다음에 진행해줘" → 아래 ★다음 착수(DBM-019~ 분류 검토 재개)부터.**
+> 마지막 업데이트: 2026-06-17 (**상태저장. 이번 세션 완료: DBM-019 모드D 확장(Opus Critical 갭 수정) SHIP, 1344 passed. ★다음 착수=DBM-020~ 분류 검토 재개.**). **"다음에 진행해줘" → 아래 ★다음 착수(DBM-020~ 분류 검토 재개)부터.**
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. 이 파일이 단일 진실원천.
 >  재개 트리거: "개발진행해"/"개발해줘"/"이어서 진행"/"다음 작업"/**"다음에 진행해"** → 아래 TL;DR ★다음 착수부터.)
 
 ## ▶ 다음 세션 즉시 시작점 (TL;DR)
-- **★다음 착수 = DBM-019~ 분류 검토 재개** (사용자와 항목별 1:1 검토 중. 001~009·011·013·015·016·017 완료, 다음=DBM-019)
-  **검토 진행 방식**: 항목별로 [항목명/상세설명/판단기준/엔진별 벤더 결정론 로직(현행 동작)/내 분류 권고] 제시 → 사용자 결정. 남은 항목: 019/020/021/022/024/025/026/028/029/030/031/032/033/034/035/036.
+- **★다음 착수 = DBM-020~ 분류 검토 재개** (사용자와 항목별 1:1 검토 중. 001~009·011·013·015·016·017·019 완료, 다음=DBM-020)
+  **검토 진행 방식**: 항목별로 [항목명/상세설명/판단기준/엔진별 벤더 결정론 로직(현행 동작)/내 분류 권고] 제시 → 사용자 결정. 남은 항목: 020/021/022/024/025/026/028/029/030/031/032/033/034/035/036.
+
+  **✅ DBM-019 모드D 확장(Opus Critical 갭 수정) SHIP (2026-06-17, 1344 passed, 거짓양호 0건)**:
+  - **Critical 수정**: `det_adapters/db.py` 모드D를 "기대변수 부재 → 판단보류"로 확장.
+    - `_dbm019_mysql_has_expected()`: RESULT 행 중 `VARIABLE_NAME ∈ {password_history, password_reuse_interval}` 존재해야 양호 가능. 없으면 판단보류.
+    - `_dbm019_mariadb_has_expected()`: RESULT 행 중 dict `VARIABLE_NAME == PASSWORD_REUSE_CHECK_INTERVAL` 또는 str `"not loaded"` 신호 있어야 양호 가능. 없으면 판단보류.
+    - `_DBM019_EXPECTED_CHECKER` dict에 `{"mysql": ..., "mariadb": ...}` 등록. 매핑 없는 엔진(oracle/mssql)은 기존 0행-only 유지(직접 인덱싱→KeyError로 이미 안전).
+    - 판단보류 사유: `"[재사용방지 설정 변수 미수집 → 판단보류] RESULT에 N행이 있으나 재사용 방지 기대 변수가 포함되지 않음 — 자동 양호 판정 불가"`.
+  - **신규 테스트(+7건)**: `TestDBM019PasswordReuse` §8 — mysql Critical재현(→판단보류), mysql 다수행 기대변수 부재(→판단보류), mysql 기대변수+기타행 혼재(→양호 불변), mariadb Critical재현(→판단보류), mariadb 다수행 기대신호 부재(→판단보류), mariadb 기대변수+기타행(→양호 불변), mariadb not-loaded+기타행(→취약 불변).
+  - **실데이터 불변 확인**: mysql_native DBM-019=취약(history=0,reuse_interval=0), mariadb_native DBM-019=취약(plugin not loaded). 변경 없음.
+  - **Medium 미수정**: mariadb `INTERVAL > 30 → 취약` polarity 의심은 사용자 결정 대기. 손대지 않음.
+  - **수정 파일**: `det_adapters/db.py`, `tests/test_det_adapters_db.py`(+7건).
+
+  **✅ DBM-019 비밀번호 재사용 방지 SHIP (2026-06-17, 1337 passed, 거짓양호 0건)**:
+  - **판단기준**: 양호=이전 비밀번호 재사용 불가 설정 / 취약=재사용 가능(미설정 포함).
+  - **mariadb DET 복원**: `DET_SOURCE.yaml` mariadb: STUB→DET. `db_mariadb.yaml` DBM-019에 `judgment_method: det_common` 복원. analysis.py `PASSWORD_REUSE_CHECK_INTERVAL/"not loaded"` 탐지 정상 확인(실데이터: "PASSWORD_REUSE_CHECK plugin is not loaded!" → 취약 ✓).
+  - **거짓양호 가드(모드D)**: `det_adapters/db.py` `_EMPTY_RESULT_HOLD = frozenset({"DBM-019"})` 신규 추가. RESULT 완전 비어있음(0행) → `모드D 가드` → 판단보류(설정 미수집). RESULT에 데이터행 있으나 위반 없음 → 양호(현행 유지). 적용: mysql/oracle/mssql/mariadb native+cloud.
+  - **pg label C 기능부재 안내**: `db_postgresql.yaml` DBM-019 `label: A→C` + `canned_message: "PostgreSQL은 비밀번호 재사용 방지를 native 지원하지 않음(passwordcheck 등 확장/외부 정책 필요) → 자동 점검 불가, 추가 확인 필요(판단보류)."`. `classify_method(C)='det'` → `_defer_or_eol` → `_auto_defer(canned_message)`. DET_SOURCE pg STUB 유지(주석: label C 기능부재).
+  - **실데이터 5엔진 검증**: mysql=취약(history=0, reuse_interval=0), mariadb=취약(plugin not loaded), oracle=취약(8건 UNLIMITED), mssql=양호(all policy_checked=1), pg=판단보류+기능부재안내. 거짓양호 0건.
+  - **신규 테스트(21건)**: `TestDBM019PasswordReuse` — mariadb DET 복원(2종), 적절설정→양호(4종), 부적절설정→취약(4종), 빈RESULT→판단보류(4종), "not loaded"→취약(1종), pg label C+canned(2종), 실데이터 거짓양호0(4종).
+  - **수정 파일**: `vendor/common/DET_SOURCE.yaml`, `item_configs/db_mariadb.yaml`, `item_configs/db_postgresql.yaml`, `det_adapters/db.py`, `tests/test_det_adapters_db.py`(+21건).
 
   **✅ DBM-016 D+판단보류+힌트 정책 전환 SHIP (2026-06-17, 1299 passed, 자동verdict 0건)**:
   - **정책**: 패치/EOL/버전-최신성 항목 verdict=판단보류 고정, 자동 양호/취약 금지. 버전 기준선은 eol.yaml(as_of 스탬프), 힌트만 제공.

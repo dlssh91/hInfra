@@ -576,8 +576,8 @@ items:
       mysql: DET
       oracle: DET
       mssql: DET
-      mariadb: STUB
-      pg: STUB
+      mariadb: DET         # STUB→DET 복원(DBM-011 동일 오분류): PASSWORD_REUSE_CHECK_INTERVAL/"not loaded" 검사
+      pg: STUB             # pg native: 비밀번호 재사용 방지 native 지원 없음 → label C 기능부재 안내
       # 클라우드 변형 (Phase 4b)
       mysql_rds: DET
       mysql_aurora: DET
@@ -588,8 +588,8 @@ items:
       pg_rds: ABSENT       # cloud pg: dbm_019 메서드 없음(run()에 미호출) → ABSENT
       pg_aurora: ABSENT
       pg_azure: ABSENT
-    # pg native: 빈 본문 → STUB
-    # mariadb native: 수집형식 {"*": python_repr} — analysis 'VARIABLE_NAME' KeyError 삼킴 → [] → 거짓양호(R3)
+    # pg native: 비밀번호 재사용 방지 native 지원 없음(passwordcheck 확장/외부 필요) → label C 기능부재 안내
+    # mariadb native: analysis.py PASSWORD_REUSE_CHECK_INTERVAL/"not loaded" 검사 정상 — DET 복원
 
   DBM-020:                          # 계정 분리/공유 (needs_review 필수)
     variants:

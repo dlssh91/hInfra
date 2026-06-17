@@ -2778,3 +2778,522 @@ class TestDBM017LabelBRouting:
             f"interview_summary에 요약 내용 없음: {j.interview_summary!r}"
         )
         assert j.label == "B"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DBM-019 비밀번호 재사용 방지 — 거짓양호 가드 + mariadb DET 복원 + pg label C
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestDBM019PasswordReuse:
+    """DBM-019 비밀번호 재사용 방지 분류 검증.
+
+    핵심 불변식:
+      1. mariadb DBM-019 classify == DET (STUB→DET 복원)
+      2. mysql/oracle/mssql/mariadb 설정 적절 → 양호
+      3. mysql/oracle/mssql/mariadb 설정 부적절(값 나쁨) → 취약
+      4. mysql/oracle/mssql/mariadb RESULT 완전 비어있음 → 판단보류(거짓양호 가드, handled=True)
+      5. mariadb "not loaded" → 취약
+      6. pg DBM-019 label C → 판단보류 + canned_message(기능부재 안내)
+      7. 실데이터: mysql/oracle/mssql/mariadb 거짓양호 0 확인
+    """
+
+    def setup_method(self):
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        reload_det_source()
+
+    # ── 1. mariadb DET 복원 ───────────────────────────────────────────────────
+
+    def test_mariadb_dbm019_det_restored_classify(self):
+        """mariadb DBM-019: DET_SOURCE에서 DET 분류 확인(STUB→DET 복원)."""
+        reload_det_source()
+        assert classify("DBM-019", "mariadb") == "DET", (
+            "mariadb DBM-019 classify가 DET 아님 — DET_SOURCE 갱신 미반영"
+        )
+
+    def test_mariadb_dbm019_det_restored_native(self):
+        """mariadb_native DBM-019: DET_SOURCE DET → gate 통과 가능."""
+        reload_det_source()
+        assert classify("DBM-019", "mariadb_native") == "DET", (
+            "mariadb_native DBM-019 classify가 DET 아님 — DET_SOURCE 갱신 미반영"
+        )
+
+    # ── 2. 설정 적절 → 양호 ──────────────────────────────────────────────────
+
+    def test_mysql_proper_settings_is_good(self):
+        """MySQL: password_history>0, password_reuse_interval>0 → 양호."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-019": {"RESULT": [
+                {"VARIABLE_NAME": "password_history", "VARIABLE_VALUE": "10"},
+                {"VARIABLE_NAME": "password_reuse_interval", "VARIABLE_VALUE": "365"},
+            ]}
+        })
+        fv = judge("DBM-019", raw, "mysql_native", {})
+        assert fv.handled is True, f"mysql 적절 설정 handled=False: {fv}"
+        assert fv.verdict == "양호", (
+            f"mysql 적절 설정인데 양호 아님: verdict={fv.verdict}"
+        )
+
+    def test_mssql_all_policy_checked_is_good(self):
+        """MSSQL: is_policy_checked=1 전원 → 양호."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-019": {"RESULT": [
+                {"name": "sa", "is_policy_checked": "1"},
+                {"name": "app_user", "is_policy_checked": "1"},
+            ]}
+        })
+        fv = judge("DBM-019", raw, "mssql_native", {})
+        assert fv.handled is True, f"mssql 적절 설정 handled=False: {fv}"
+        assert fv.verdict == "양호", (
+            f"mssql 적절 설정인데 양호 아님: verdict={fv.verdict}"
+        )
+
+    def test_oracle_proper_limits_is_good(self):
+        """Oracle: PASSWORD_REUSE_MAX/TIME 모두 UNLIMITED 아님(값 설정됨) → 양호."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-019": {"RESULT": [
+                {"username": "APP", "profile": "DEFAULT",
+                 "resource_name": "PASSWORD_REUSE_MAX", "limit": "10"},
+                {"username": "APP", "profile": "DEFAULT",
+                 "resource_name": "PASSWORD_REUSE_TIME", "limit": "180"},
+            ]}
+        })
+        fv = judge("DBM-019", raw, "oracle_native", {})
+        assert fv.handled is True, f"oracle 적절 설정 handled=False: {fv}"
+        assert fv.verdict == "양호", (
+            f"oracle 적절 설정인데 양호 아님: verdict={fv.verdict}"
+        )
+
+    def test_mariadb_proper_interval_is_good(self):
+        """MariaDB: PASSWORD_REUSE_CHECK_INTERVAL > 0 이고 <= threshold → 양호."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-019": {"RESULT": [
+                {"VARIABLE_NAME": "PASSWORD_REUSE_CHECK_INTERVAL", "VARIABLE_VALUE": "30"},
+            ]}
+        })
+        fv = judge("DBM-019", raw, "mariadb_native", {})
+        assert fv.handled is True, f"mariadb 적절 설정 handled=False: {fv}"
+        assert fv.verdict == "양호", (
+            f"mariadb 적절 설정인데 양호 아님: verdict={fv.verdict}"
+        )
+
+    # ── 3. 설정 부적절 → 취약 ────────────────────────────────────────────────
+
+    def test_mysql_zero_history_is_vuln(self):
+        """MySQL: password_history=0 → 재사용 무제한 → 취약."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-019": {"RESULT": [
+                {"VARIABLE_NAME": "password_history", "VARIABLE_VALUE": "0"},
+                {"VARIABLE_NAME": "password_reuse_interval", "VARIABLE_VALUE": "0"},
+            ]}
+        })
+        fv = judge("DBM-019", raw, "mysql_native", {})
+        assert fv.handled is True, f"mysql 미설정 handled=False: {fv}"
+        assert fv.verdict == "취약", (
+            f"mysql password_history=0 → 취약 기대인데 {fv.verdict} "
+            f"— 거짓양호 발생!"
+        )
+
+    def test_mssql_policy_unchecked_is_vuln(self):
+        """MSSQL: is_policy_checked=0인 계정 존재 → 취약."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-019": {"RESULT": [
+                {"name": "sa", "is_policy_checked": "1"},
+                {"name": "app_user", "is_policy_checked": "0"},
+            ]}
+        })
+        fv = judge("DBM-019", raw, "mssql_native", {})
+        assert fv.handled is True, f"mssql 위반 handled=False: {fv}"
+        assert fv.verdict == "취약", (
+            f"mssql is_policy_checked=0 → 취약 기대인데 {fv.verdict}"
+        )
+
+    def test_oracle_unlimited_is_vuln(self):
+        """Oracle: PASSWORD_REUSE_TIME/MAX UNLIMITED → 재사용 무제한 → 취약."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-019": {"RESULT": [
+                {"username": "SYS", "profile": "DEFAULT",
+                 "resource_name": "PASSWORD_REUSE_TIME", "limit": "UNLIMITED"},
+                {"username": "SYS", "profile": "DEFAULT",
+                 "resource_name": "PASSWORD_REUSE_MAX", "limit": "UNLIMITED"},
+            ]}
+        })
+        fv = judge("DBM-019", raw, "oracle_native", {})
+        assert fv.handled is True, f"oracle UNLIMITED handled=False: {fv}"
+        assert fv.verdict == "취약", (
+            f"oracle UNLIMITED → 취약 기대인데 {fv.verdict}"
+        )
+
+    def test_mariadb_interval_zero_is_vuln(self):
+        """MariaDB: PASSWORD_REUSE_CHECK_INTERVAL=0 → 재사용 무제한 → 취약."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-019": {"RESULT": [
+                {"VARIABLE_NAME": "PASSWORD_REUSE_CHECK_INTERVAL", "VARIABLE_VALUE": "0"},
+            ]}
+        })
+        fv = judge("DBM-019", raw, "mariadb_native", {})
+        assert fv.handled is True, f"mariadb interval=0 handled=False: {fv}"
+        assert fv.verdict == "취약", (
+            f"mariadb PASSWORD_REUSE_CHECK_INTERVAL=0 → 취약 기대인데 {fv.verdict}"
+        )
+
+    # ── 4. RESULT 완전 비어있음 → 판단보류 (거짓양호 가드) ────────────────────
+
+    def test_mysql_empty_result_is_hold_not_good(self):
+        """MySQL: RESULT 0행 → 설정 미수집 → 판단보류(거짓양호 가드, handled=True)."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-019": {"RESULT": []}})
+        fv = judge("DBM-019", raw, "mysql_native", {})
+        assert fv.handled is True, f"mysql 빈결과 handled=False: {fv}"
+        assert fv.verdict == "판단보류", (
+            f"mysql RESULT 0행 → 판단보류 기대인데 {fv.verdict} — 거짓양호 발생!"
+        )
+
+    def test_oracle_empty_result_is_hold_not_good(self):
+        """Oracle: RESULT 0행 → 설정 미수집 → 판단보류."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-019": {"RESULT": []}})
+        fv = judge("DBM-019", raw, "oracle_native", {})
+        assert fv.handled is True, f"oracle 빈결과 handled=False: {fv}"
+        assert fv.verdict == "판단보류", (
+            f"oracle RESULT 0행 → 판단보류 기대인데 {fv.verdict} — 거짓양호 발생!"
+        )
+
+    def test_mssql_empty_result_is_hold_not_good(self):
+        """MSSQL: RESULT 0행 → 설정 미수집 → 판단보류."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-019": {"RESULT": []}})
+        fv = judge("DBM-019", raw, "mssql_native", {})
+        assert fv.handled is True, f"mssql 빈결과 handled=False: {fv}"
+        assert fv.verdict == "판단보류", (
+            f"mssql RESULT 0행 → 판단보류 기대인데 {fv.verdict} — 거짓양호 발생!"
+        )
+
+    def test_mariadb_empty_result_is_hold_not_good(self):
+        """MariaDB: RESULT 0행 → 설정 미수집 → 판단보류."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-019": {"RESULT": []}})
+        fv = judge("DBM-019", raw, "mariadb_native", {})
+        assert fv.handled is True, f"mariadb 빈결과 handled=False: {fv}"
+        assert fv.verdict == "판단보류", (
+            f"mariadb RESULT 0행 → 판단보류 기대인데 {fv.verdict} — 거짓양호 발생!"
+        )
+
+    # ── 5. mariadb "not loaded" → 취약 ──────────────────────────────────────
+
+    def test_mariadb_not_loaded_is_vuln(self):
+        """MariaDB: 'PASSWORD_REUSE_CHECK plugin is not loaded!' → 취약."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-019": {
+                "RESULT": ["PASSWORD_REUSE_CHECK plugin is not loaded!"]
+            }
+        })
+        fv = judge("DBM-019", raw, "mariadb_native", {})
+        assert fv.handled is True, f"mariadb not loaded handled=False: {fv}"
+        assert fv.verdict == "취약", (
+            f"mariadb 플러그인 미로드 → 취약 기대인데 {fv.verdict}"
+        )
+
+    # ── 6. pg label C → 판단보류 + canned_message ─────────────────────────────
+
+    def test_pg_dbm019_label_c_canned_message(self):
+        """pg DBM-019: label C + canned_message → 판단보류(기능부재 안내)."""
+        import openpyxl, tempfile
+        from judge_tool.criteria_loader import load_criteria
+        from judge_tool.profile import get_profile
+
+        profile = get_profile("db_postgresql")
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tf:
+            tmpxlsx = tf.name
+        try:
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "데이터베이스"
+            ws.cell(4, 2, "ID"); ws.cell(4, 7, "name"); ws.cell(4, 8, "risk")
+            ws.cell(4, 17, "대상"); ws.cell(4, 37, "기준"); ws.cell(4, 38, "방법")
+            ws.cell(5, 2, "DBM-019"); ws.cell(5, 7, "비밀번호재사용"); ws.cell(5, 8, 5.0)
+            ws.cell(5, 17, "o"); ws.cell(5, 37, "* 양호 - 재사용 불가"); ws.cell(5, 38, "m")
+            wb.save(tmpxlsx)
+            criteria = load_criteria(tmpxlsx, profile, "db_postgresql")
+        finally:
+            import os
+            os.unlink(tmpxlsx)
+
+        key = ("DBM-019", "pg_native")
+        assert key in criteria, f"pg_native DBM-019 criteria 없음: {list(criteria.keys())[:5]}"
+        c = criteria[key]
+        assert c.label == "C", f"pg DBM-019 label이 C 아님: {c.label}"
+        assert c.canned_message, "pg DBM-019 canned_message 없음"
+        assert "PostgreSQL" in c.canned_message, (
+            f"pg DBM-019 canned_message에 'PostgreSQL' 없음: {c.canned_message}"
+        )
+        assert "재사용" in c.canned_message or "native" in c.canned_message, (
+            f"pg DBM-019 canned_message 기능부재 언급 없음: {c.canned_message}"
+        )
+
+    def test_pg_dbm019_label_c_classify(self):
+        """pg DBM-019 label C → classify_method → judgment_method='det'."""
+        from judge_tool.criteria_loader import classify_method
+        jm = classify_method("C", has_summary=False, in_empty_means_good=False)
+        assert jm == "det", f"label C → judgment_method 'det' 기대인데 '{jm}'"
+
+    # ── 7. 실데이터 검증 (거짓양호 0) ────────────────────────────────────────
+
+    @pytest.mark.skipif(
+        not os.path.exists(_MYSQL_NATIVE),
+        reason="mysql 실데이터 없음"
+    )
+    def test_mysql_real_data_no_false_positive(self):
+        """MySQL 실데이터: DBM-019 거짓양호(미설정→양호) 0 확인."""
+        import judge_tool.det_adapters.db as _db
+        from judge_tool.parsers.db_json import _build_raw_data_dict, _strip_leading_noise
+        _db._RUN_CACHE.clear()
+        reload_det_source()
+        with open(_MYSQL_NATIVE, encoding="utf-8", errors="replace") as f:
+            raw = f.read()
+        arr = _strip_leading_noise(raw)
+        raw_data_json = _build_raw_data_dict(arr)
+        assert raw_data_json, "mysql 실데이터 파싱 실패"
+        import json
+        data = json.loads(raw_data_json)
+        dbm019 = data.get("DBM-019", {})
+        result_rows = dbm019.get("RESULT", [])
+        fv = judge("DBM-019", raw_data_json, "mysql_native", {})
+        assert fv.handled is True, f"mysql 실데이터 handled=False: {fv}"
+        if not result_rows:
+            assert fv.verdict == "판단보류", (
+                f"mysql RESULT 빈 실데이터 → 판단보류 기대인데 {fv.verdict}"
+            )
+        else:
+            # RESULT가 있으면 취약 또는 양호 (적절 설정이면 양호)
+            assert fv.verdict in ("취약", "양호", "판단보류"), (
+                f"mysql DBM-019 unexpected verdict: {fv.verdict}"
+            )
+
+    @pytest.mark.skipif(
+        not os.path.exists(_MARIADB_NATIVE),
+        reason="mariadb 실데이터 없음"
+    )
+    def test_mariadb_real_data_no_false_positive(self):
+        """MariaDB 실데이터: DBM-019 거짓양호 0, 'not loaded' → 취약."""
+        import judge_tool.det_adapters.db as _db
+        from judge_tool.parsers.db_json import _build_raw_data_dict, _strip_leading_noise
+        _db._RUN_CACHE.clear()
+        reload_det_source()
+        with open(_MARIADB_NATIVE, encoding="utf-8", errors="replace") as f:
+            raw = f.read()
+        arr = _strip_leading_noise(raw)
+        raw_data_json = _build_raw_data_dict(arr)
+        assert raw_data_json, "mariadb 실데이터 파싱 실패"
+        fv = judge("DBM-019", raw_data_json, "mariadb_native", {})
+        assert fv.handled is True, f"mariadb 실데이터 handled=False: {fv}"
+        assert fv.verdict == "취약", (
+            f"mariadb 실데이터(플러그인 미로드) → 취약 기대인데 {fv.verdict} "
+            f"— 거짓양호 또는 처리 오류"
+        )
+
+    @pytest.mark.skipif(
+        not os.path.exists(_ORACLE_NATIVE),
+        reason="oracle 실데이터 없음"
+    )
+    def test_oracle_real_data_no_false_positive(self):
+        """Oracle 실데이터: DBM-019 거짓양호 0 확인."""
+        import judge_tool.det_adapters.db as _db
+        from judge_tool.parsers.db_json import _build_raw_data_dict, _strip_leading_noise
+        _db._RUN_CACHE.clear()
+        reload_det_source()
+        with open(_ORACLE_NATIVE, encoding="utf-8", errors="replace") as f:
+            raw = f.read()
+        arr = _strip_leading_noise(raw)
+        raw_data_json = _build_raw_data_dict(arr)
+        assert raw_data_json, "oracle 실데이터 파싱 실패"
+        import json
+        data = json.loads(raw_data_json)
+        result_rows = data.get("DBM-019", {}).get("RESULT", [])
+        fv = judge("DBM-019", raw_data_json, "oracle_native", {})
+        assert fv.handled is True, f"oracle 실데이터 handled=False: {fv}"
+        if not result_rows:
+            assert fv.verdict == "판단보류", (
+                f"oracle RESULT 빈 실데이터 → 판단보류 기대인데 {fv.verdict}"
+            )
+        else:
+            assert fv.verdict in ("취약", "양호", "판단보류"), (
+                f"oracle DBM-019 unexpected verdict: {fv.verdict}"
+            )
+
+    @pytest.mark.skipif(
+        not os.path.exists(_MSSQL_NATIVE),
+        reason="mssql 실데이터 없음"
+    )
+    def test_mssql_real_data_no_false_positive(self):
+        """MSSQL 실데이터: DBM-019 거짓양호 0 확인."""
+        import judge_tool.det_adapters.db as _db
+        from judge_tool.parsers.db_json import _build_raw_data_dict, _strip_leading_noise
+        _db._RUN_CACHE.clear()
+        reload_det_source()
+        with open(_MSSQL_NATIVE, encoding="utf-8", errors="replace") as f:
+            raw = f.read()
+        arr = _strip_leading_noise(raw)
+        raw_data_json = _build_raw_data_dict(arr)
+        assert raw_data_json, "mssql 실데이터 파싱 실패"
+        fv = judge("DBM-019", raw_data_json, "mssql_native", {})
+        assert fv.handled is True, f"mssql 실데이터 handled=False: {fv}"
+        assert fv.verdict in ("양호", "취약", "판단보류"), (
+            f"mssql DBM-019 unexpected verdict: {fv.verdict}"
+        )
+        import json
+        data = json.loads(raw_data_json)
+        result_rows = data.get("DBM-019", {}).get("RESULT", [])
+        if not result_rows:
+            assert fv.verdict == "판단보류", (
+                f"mssql RESULT 빈 실데이터 → 판단보류 기대인데 {fv.verdict} — 거짓양호!"
+            )
+
+    # ── 8. 행 존재·기대변수 부재 → 판단보류 (Critical 거짓양호 갭 잠금) ──────────
+    # Opus Critical 리뷰 재현 케이스:
+    #   mysql:   RESULT에 다른 변수 행만 있고 password_history/reuse_interval 행 없음
+    #   mariadb: RESULT에 dict 행이 있으나 PASSWORD_REUSE_CHECK_INTERVAL도 'not loaded'도 없음
+
+    def test_mysql_rows_but_no_expected_vars_is_hold(self):
+        """MySQL Critical 재현: RESULT에 validate_password.length 행만 있고
+        password_history/reuse_interval 행 없음 → 판단보류(거짓양호 아님)."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-019": {"RESULT": [
+                {"VARIABLE_NAME": "validate_password.length", "VARIABLE_VALUE": "8"},
+            ]}
+        })
+        fv = judge("DBM-019", raw, "mysql_native", {})
+        assert fv.handled is True, f"mysql 기대변수 부재 handled=False: {fv}"
+        assert fv.verdict == "판단보류", (
+            f"mysql RESULT 있으나 password_history/reuse_interval 없음 → 판단보류 기대인데 "
+            f"{fv.verdict} — Critical 거짓양호!"
+        )
+        assert "재사용방지 설정 변수 미수집" in fv.rationale or "기대 변수" in fv.rationale, (
+            f"판단보류 사유 메시지 미흡: {fv.rationale}"
+        )
+
+    def test_mysql_rows_but_no_expected_vars_multiple_other_rows(self):
+        """MySQL: 여러 행이 있어도 password_history/reuse_interval 없으면 → 판단보류."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-019": {"RESULT": [
+                {"VARIABLE_NAME": "validate_password.length", "VARIABLE_VALUE": "8"},
+                {"VARIABLE_NAME": "validate_password.policy", "VARIABLE_VALUE": "STRONG"},
+                {"VARIABLE_NAME": "validate_password.number_count", "VARIABLE_VALUE": "1"},
+            ]}
+        })
+        fv = judge("DBM-019", raw, "mysql_native", {})
+        assert fv.handled is True, f"mysql 다수행 기대변수 부재 handled=False: {fv}"
+        assert fv.verdict == "판단보류", (
+            f"mysql 다수행이지만 기대변수 없음 → 판단보류 기대인데 {fv.verdict} — 거짓양호!"
+        )
+
+    def test_mysql_with_expected_var_present_still_good(self):
+        """MySQL: password_history 행 존재 + 값 적절 → 여전히 양호(기존 양호 불변)."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-019": {"RESULT": [
+                {"VARIABLE_NAME": "validate_password.length", "VARIABLE_VALUE": "8"},
+                {"VARIABLE_NAME": "password_history", "VARIABLE_VALUE": "10"},
+                {"VARIABLE_NAME": "password_reuse_interval", "VARIABLE_VALUE": "365"},
+            ]}
+        })
+        fv = judge("DBM-019", raw, "mysql_native", {})
+        assert fv.handled is True, f"mysql 기대변수+기타행 혼재 handled=False: {fv}"
+        assert fv.verdict == "양호", (
+            f"mysql 기대변수 존재+안전값인데 양호 아님: {fv.verdict} — 회귀!"
+        )
+
+    def test_mariadb_rows_but_no_expected_signal_is_hold(self):
+        """MariaDB Critical 재현: RESULT에 dict 행 있으나
+        PASSWORD_REUSE_CHECK_INTERVAL도 'not loaded' 신호도 없음 → 판단보류."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-019": {"RESULT": [
+                {"VARIABLE_NAME": "SOME_OTHER_VARIABLE", "VARIABLE_VALUE": "some_val"},
+            ]}
+        })
+        fv = judge("DBM-019", raw, "mariadb_native", {})
+        assert fv.handled is True, f"mariadb 기대변수 부재 handled=False: {fv}"
+        assert fv.verdict == "판단보류", (
+            f"mariadb RESULT 있으나 PASSWORD_REUSE_CHECK_INTERVAL/'not loaded' 없음 → 판단보류 기대인데 "
+            f"{fv.verdict} — Critical 거짓양호!"
+        )
+        assert "재사용방지 설정 변수 미수집" in fv.rationale or "기대 변수" in fv.rationale, (
+            f"판단보류 사유 메시지 미흡: {fv.rationale}"
+        )
+
+    def test_mariadb_rows_but_no_expected_signal_multiple_rows(self):
+        """MariaDB: 여러 dict 행이 있어도 기대 신호 없으면 → 판단보류."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-019": {"RESULT": [
+                {"VARIABLE_NAME": "SIMPLE_PASSWORD_CHECK_DIGITS", "VARIABLE_VALUE": "1"},
+                {"VARIABLE_NAME": "SIMPLE_PASSWORD_CHECK_LETTERS_SAME_CASE", "VARIABLE_VALUE": "1"},
+            ]}
+        })
+        fv = judge("DBM-019", raw, "mariadb_native", {})
+        assert fv.handled is True, f"mariadb 다수행 기대변수 부재 handled=False: {fv}"
+        assert fv.verdict == "판단보류", (
+            f"mariadb 다수행이지만 기대 신호 없음 → 판단보류 기대인데 {fv.verdict} — 거짓양호!"
+        )
+
+    def test_mariadb_with_expected_interval_present_still_good(self):
+        """MariaDB: PASSWORD_REUSE_CHECK_INTERVAL 행 존재 + 안전값 → 여전히 양호(기존 불변)."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-019": {"RESULT": [
+                {"VARIABLE_NAME": "SOME_OTHER_VARIABLE", "VARIABLE_VALUE": "x"},
+                {"VARIABLE_NAME": "PASSWORD_REUSE_CHECK_INTERVAL", "VARIABLE_VALUE": "30"},
+            ]}
+        })
+        fv = judge("DBM-019", raw, "mariadb_native", {})
+        assert fv.handled is True, f"mariadb 기대변수+기타행 혼재 handled=False: {fv}"
+        assert fv.verdict == "양호", (
+            f"mariadb 기대변수 존재+안전값인데 양호 아님: {fv.verdict} — 회귀!"
+        )
+
+    def test_mariadb_not_loaded_string_with_other_rows_is_vuln(self):
+        """MariaDB: 'not loaded' 문자열 + 다른 행이 섞여있어도 → 취약(기대변수 존재=수집됨, 위반있음)."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-019": {"RESULT": [
+                {"VARIABLE_NAME": "SOME_OTHER_VARIABLE", "VARIABLE_VALUE": "x"},
+                "PASSWORD_REUSE_CHECK plugin is not loaded!",
+            ]}
+        })
+        fv = judge("DBM-019", raw, "mariadb_native", {})
+        assert fv.handled is True, f"mariadb not-loaded+기타행 handled=False: {fv}"
+        assert fv.verdict == "취약", (
+            f"mariadb 'not loaded' → 취약 기대인데 {fv.verdict} — 회귀!"
+        )

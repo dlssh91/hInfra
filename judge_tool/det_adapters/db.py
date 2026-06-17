@@ -279,6 +279,47 @@ def _mask_violations(rows: list) -> list:
 # 위반(후보) ≥1 → 판단보류 + 후보목록 citations, 위반0 → 양호.
 _DETECT_THEN_HOLD: frozenset = frozenset({"DBM-004"})
 
+# ── 모드 D: empty-RESULT / 기대변수-부재 거짓양호 가드 (DBM-019 — 비밀번호 재사용 방지)
+# 재사용 방지 설정값이 '없음/비활성(UNLIMITED·0·미로드)'이면 위반 탐지 → 취약.
+# RESULT가 완전히 빈 경우(설정 미수집): 위반0이지만 설정이 적절한 건지 알 수 없음
+# → 양호 자동판정 금지, 판단보류(증거미수집).
+# 대상: mysql(password_history/reuse_interval), oracle(PASSWORD_REUSE_TIME/MAX),
+#       mssql(is_policy_checked), mariadb(PASSWORD_REUSE_CHECK_INTERVAL).
+# 판단: RESULT가 완전 비어있음(0행) → 판단보류(증거 미수집).
+#       RESULT에 행은 있지만 기대 변수가 하나도 없음 → 판단보류(변수 미수집).
+#       기대 변수가 존재하고 위반 없음 → 양호(현행 유지).
+_EMPTY_RESULT_HOLD: frozenset = frozenset({"DBM-019"})
+
+# 엔진별 "기대 변수 존재 여부" 검사 함수.
+# 각 함수는 RESULT 행(list) 전체를 받아, 기대 변수가 **하나라도** 존재하면 True 반환.
+# 매핑 없는 엔진은 기존 0행-only 가드만 동작(None 처리).
+def _dbm019_mysql_has_expected(rows: list) -> bool:
+    """mysql: password_history 또는 password_reuse_interval 행이 1개 이상 있어야 양호 가능."""
+    expected_names = {"password_history", "password_reuse_interval"}
+    return any(
+        isinstance(row, dict) and row.get("VARIABLE_NAME") in expected_names
+        for row in rows
+    )
+
+def _dbm019_mariadb_has_expected(rows: list) -> bool:
+    """mariadb: PASSWORD_REUSE_CHECK_INTERVAL dict행 또는 'not loaded' 문자열 신호가 있어야 함.
+
+    'not loaded' 문자열은 플러그인 미로드 → 취약 신호이지만, 최소한 수집은 된 것이므로
+    기대변수 '존재' 확인에 포함한다(이 경우 위반 탐지 → 취약으로 이미 처리됨).
+    """
+    for row in rows:
+        if isinstance(row, str) and "not loaded" in row:
+            return True
+        if isinstance(row, dict) and row.get("VARIABLE_NAME") == "PASSWORD_REUSE_CHECK_INTERVAL":
+            return True
+    return False
+
+# engine → 기대변수 존재 검사 함수 매핑 (없으면 None — 0행-only 가드)
+_DBM019_EXPECTED_CHECKER: dict = {
+    "mysql":   _dbm019_mysql_has_expected,
+    "mariadb": _dbm019_mariadb_has_expected,
+}
+
 # ── 모드 B: 구조적 취약 (DBM 분류 검토 Batch1) ─────────────────────────────
 # PostgreSQL 코어에 네이티브 기능(실패잠금/복잡도강제)이 없어 데이터 없이도 구조적 취약.
 # (base, variant) 키. pg_native만 — 클라우드(rds/aurora/azure)는 관리형 별도 처리(제외).
@@ -604,6 +645,52 @@ def judge(
             ev_status="review",
             handled=True,
         )
+
+    # ── 모드 D: empty-RESULT / 기대변수-부재 거짓양호 가드 (DBM-019) ────────────
+    # 위반0인 경우:
+    #   (1) RESULT 0행 → 설정 미수집 → 판단보류.
+    #   (2) RESULT에 행은 있지만 엔진별 기대 변수가 하나도 없음 → 변수 미수집 → 판단보류.
+    #   (3) 기대 변수가 존재하고 위반 없음 → 정상 양호.
+    # 매핑 없는 엔진은 (1)만 동작 (oracle/mssql은 직접 인덱싱→KeyError로 이미 안전).
+    if base in _EMPTY_RESULT_HOLD and not violations:
+        raw_result_rows = data.get(base, {}).get("RESULT", [])
+        if not raw_result_rows:
+            log.warning(
+                "모드D 가드: base=%s engine=%s RESULT 완전 비어있음 → 판단보류(설정 미수집)",
+                base, engine,
+            )
+            return ForcedVerdict(
+                verdict="판단보류",
+                confidence=0.0,
+                rationale=(
+                    f"[재사용방지 설정 미수집: RESULT 0행] "
+                    f"비밀번호 재사용 방지 설정 데이터를 수집하지 못함 — "
+                    f"자동 양호 판정 불가 (engine={engine}, item={base})"
+                ),
+                citations=[],
+                ev_status="review",
+                handled=True,
+            )
+        # (2) 행은 있지만 기대 변수 부재 → 판단보류
+        expected_checker = _DBM019_EXPECTED_CHECKER.get(engine)
+        if expected_checker is not None and not expected_checker(raw_result_rows):
+            log.warning(
+                "모드D 가드(확장): base=%s engine=%s RESULT %d행 존재하나 기대변수 미수집 → 판단보류",
+                base, engine, len(raw_result_rows),
+            )
+            return ForcedVerdict(
+                verdict="판단보류",
+                confidence=0.0,
+                rationale=(
+                    f"[재사용방지 설정 변수 미수집 → 판단보류] "
+                    f"RESULT에 {len(raw_result_rows)}행이 있으나 "
+                    f"재사용 방지 기대 변수가 포함되지 않음 — "
+                    f"자동 양호 판정 불가 (engine={engine}, item={base})"
+                ),
+                citations=[],
+                ev_status="review",
+                handled=True,
+            )
 
     # ── 결과 매핑: 빈 위반 = 양호, 비어있지 않음 = 취약 ─────────────────────
     if not violations:

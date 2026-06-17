@@ -78,7 +78,9 @@ DBM-017:
     \ ③ 간결히 묶어 요약.\
     \ 판정(양호/취약)은 내리지 말고 담당자가 '업무상 불필요 여부'를 빠르게 확인하도록 정리만 하라."
 DBM-019:
-  # det_common 제거 (R3 보수처리): mariadb 수집형식 {"*": python_repr} → analysis KeyError → 거짓양호
+  # DET 복원 (DBM-011 mariadb 동일 오분류): PASSWORD_REUSE_CHECK_INTERVAL/"not loaded" 검사 정상 확인
+  # 수집형식: bare 문자열("not loaded" 포함) + dict 행 — analysis.py type(datum)==str 검사로 처리됨
+  judgment_method: det_common
   needs_review: true
   label: A
 DBM-020:
