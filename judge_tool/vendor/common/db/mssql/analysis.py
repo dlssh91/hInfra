@@ -141,7 +141,36 @@ class MssqlAnalysis:
         ])
         
     def dbm_011(self, result_key='DBM-011'):
+        # VENDOR-EDIT: KNOWN_BUGS §R-MS011 — 빈 STUB에 활성 감사 탐지 로직 추가 (2026-06-17)
+        #   원본: 빈 본문(dbm_result=[]만) → STUB 상태, 결정론 불가.
+        #   신규 수집 포맷: 활성 서버감사 행 {"audit_name":..,"audit_action":..,"create_date":..,"modify_date":..}
+        #     (is_state_enabled=1인 것만 수집됨) + "NOTE": "For audit log upload settings, refer to PISM-011".
+        #   판정: audit 행 ≥1 → 위반0(수집됨, 모드C → 판단보류).
+        #          audit 행 0행 → 위반 추가(미수집 → 모드C → 취약).
+        #   ⚠️ NOTE 우선순위 함정 주의: NOTE("...refer to PISM-011")가 항상 존재하므로
+        #      _judge_one(LLM 경로) 경유 시 NOTE 강제보류로 미수집(취약)이 가려질 수 있음.
+        #      db_mssql.yaml에 judgment_method: det_common 부여 → _det_common_handler 경유
+        #      (NOTE 체크 없음) → 미수집 취약 판정이 NOTE에 안 가려짐.
         self.dbm_result[result_key] = []
+        try:
+            if 'DBM-011' not in self.data:
+                return
+            # NOTE는 @@@로 기록(노이즈 필터링됨 — 실제 위반 판정에 영향 없음)
+            note = self.data['DBM-011'].get('NOTE')
+            if note:
+                self.dbm_result[result_key].append({"@@@": note})
+            result_rows = self.data['DBM-011'].get('RESULT', [])
+            # 활성 서버감사 행 수 확인
+            active_audits = [
+                r for r in result_rows
+                if isinstance(r, dict) and r.get('audit_name')
+            ]
+            if not active_audits:
+                # 미수집: 활성 감사 0행 → 위반 추가 → 모드C → 취약
+                self.dbm_result[result_key].append({"pgaudit_status": "No Active Server Audit"})
+            # 수집됨(≥1행): 위반 미추가 → 모드C → 판단보류(양호 절대 금지)
+        except Exception as e:
+            print(f"[!] Exception Occurred MySQL {result_key}: {str(e)}")
         
     def dbm_013(self, result_key='DBM-013'):
         self.dbm_result[result_key] = []

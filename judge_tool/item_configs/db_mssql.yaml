@@ -51,6 +51,12 @@ DBM-008:
 DBM-009:
   label: A
 DBM-011:
+  # Phase 4e: det_common 부여 — mssql dbm_011 활성 감사 탐지 로직 추가 후 DET 승격.
+  # ⚠️ NOTE 우선순위 함정: NOTE("...refer to PISM-011")가 항상 존재하지만,
+  #    det_common 경로(_det_common_handler)는 NOTE 강제보류를 거치지 않음 →
+  #    미수집(0행) → 취약이 NOTE에 안 가려짐(거짓음성 방지).
+  judgment_method: det_common
+  needs_review: true
   label: A
 DBM-013:
   label: A

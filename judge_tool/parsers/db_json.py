@@ -349,6 +349,23 @@ def parse(txt_path: str) -> List[Tuple[str, List[ResourceEvidence], Optional[str
             # Phase 4: 각 resource에 전체 비마스킹 data dict JSON 적재 (결정1)
             for res in resources:
                 res.raw_evidence = raw_data_json
+            # Phase 4e: resources가 비어있어도 raw_data_json이 있으면 더미 리소스를 추가해
+            # _raw_evidence_for_det이 raw_evidence를 전달받을 수 있게 한다.
+            # 케이스: 빈 RESULT(예: mssql DBM-011 활성 감사 0건) + NOTE 존재 →
+            #   resources=[] → raw_evidence 미설정 → _det_common_handler가 raw 없이
+            #   어댑터 호출 불가 → _judge_one(LLM) 폴백 → NOTE 강제보류(거짓음성).
+            # 더미 리소스: evidence=""(LLM 경로 증거에 영향 없음), raw_evidence만 보유.
+            # detail="(raw-carrier)"로 마커해 일반 증거와 구분.
+            if not resources and raw_data_json:
+                dummy_res = ResourceEvidence(
+                    resource_id=f"{cid}#raw",
+                    status="",
+                    detail="(raw-carrier)",
+                    evidence="",
+                    is_raw_carrier=True,   # C1: det_common 전용, no_evidence/LLM 제외
+                )
+                dummy_res.raw_evidence = raw_data_json
+                resources = [dummy_res]
             ctx_parts = []
             if query:
                 ctx_parts.append(f"QUERY: {query}")

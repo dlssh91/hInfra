@@ -1,12 +1,27 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-17 (**상태저장. 이번 세션 완료: DBM-011 detect-vuln-else-hold 모드C 구현 SHIP. 1197 passed, 4 skipped. 양호자동판정 0건 확인.**). **"다음에 진행해줘" → 아래 ★다음 착수(DBM-013~ 분류 검토 재개)부터.**
+> 마지막 업데이트: 2026-06-17 (**상태저장. 이번 세션 완료: DBM-011 pg/mssql LLM→DET(모드C) 승격 + 판단보류 rationale 확인내용 강화 SHIP. pg(pgaudit 신규포맷), mssql(활성감사탐지), 전엔진 보류 rationale에 확인내용 명시. 1210 passed. ★다음 착수=DBM-013~ 분류검토 재개.**). **"다음에 진행해줘" → 아래 ★다음 착수(DBM-013~ 분류 검토 재개)부터.**
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. 이 파일이 단일 진실원천.
 >  재개 트리거: "개발진행해"/"개발해줘"/"이어서 진행"/"다음 작업"/**"다음에 진행해"** → 아래 TL;DR ★다음 착수부터.)
 
 ## ▶ 다음 세션 즉시 시작점 (TL;DR)
 - **★다음 착수 = DBM-013~ 분류 검토 재개** (사용자와 항목별 1:1 검토 중. 001~009·011 완료, 다음=DBM-013)
   **검토 진행 방식**: 항목별로 [항목명/상세설명/판단기준/엔진별 벤더 결정론 로직(현행 동작)/내 분류 권고] 제시 → 사용자 결정. 남은 항목: 013/014/015/016/017/019/020/021/022/024/025/026/028/029/030/031/032/033/034/035/036.
+
+  **✅ DBM-011 pg/mssql DET 승격 + rationale 확인내용 강화 SHIP (2026-06-17, 1210 passed)**:
+  - **pg STUB→DET 승격**: `vendor/common/db/postgresql/analysis.py dbm_011` 신규 포맷(pgaudit_settings) 탐지 추가. VENDOR-EDIT(c) §R-PG011. pgaudit 미로드(value에 pgaudit 없음 OR pgaudit_status≠Loaded OR pgaudit_settings==[]) → 위반 → 취약. 로드됨 → 위반0 → 모드C 보류. 옛 한글 문자열 하위호환 유지. `DET_SOURCE.yaml` pg: STUB→DET. `db_postgresql.yaml` DBM-011에 `judgment_method: det_common` 추가.
+  - **mssql STUB→DET 승격**: `vendor/common/db/mssql/analysis.py dbm_011` 활성 감사 탐지 로직 추가. VENDOR-EDIT §R-MS011. 활성 감사 0행 → 위반(취약). ≥1행 → 위반0(보류). ⚠️ NOTE 우선순위 함정 해소: `db_mssql.yaml`에 `judgment_method: det_common` 부여 → `_det_common_handler` 경로(NOTE 강제보류 없음) → 미수집→취약이 NOTE에 안 가려짐. `DET_SOURCE.yaml` mssql: STUB→DET.
+  - **파서 Phase 4e**: `parsers/db_json.py` parse()에 빈 RESULT 항목용 raw-carrier 더미 리소스 추가(mssql DBM-011 RESULT=[] + NOTE = resources[] → raw_evidence 미전달 → _judge_one 경로로 빠지는 문제 해소).
+  - **보류 rationale 확인내용 강화**: `det_adapters/db.py` `_extract_audit_detail()` 신규. 모드C 보류 시 엔진별 확인내용 rationale+citations에 추가 — mysql:"audit_log 플러그인 로드됨 (audit_log_file=...)", mariadb:"server_audit 플러그인 로드됨", oracle:"audit_trail=<값> (감사 활성)", pg:"pgaudit 로드됨 (settings=...)", mssql:"활성 서버감사: <name> (action=...) — PISM-011 참조".
+  - **실데이터 5엔진 DBM-011 verdict**: pg=취약(det_common, pgaudit Not Loaded), mssql=취약(det_common, No Active Server Audit), mysql/mariadb/oracle=취약(det_common, not loaded/NONE). 양호 자동판정 0건.
+  - **신규 테스트**: pg DET 승격(6종), mssql DET 승격(5종), 보류 rationale 확인내용(3종), 전수 거짓양호 확장(pg/mssql 추가). 기존 STUB 테스트 4종 교체.
+  - **수정 파일**: `det_adapters/db.py`, `vendor/common/db/postgresql/analysis.py`, `vendor/common/db/mssql/analysis.py`, `vendor/common/DET_SOURCE.yaml`, `item_configs/db_postgresql.yaml`, `item_configs/db_mssql.yaml`, `parsers/db_json.py`, `tests/test_det_adapters_db.py`, `tests/test_db_json.py`.
+  - **★Opus 적대리뷰 C1/M1/M2/M3 shift-left 해소(2026-06-17, 1222 passed)**:
+    - **C1(Critical)**: raw-carrier가 무조건 추가돼 `reconcile`의 `no_evidence` 안전게이트를 **DB 파서 전역에서 무력화**(빈RESULT+LLM항목이 양호 무검증 통과 지뢰). → **carrier 격리**: `models.ResourceEvidence.is_raw_carrier` 필드 신설, `judge.py reconcile` no_evidence·`build_evidence_text(_raw)` LLM증거에서 carrier 제외(실증거만 카운트). `_raw_evidence_for_det`는 carrier raw 계속 읽음 → det_common(mssql 0행→취약) 보존. **검증: carrier-only+LLM양호→판단보류 복원, build_evidence_raw→"(점검 결과 0건)", mssql DBM-011→취약 유지.**
+    - **M1**: `_extract_audit_detail` citation을 `_mask_row` 경유(raw config 비마스킹 노출 차단).
+    - **M2**: `KNOWN_BUGS.md`에 §R-PG011·§R-MS011 신규 등재(코드 주석이 인용하나 누락됐던 것).
+    - **M3**: C1로 동시 해소(carrier가 LLM 증거텍스트에서 제외 → "(점검 결과 0건)" 복원).
+    - 회귀가드 테스트 12종(carrier no_evidence 복원·LLM증거 제외·det_common 보존·citation 마스킹). **1222 passed, 4 skipped.**
 
   **✅ DBM-011 detect-vuln-else-hold (모드C) 구현 SHIP (2026-06-17, 1197 passed, 양호자동판정 0건)**:
   - **새 모드 `_DETECT_VULN_ELSE_HOLD`**: `db.py`에 모드C 추가. DBM-011 등록. 취약(violations>0) → 취약 확정, 위반0(수집됨) → 판단보류 강제(양호 자동판정 절대 금지).
@@ -144,6 +159,48 @@
   6. **Opus 재리뷰 SHIP 근거**: R3 13개 vendor print 전수 base 매칭, stderr/logging/whole-raise/캐시 경로 전부 fail-safe, 5엔진 실데이터 양호/취약 약화 0(과차단 가드 `violations>=1` 실증). 잔여 Low/dormant(`__AMBIGUOUS__` 발동불가·fail-safe 방향).
 
   **(병행 가능, 비차단) LLM 품질 트랙**: 인코딩 교정·프롬프트 튜닝(빈출력클래스) 안전레버 **소진 완료**. 남은 레버=**골드라벨 확보**(사용자 정답 → 30b/결정론 진짜 측정, 현재 Opus 대용 N=10). 30b는 label-A에 보수적 충분(거짓양호 0) 확인됨.
+
+  - **★서버 로컬LLM 품질 검토(2026-06-17, det_common 50항목 듀얼런 × 2샘플)**: `tests/det_dual_run.py` server/linux, qwen3-coder:30b vs det(검증된 정답프록시). 산출물 `out/srv_llm_review/dualrun_server_linux_*`.
+    - **일치율**: 취약샘플(linux-s-vuln) 21/50=42%, 양호샘플(linux-s-sample) 19/50=38%. (production은 det이라 영향 없음 — LLM은 대조용. label-A 56항목이 실제 LLM production.)
+    - **취약 탐지력(취약샘플 det=취약 12건)**: 정확탐지 9(75%, root login·UID0중복·telnet/FTP·passwd777 등 명확건 근거까지 정확) / 안전측 보류 2(SRV-028·127) / **거짓음성 1(SRV-096)**.
+    - **★새 발견 = 권한 비트 오독 거짓음성(체계적·재현)**: 30b가 symbolic 권한문자열의 group/others triad를 "권한 없음"으로 과소판독. **SRV-096** `-rw-r--r--`(others read=취약 기준) → "others 권한 없음" 양호(양·취약 샘플 **둘 다 재현**). **SRV-084** `/etc/shadow -rw-r-----`(640) → "권한 600" 오독 → 양호. → **권한 점검 항목에서 dangerous 거짓음성.**
+    - **★production 직접 리스크**: 순수-LLM(label A, det_common 아님) 10항목 중 권한항목 = **SRV-081(Crontab 권한)** 단 1개인데, 하필 Phase 1에서 det_common 제외돼 LLM polled로 넘어간 항목 → 위 오독 클래스 정통으로 맞음. **권고: SRV-081 권한검사 어댑터 보강(det 재승격) 또는 프롬프트에 "symbolic 권한 끝 3자리=others, 가운데 3자리=group, `r--`도 권한 있음" 명시 + 권한 항목 거짓음성 가드.**
+    - **거짓양성(안전측, 검토부담↑)**: SRV-016(미실행 RPC `[S][E]` 빈블록을 "활성"으로 환각, **양·취 샘플 재현**)·SRV-092·011·074.
+    - **지배적 패턴**: 양호→판단보류 19~22건(빈출력/미실행/파일부재를 "양호신호" 아닌 "증거부족"으로 과보수 처리 — 이전 37.5~44% 동일 약점, 검토량 폭증·안전측). 메모리 [[llm-perm-string-misread]].
+
+  - **★위 검토 인지사항 개선 SHIP(2026-06-17, 1199 passed, 4 skipped)**: `judge.py SYSTEM_PROMPT`에 결정론 무관 LLM 교정 규칙 2종 추가(label-A 전 항목 적용).
+    - **① 파일 권한 문자열(symbolic mode) 판독 규칙**: 끝3=others·가운데3=group, `r--`도 권한임(읽기 무시 금지), 8진수 환산(rwx=7 r--=4 ---=0), "others 권한 없어야 양호"면 끝3=`---`만 양호. **★흔한오판 경고**: "`-rw-r--r--`(644)는 others 읽기권한 있음→취약, '실행만 없으면 양호'는 틀림"을 명시(2차 강화로 SRV-096 완고한 prior 돌파).
+    - **② 서비스 상태 블록 `[ 이름 ][S]…[E]` 마커 규칙**: [S]~[E] 사이 빈 블록=미실행, [S] 줄의 이름은 점검대상 목록일 뿐 '실행중' 아님(SRV-016 환각 차단).
+    - **실LLM 재검증(qwen3-coder:30b, 양·취 샘플 전수 50항목 듀얼런 before/after)**:
+      - 취약샘플 일치율 42%→**48%**, 위험불일치 3→**1**. 양호샘플 38%→**50%**, 위험불일치 5→**2**.
+      - **★거짓음성(취약→양호) 양 샘플 모두 0건**(SRV-096 양·취 / SRV-084 해소). 위험방향 교정: SRV-016(거짓양성)·SRV-084·SRV-096(거짓음성) 전부 해소.
+      - **부수효과**: 과보수 판단보류→양호 다수 개선(SRV-013/034/158/174, det와 일치).
+      - **잔존 위험불일치(전부 거짓양성=안전측)**: SRV-092(취약샘플)·SRV-011·SRV-074(양호샘플) — det=양호/llm=취약. 환각·기준해석차 클래스(30b 추론한계, 이전세션 diminishing returns 판정). 거짓양호 아님→검토부담만. 추가 프롬프트 튜닝은 두더지잡기·회귀위험이라 보류(사용자 판단 대기).
+      - 경미회귀(안전측): SRV-074 취약샘플 취약→판단보류, SRV-084 양호샘플 양호(거짓음성)→판단보류(거짓음성 해소·확정엔 미달). 둘 다 거짓양호 방향 아님.
+    - **수정 파일**: `judge_tool/judge.py`(SYSTEM_PROMPT +2블록), `tests/test_judge.py`(규칙 존재단언 2건). 산출물 `out/srv_llm_after/`·`out/srv_llm_fix/`.
+
+  - **★LLM-production 항목 과최적화 가드 + 양극성 커버리지 감사(2026-06-17)** — CLAUDE.md "LLM 판정 품질 검토 프로토콜" 신설(모든 도메인 공통). 서버 linux 적용 결과:
+    - **분류**: linux judgeable 70항목 = label{A:59,C:4,D:3,B:4}, method{det_common:50, det:7, llm:10, interview:3}. **LLM이 production 1차 판정자(det_common 아님) = 20항목**, 그중 순수 LLM(label A) = 10(SRV-006/027/081/091/112/144/163/165/166/175).
+    - **★과최적화 무해 확인**: 위 10개 label-A를 수정전(git HEAD)/수정후 SYSTEM_PROMPT × 양·취 샘플 실판정 → **10개 verdict 전부 전후 동일, 위험방향 회귀 0건.** 즉 권한·서비스블록 규칙은 production-LLM 판정을 바꾸지 않음(개선은 det_common 대조항목에서만 발생, production 무해). 과최적화로 망친 항목 없음.
+    - **★양극성 커버리지 심각 부족(샘플 한계 — 측정 불가)**: label-A 10개 중 양호↔취약 대조가 성립하는 건 **SRV-165(양호/취약) 단 1개.** 5개(SRV-006/027/081/144/175)는 **양·취 샘플 모두 판단보류** → LLM 판별력 측정 자체가 불가. SRV-091/166=양쪽 양호, SRV-163=양쪽 취약(단극성). **특히 SRV-081(권한항목, 이번 수정대상)은 양쪽 증거 동일+양쪽 판단보류 → 권한 수정 효과를 production 항목에서 검증 불가.** SRV-003/177/179는 양쪽 증거 자체 없음.
+    - **결론**: 현 양호/취약 샘플 2개로는 **LLM-production 품질을 제대로 측정 불가**(10개 중 1개만 양극성). **선결과제 = 취약주입 샘플 보강 또는 골드라벨** — det_common 일치율(42→48%)은 LLM 품질 지표가 아님(거기선 결정론이 production). 타 도메인도 동일 프로토콜로 커버리지부터 점검.
+
+  - **★취약주입 양극성 커버리지 픽스처 SHIP(2026-06-17, 1222 passed)**: 위 미커버 해소 — label-A 10개 전부 양/취 양극성 확보.
+    - **신규 픽스처(원본 보존)**: `collected/server/linux/linux-s-cov-good.xml`(전항목 명확한 양호)·`linux-s-cov-vuln.xml`(전항목 명확한 취약). 원본 `linux-s-{sample,vuln}.xml`은 불변(백업 `out/srv_cov_backup/`). 생성기 `tests/_build_cov_fixtures.py`(결정론, provenance 유지).
+    - **항목별 주입**: SRV-006(LogLevel 9↔0), SRV-027(tcp-wrapper deny-all↔접근통제 전무), SRV-081(crontab 750·cron파일 640↔crontab 4777·cron파일 666), SRV-091(표준 SUID만↔/usr/bin/find·/tmp bash·home nc SUID 주입), SRV-112(rsyslog cron.* 기록↔미기록), SRV-144(/dev 빈출력+완료마커↔/dev/backdoor 일반파일), SRV-163(경고배너↔기본 issue), SRV-166(정상 dotfile만↔.bd.sh·.hidden·/tmp/.x 의심숨김), SRV-175(timedatectl NTP active↔전 NTP서비스 inactive). SRV-165는 기존 양극성 유지.
+    - **★실LLM 검증(qwen3-coder:30b, 10항목×2파일)**: **완전 양극성(good=양호 & vuln=취약) 10/10** (주입 전 1/10). 결과 `out/srv_cov_backup/cov_polarity_final.txt`. SRV-144/175는 1차 보수(빈출력/도구없음 노이즈)→마커 추가·노이즈 제거로 교정 확인.
+    - **함의**: 이제 서버 label-A LLM 품질을 양/취 대조로 실측 가능(이전엔 측정 불가). DB/컨테이너/웹 등 타 도메인도 동일하게 cov 픽스처 구축 필요(CLAUDE.md 프로토콜 §2).
+
+  - **★서버 label-A LLM 품질 측정 완료(2026-06-17, cov 골드라벨 대조)**: 10항목 × 양/취 = 20판정, qwen3-coder:30b. 결과 `out/srv_cov_backup/labelA_quality.json`.
+    - **verdict 정확도 20/20=100%** (양호 10/10·취약 10/10). **거짓음성 0·거짓양성 0·판단보류 0.** 신뢰도 0.90~1.00.
+    - **근거 타당성 10/10**: 취약 판정 근거가 주입한 실제 단서를 정확히 인용 — SRV-091=`/tmp/.cache/rootbash`·`nc`·`/usr/bin/find` SUID 명시, SRV-081=crontab>750·cron파일>640 others권한(권한규칙 정확 적용), SRV-144=`/dev/backdoor`+mqueue/shm 예외까지 적용, SRV-027=iptables ACCEPT+hosts.allow/deny 부재, SRV-166=`.bd.sh` 실행권한. **"맞는 이유로 맞춤" 확인**(우연 일치 아님).
+    - **★측정 해석(과대해석 금지)**: 100%는 **설계상 명확한(unambiguous) 케이스** 점수 — 30b가 깨끗한 증거에서 양/취 판별·타당추론에 우수함을 입증(원본 샘플은 5/10 판단보류로 측정조차 불가했음). cov 항목(091/027/144 등)은 프롬프트 튜닝 대상이 아닌 신규 증거 → **과최적화 아닌 일반화 확인**. **단 borderline/희소 증거(빈출력·파일부재·환각)에서의 약점은 별개**(앞서 SRV-092/011/074 거짓양성·과보수 잔존). 즉 "명확건=우수, 애매건=과보수/환각"이 30b 특성. 애매건 측정엔 borderline cov 또는 실골드라벨 필요.
+
+  - **★Codex 적대리뷰 지적 2건 해소 SHIP(2026-06-17, 1246 passed/31 skipped + Ollama가드 20 passed)**: 리뷰 전문 `out/srv_cov_backup/codex_review.txt`.
+    - **[high] cov 픽스처 양극성 계약 미강제**: 생성기가 편집블록만 검사 → 재생성 시 단극성 손실 가능했음. **해소**: ① 계약 단일출처 `tests/cov_contract.py`(LLM_PROD_ITEMS 10 + VULN/GOOD 골드신호) ② 결정론 커밋 테스트 `tests/test_cov_fixtures.py`(LLM 없이 항목별 양극성·good≠vuln·골드신호 강제 + **계약집합 == server.yaml 순수LLM label-A 동일성** 단언) ③ 생성기 `_build_cov_fixtures.py`에 post-build 자가검증. 어느 항목이 누락/단극성/신호부재면 테스트·생성 둘 다 실패.
+    - **[medium] 프롬프트 행동 회귀 가드 부재**: 기존 test_judge는 문자열 존재만 검사. **해소**: `tests/test_llm_cov_quality.py` — cov 골드라벨로 실LLM 판정 검증(취약→양호 거짓음성 금지·양호→취약 거짓양성 금지), `RUN_OLLAMA_TESTS=1` + Ollama 가동 시에만 실행(기본 skip, 느린 호출). **재생 검증: 20 passed(69초)** — 위험방향 오판 0 재확인.
+    - **[medium] PostgreSQL DBM-011 거짓음성**: 제 작업 아님 — **병행 DB 세션 변경분**(`vendor/common/db/postgresql/analysis.py` dbm_011, pgaudit_settings==[] 미탐지). DB 트랙에 전달 필요(미수정).
+    - **수정/신규 파일**: `tests/cov_contract.py`(신규), `tests/test_cov_fixtures.py`(신규), `tests/test_llm_cov_quality.py`(신규), `tests/_build_cov_fixtures.py`(자가검증 추가).
 
   - **Pre-flight 인코딩 교정 + LLM 점검가능 게이트(2026-06-16, 980 passed)**: `judge_tool/preflight.py`.
     - **인코딩 자동교정(결정론)**: utf-8 strict 프로빙→cp949(단 mojibake>5%면 utf-8 replace 폴백)→replace. 선언 인코딩 불신(EUC-KR 선언+UTF-8 바이트 mojibake 버그 수정). server_xml `_read_text`→`preflight.read_text` 위임, container/webwas 자동적용. **실증: 컨테이너 mojibake 812→0(한글 정상).**

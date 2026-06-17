@@ -119,10 +119,62 @@ class PostgreSQLAnalysis:
         ])
     
     def dbm_011(self, result_key='DBM-011'):
+        # VENDOR-EDIT(c): KNOWN_BUGS §R-PG011 — 포맷-lag 수정 (2026-06-17)
+        #   원본: '로드된 라이브러리가 없습니다.' 한글 문자열 탐지 전용.
+        #   문제: 신규 수집 포맷 {"setting_name":"shared_preload_libraries","value":"...",
+        #         "pgaudit_settings":[...]} 또는 {"pgaudit_status":"...","pgaudit_settings":[...]}
+        #         구조를 처리하지 못해 pgaudit 미로드 케이스가 거짓양호로 빠질 위험.
+        #   수정: 신규 포맷에서 pgaudit 미로드(3가지 조건 중 하나) 탐지.
+        #         옛 한글 문자열('로드된 라이브러리가 없습니다.')도 하위호환 유지.
+        #   판정: 미로드 탐지 → violations 비어있지 않음 → 모드C → 취약.
+        #          로드됨(violations=0) → 모드C → 판단보류(양호 자동판정 절대 금지).
         self.dbm_result[result_key] = []
-        self.dbm_process_data(result_key, 'DBM-011', [
-            lambda datum: '로드된 라이브러리가 없습니다.' in str(datum)
-        ])
+        try:
+            if 'DBM-011' in self.data:
+                note = self.data['DBM-011'].get('NOTE')
+                if note:
+                    self.dbm_result[result_key].append({"@@@": note})
+                for datum in self.data['DBM-011'].get('RESULT', []):
+                    # ── 옛 한글 문자열 (하위호환) ─────────────────────────
+                    if isinstance(datum, str) and '로드된 라이브러리가 없습니다.' in datum:
+                        self.dbm_result[result_key].append({"pgaudit_status": "Not Loaded (legacy)"})
+                        continue
+                    if not isinstance(datum, dict):
+                        continue
+                    # ── 신규 포맷 케이스 A: pgaudit_status 필드 직접 명시 ──
+                    if 'pgaudit_status' in datum:
+                        if datum['pgaudit_status'] != 'Loaded':
+                            self.dbm_result[result_key].append({"pgaudit_status": datum['pgaudit_status']})
+                        # Loaded → 위반 아님(아무것도 추가 안 함)
+                        continue
+                    # ── 신규 포맷 케이스 B: shared_preload_libraries value 필드 ──
+                    if datum.get('setting_name') == 'shared_preload_libraries':
+                        value = datum.get('value', '')
+                        pgaudit_settings = datum.get('pgaudit_settings', [])
+                        # pgaudit가 value에 없고, pgaudit_settings도 비어 있으면 미로드
+                        if 'pgaudit' not in str(value).lower() and not pgaudit_settings:
+                            self.dbm_result[result_key].append({
+                                "pgaudit_status": "Not Loaded",
+                                "shared_preload_libraries": value or "(empty)",
+                                "pgaudit_settings": pgaudit_settings,
+                            })
+                        # 로드됨 → 위반 아님(아무것도 추가 안 함)
+                        continue
+                # remove duplicate (JSON 기반 — pgaudit_settings list 포함 시 tuple 해시 불가 회피)
+                import json as _json
+                seen = set()
+                deduped = []
+                for row in self.dbm_result[result_key]:
+                    try:
+                        key = _json.dumps(row, sort_keys=True, ensure_ascii=False)
+                    except Exception:
+                        key = str(row)
+                    if key not in seen:
+                        seen.add(key)
+                        deduped.append(row)
+                self.dbm_result[result_key] = deduped
+        except Exception as e:
+            print(f"[!] Exception Occurred PostgreSQL {result_key}: {str(e)}")
     
     def dbm_013(self, result_key='DBM-013'):
         self.dbm_result[result_key] = []

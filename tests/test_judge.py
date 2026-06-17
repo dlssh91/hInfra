@@ -44,6 +44,23 @@ def test_system_prompt_demands_json_keys():
         assert key in SYSTEM_PROMPT
 
 
+def test_system_prompt_has_permission_string_rule():
+    """권한 문자열 오독(SRV-096/084 거짓음성) 교정 규칙이 존재해야 한다."""
+    # 끝 3자리=others, r-- 도 권한이라는 핵심 지침
+    assert "others" in SYSTEM_PROMPT
+    assert "-rw-r--r--" in SYSTEM_PROMPT
+    assert "-rw-r-----" in SYSTEM_PROMPT
+    assert "권한 없음" in SYSTEM_PROMPT  # "'권한 없음'이 절대 아니다"
+
+
+def test_system_prompt_has_service_block_marker_rule():
+    """서비스 상태 블록 [S]..[E] 빈 블록=미실행 규칙(SRV-016 거짓양성) 교정."""
+    assert "][S]" in SYSTEM_PROMPT
+    assert "][E]" in SYSTEM_PROMPT
+    assert "이라는 뜻이 아니다" in SYSTEM_PROMPT
+    assert "블록이 비었는데 이름만 보고" in SYSTEM_PROMPT
+
+
 # I-4.1: 증거 없음
 def test_evidence_text_no_resources():
     assert build_evidence_text(EvidenceItem("PISM-001", "AWS", [])) == "(증거 없음)"
@@ -384,3 +401,130 @@ def test_build_prompt_aws_variant_excludes_vendor_neutral_note():
     prompt = build_prompt(c, _item("bad"))
     assert "벤더 미식별" not in prompt
     assert "벤더중립" not in prompt
+
+
+# ── C1 carrier 격리 회귀가드 ───────────────────────────────────────────────────
+
+def _carrier_resource(item_id="DBM-011"):
+    """빈 RESULT + raw_data_json이 있을 때 db_json이 생성하는 carrier 더미 리소스."""
+    r = ResourceEvidence(
+        resource_id=f"{item_id}#raw",
+        status="",
+        detail="(raw-carrier)",
+        evidence="",
+        is_raw_carrier=True,
+    )
+    r.raw_evidence = '{"DBM-011": {"RESULT": []}}'
+    return r
+
+
+def _carrier_item(item_id="DBM-011", variant="mssql_native"):
+    """carrier-only EvidenceItem — 빈 RESULT + no_evidence 게이트 확인용."""
+    r = _carrier_resource(item_id)
+    it = EvidenceItem(item_id, variant, [r])
+    return it
+
+
+def _db_crit_a(item_id="DBM-011", variant="mssql_native"):
+    """label A, empty_means_good 아님 기준 — LLM 라우팅 항목 시뮬레이션."""
+    return Criterion(item_id, "감사로그", 3.0, variant, "스크립트",
+                     "판단기준", "방법", applicable=True, label="A")
+
+
+# C1-1: carrier-only item → no_evidence=True → LLM 양호여도 강제 판단보류
+def test_reconcile_carrier_only_triggers_no_evidence_holdover():
+    """빈 RESULT + carrier-only 항목: LLM이 양호를 반환해도 강제 판단보류.
+
+    carrier가 no_evidence 안전망을 무력화하지 않음 — C1 핵심 단언.
+    """
+    llm = {"verdict": "양호", "confidence": 0.95,
+           "rationale": "LLM 양호 응답", "cited_evidence": []}
+    item = _carrier_item()
+    crit = _db_crit_a()
+    j = reconcile(llm, crit, item, status_available=False,
+                  empty_means_good=False)
+    assert j.verdict == "판단보류", (
+        f"carrier-only인데 LLM 양호가 그대로 통과: verdict={j.verdict}")
+    assert j.needs_review is True
+    assert "증거 없음" in j.rationale
+
+
+# C1-2: carrier + 실증거 혼합 → no_evidence=False(실증거 있음) → LLM 판정 허용
+def test_reconcile_carrier_plus_real_evidence_allows_verdict():
+    """carrier + 실증거가 함께 있으면 no_evidence=False → LLM 취약 판정 허용."""
+    real_r = ResourceEvidence("DBM-011#row0", "", "실위반", '{"audit_log":"not loaded"}')
+    carrier_r = _carrier_resource()
+    item = EvidenceItem("DBM-011", "mssql_native", [real_r, carrier_r])
+    crit = _db_crit_a()
+    llm = {"verdict": "취약", "confidence": 0.9,
+           "rationale": "취약 판정", "cited_evidence": []}
+    j = reconcile(llm, crit, item, status_available=False,
+                  empty_means_good=False)
+    # no_evidence 게이트를 통과해 LLM 취약이 유지되어야 한다
+    assert j.verdict == "취약"
+
+
+# C1-3: build_evidence_text — carrier 리소스가 LLM 증거 텍스트에 포함되지 않음
+def test_build_evidence_text_excludes_carrier():
+    """build_evidence_text: carrier 리소스는 증거 직렬화에서 제외."""
+    from judge_tool.judge import build_evidence_text
+    carrier_r = _carrier_resource()
+    item = EvidenceItem("DBM-011", "mssql_native", [carrier_r])
+    text = build_evidence_text(item)
+    assert "(증거 없음)" in text, f"carrier-only인데 증거 없음 신호 없음: {text[:200]}"
+    assert "raw-carrier" not in text
+
+
+# C1-4: build_evidence_text_raw — carrier-only → "(점검 결과 0건)" 신호 복원
+def test_build_evidence_text_raw_carrier_only_returns_zero_signal():
+    """build_evidence_text_raw: carrier-only → '(점검 결과 0건)' 반환(M3 해소)."""
+    from judge_tool.judge import build_evidence_text_raw
+    carrier_r = _carrier_resource()
+    item = EvidenceItem("DBM-011", "mssql_native", [carrier_r])
+    text = build_evidence_text_raw(item)
+    assert "(점검 결과 0건)" in text, (
+        f"carrier-only인데 '0건' 신호 없음: {text[:200]}")
+    assert "raw-carrier" not in text
+
+
+# C1-5: build_evidence_text_raw — carrier + context → context 포함 + 0건 신호
+def test_build_evidence_text_raw_carrier_only_with_context():
+    """context가 있어도 carrier-only면 '(점검 결과 0건)'을 포함해야 한다."""
+    from judge_tool.judge import build_evidence_text_raw
+    carrier_r = _carrier_resource()
+    item = EvidenceItem("DBM-011", "mssql_native", [carrier_r])
+    item.context = "NOTE: PISM-011 참조"
+    text = build_evidence_text_raw(item)
+    assert "NOTE: PISM-011 참조" in text
+    assert "(점검 결과 0건)" in text
+
+
+# C1-6: is_raw_carrier=False 기본값 → 기존 리소스는 영향 없음 (회귀 불변)
+def test_resource_evidence_default_not_carrier():
+    """is_raw_carrier 기본값 False — 기존 ResourceEvidence 생성 동작 불변."""
+    r = ResourceEvidence("res-0", "bad", "detail", "evidence")
+    assert r.is_raw_carrier is False
+
+
+# C1-7: 실데이터 계열 — db_json.parse() 가 만든 carrier는 is_raw_carrier=True
+def test_db_json_parse_carrier_is_flagged():
+    """db_json.parse()가 빈 RESULT에 추가하는 더미 리소스는 is_raw_carrier=True."""
+    import json
+    from judge_tool.parsers.db_json import parse
+    import tempfile, os
+    # 최소한의 빈 RESULT를 가진 DBM-011 항목
+    content = json.dumps([{"DBM-011": {"QUERY": "SELECT ...", "RESULT": []}}])
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt",
+                                     delete=False, encoding="utf-8") as f:
+        f.write(content)
+        tmp = f.name
+    try:
+        items = parse(tmp)
+        by_id = {cid: resources for cid, resources, _ in items}
+        assert "DBM-011" in by_id
+        carriers = [r for r in by_id["DBM-011"] if r.is_raw_carrier]
+        assert carriers, "빈 RESULT에 carrier 더미가 추가되지 않음"
+        non_carriers = [r for r in by_id["DBM-011"] if not r.is_raw_carrier]
+        assert not non_carriers, "빈 RESULT에 실증거가 잘못 추가됨"
+    finally:
+        os.unlink(tmp)

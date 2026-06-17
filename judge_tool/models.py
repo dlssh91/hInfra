@@ -64,6 +64,11 @@ class ResourceEvidence:
     # 결정론(det_common)만 읽는 비마스킹 원문. 산출물/citation/LLM 경로는 절대 사용 금지.
     # None이면 raw가 없거나 수집 안 됨(마스킹 전 원문과 마스킹본 동일한 경우 포함).
     raw_evidence: Optional[str] = None
+    # C1 격리: raw-carrier 더미 리소스 마커.
+    # True이면 det_common(_raw_evidence_for_det) 전용 전달자로,
+    # no_evidence 판정·LLM 증거 텍스트(build_evidence_text/build_evidence_text_raw)에서 제외.
+    # db_json.parse()가 빈 RESULT에 더미를 추가할 때만 True로 세팅(기본 False = 기존 불변).
+    is_raw_carrier: bool = False
 
 
 @dataclass

@@ -43,6 +43,18 @@ SYSTEM_PROMPT = (
     "  - 점검 대상 설정 파일이 없어서 값을 읽을 수 없음(예: '/etc/rsyslog.conf: No such file' → 로그 설정 확인 불가)\n"
     "• 주의: '보안 기능이 미설치·미설정된 것이 확인됨'은 판단보류가 아닐 수 있다. 판단기준이 '방화벽/tcp-wrapper 등 접근통제 수단이 있어야 양호'인데 어떤 수단도 발견되지 않으면 → 취약일 수 있다.\n"
     "• 요약: '정상 실행 + 빈 결과 = 양호', '측정 도구/설정 파일 부재 = 판단보류', '보안 기능 자체 부재 = 취약 가능'. 셋을 혼동하지 말 것.\n\n"
+    "[파일 권한 문자열(symbolic mode) 판독 — 끝 3자리가 others, 가운데 3자리가 group]\n"
+    "• `-rwxrwxrwx`처럼 10자리 중 첫 자리는 파일 종류, 이어지는 9자리는 [소유자 rwx][그룹 rwx][others rwx] 순서다.\n"
+    "• `-rw-r--r--` = 소유자 읽기·쓰기, 그룹 읽기, others 읽기 → others에 '읽기' 권한이 있다(8진수 644). 끝의 `r--`도 엄연한 권한이며 '권한 없음'이 절대 아니다.\n"
+    "• `-rw-r-----` = 소유자 rw, 그룹 r, others 없음 → 8진수 640. 그룹 읽기 비트가 있으므로 600(`-rw-------`)이 아니다.\n"
+    "• 8진수 환산: rwx=7, rw-=6, r-x=5, r--=4, -wx=3, -w-=2, --x=1, ---=0. 각 3자리 그룹을 따로 환산해 붙인다(예: `rw-r--r--`→644).\n"
+    "• 판단기준이 'others 권한 없어야 양호'면 끝 3자리가 정확히 `---`일 때만 양호 — 끝자리에 r/w/x가 하나라도 있으면 취약.\n"
+    "• ★흔한 오판 주의: 읽기(`r`)도 엄연한 권한이다. `-rw-r--r--`의 끝 `r--`는 'others에 읽기 권한 있음'이다. '실행(x)·쓰기(w)가 없으니 others 권한 없음'은 틀린 해석 — 읽기(r) 하나만 있어도 'others에 권한이 있는' 것이다. 따라서 '환경파일·설정파일에 others 권한이 없어야 양호'라는 기준에서 `-rw-r--r--`(644)는 others 읽기 권한이 있으므로 반드시 → 취약(양호 아님).\n"
+    "• 판단기준이 '권한 NNN 이하'면 symbolic을 8진수로 환산해 NNN과 비교한다(예: 기준 644인데 `-rwxrwxrwx`=777 → 초과 → 취약).\n\n"
+    "[서비스 상태 블록 마커 `[ 이름 ][S] … [ 이름 ][E]` 판독 — [S]와 [E] 사이가 실제 실행 상태]\n"
+    "• 점검 스크립트는 서비스 실행 여부를 `[ 서비스명 ][S]`(블록 시작)와 `[ 서비스명 ][E]`(블록 끝) 사이에 출력한다.\n"
+    "• [S]와 [E] 사이가 비어 있으면 → 해당 서비스가 실행 중이지 않음(프로세스·포트 미발견). [S] 줄에 나열된 서비스 '이름'은 점검 대상 목록일 뿐 '실행 중'이라는 뜻이 아니다.\n"
+    "• 판단기준이 '불필요 서비스가 실행 중이면 취약'인데 모든 블록이 비어 있으면 → 실행 중 서비스 없음 → 양호. 블록이 비었는데 이름만 보고 '활성화 상태'라고 단정하지 말 것.\n\n"
     "반드시 아래 키를 가진 JSON 하나만 출력한다(설명·마크다운 금지):\n"
     '{"verdict": "양호|취약|판단보류", "confidence": 0.0~1.0, '
     '"rationale": "한국어 근거 2~4문장", '
@@ -60,13 +72,17 @@ def build_evidence_text(item: EvidenceItem, max_chars: int = 8000) -> str:
     max_chars를 **의도적으로 무시하고 전량 보존**한다. 상한(max_chars)은
     good/info(보조 증거)에만 적용되어 상한 내에서만 추가되고 나머지는 축약·생략된다.
     리소스가 하나도 없으면 "(증거 없음)"을 반환한다.
+    C1 격리: is_raw_carrier=True 리소스는 LLM 증거에서 제외한다.
     """
     def fmt(r):
         return (f"- [{r.status}] {r.resource_id} :: {r.detail}\n"
                 f"  evidence: {r.evidence}")
 
-    primary = [r for r in item.resources if r.status.lower() not in _GOOD]
-    secondary = [r for r in item.resources if r.status.lower() in _GOOD]
+    # C1: carrier 제외 — LLM에 det_common 전용 더미 리소스가 들어가지 않게 한다.
+    real_resources = [r for r in item.resources
+                      if not getattr(r, "is_raw_carrier", False)]
+    primary = [r for r in real_resources if r.status.lower() not in _GOOD]
+    secondary = [r for r in real_resources if r.status.lower() in _GOOD]
 
     lines = [fmt(r) for r in primary]
     used = sum(len(l) for l in lines)
@@ -82,7 +98,8 @@ def build_evidence_text(item: EvidenceItem, max_chars: int = 8000) -> str:
     omitted = len(secondary) - shown_secondary
     if omitted > 0:
         lines.append(f"... (양호/정보 리소스 {omitted}건 축약·생략됨)")
-    if not item.resources:
+    # C1: carrier-only이거나 리소스 자체가 없으면 "(증거 없음)" 신호 복원
+    if not real_resources:
         return "(증거 없음)"
     return "\n".join(lines)
 
@@ -93,12 +110,17 @@ def build_evidence_text_raw(item: EvidenceItem, max_chars: int = 24000) -> str:
     context(QUERY/NOTE)를 상단에 두고 모든 행을 직렬화한다. 행이 한 그룹키로
     반복되는 결과(예: GRANTEE)는 그룹별 요약을 병기한다. 총량이 max_chars를
     넘으면 행을 잘라 "M행 중 N행 표시, K행 생략"을 명시한다.
+    C1 격리: is_raw_carrier=True 리소스는 LLM 증거에서 제외한다.
+    carrier-only이면 "(점검 결과 0건)" 신호를 반환한다(M3 해소).
     """
     head = (item.context + "\n") if item.context else ""
-    if not item.resources:
+    # C1: carrier 제외 — det_common 전용 더미를 LLM 증거 텍스트에서 분리
+    real_resources = [r for r in item.resources
+                      if not getattr(r, "is_raw_carrier", False)]
+    if not real_resources:
         return head + "(점검 결과 0건)"
-    lines = [r.evidence if r.evidence else r.detail for r in item.resources]
-    summary = _group_summary(item.resources)
+    lines = [r.evidence if r.evidence else r.detail for r in real_resources]
+    summary = _group_summary(real_resources)
     body_head = head + (summary + "\n" if summary else "")
     total = len(lines)
     shown, used = [], len(body_head)
@@ -480,7 +502,11 @@ def reconcile(llm: Dict, criterion: Criterion, item: EvidenceItem, *,
     # 없으므로 LLM verdict 와 무관하게 판단보류로 강제하고 검토 대상으로 표시.
     # 단 empty_means_good(위반 0건=양호 후보)면 무증거 강제 보류에서 제외.
     # cited_evidence 는 보존한다.
-    no_evidence = (not item.resources) and not empty_means_good
+    # C1 격리: carrier 리소스는 실증거가 아니므로 no_evidence 판정에서 제외.
+    # carrier-only(실증거 0건)인 경우 no_evidence=True → LLM 양호 무검증 통과 차단.
+    real_evidence = [r for r in item.resources
+                     if not getattr(r, "is_raw_carrier", False)]
+    no_evidence = (not real_evidence) and not empty_means_good
     if (script_status == "error" or no_evidence) and verdict != "판단보류":
         verdict = "판단보류"
         reason = "증거 없음" if no_evidence else "스크립트 점검 오류(error)"

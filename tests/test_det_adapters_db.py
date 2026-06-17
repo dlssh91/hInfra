@@ -1471,30 +1471,101 @@ class TestDBM011DetectVulnElseHold:
         )
         assert fv.verdict != "양호", f"mariadb 거짓양호 발생: verdict={fv.verdict}"
 
-    # ── mssql DBM-011: STUB → gate 차단 ─────────────────────────────────────
+    # ── mssql DBM-011: Phase 4e DET 승격 ───────────────────────────────────
 
-    def test_mssql_dbm011_stub_gate_blocked(self):
-        """mssql DBM-011: STUB(빈 본문) → gate 차단 → handled=False → LLM 폴백."""
+    def test_mssql_dbm011_det_classify(self):
+        """mssql DBM-011: Phase 4e STUB→DET 승격 — classify=DET 확인."""
+        reload_det_source()
+        assert classify("DBM-011", "mssql") == "DET", (
+            "mssql DBM-011 classify가 DET 아님 — DET_SOURCE 갱신 미반영"
+        )
+
+    def test_mssql_dbm011_no_active_audit_is_vuln(self):
+        """mssql DBM-011: 활성 감사 0행 → 취약(미수집 탐지, 모드C)."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        # 빈 RESULT + NOTE(항상 존재) — det_common 경로는 NOTE 강제보류 안 탐
+        raw = _make_raw_ev({
+            "DBM-011": {
+                "RESULT": [],
+                "NOTE": "For audit log upload settings, refer to the PISM-011 script results.",
+            }
+        })
+        fv = judge("DBM-011", raw, "mssql_native", {})
+        assert fv.handled is True, f"mssql DBM-011 활성감사0건 handled=False: {fv}"
+        assert fv.verdict == "취약", (
+            f"mssql 활성감사 없음인데 취약 아님: verdict={fv.verdict} — "
+            "NOTE 강제보류에 가려졌거나(거짓음성) det_common 미동작"
+        )
+        assert fv.ev_status == "bad"
+
+    def test_mssql_dbm011_active_audit_is_hold(self):
+        """mssql DBM-011: 활성 감사 ≥1행 → 판단보류(모드C, 양호 절대 금지)."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-011": {
+                "RESULT": [
+                    {"audit_name": "TestAudit", "audit_action": "DATABASE_OBJECT_CHANGE_GROUP",
+                     "create_date": "2024-01-01", "modify_date": "2024-01-01"},
+                ],
+                "NOTE": "For audit log upload settings, refer to the PISM-011 script results.",
+            }
+        })
+        fv = judge("DBM-011", raw, "mssql_native", {})
+        assert fv.handled is True, f"mssql DBM-011 활성감사존재 handled=False: {fv}"
+        assert fv.verdict == "판단보류", (
+            f"mssql 활성감사 존재인데 판단보류 아님: verdict={fv.verdict} — 양호 자동판정 금지"
+        )
+        assert fv.verdict != "양호", f"mssql DBM-011 거짓양호: verdict={fv.verdict}"
+        assert "백업" in fv.rationale or "인터뷰" in fv.rationale, (
+            f"rationale에 백업/인터뷰 사유 없음: {fv.rationale}"
+        )
+        # 확인내용(감사명) rationale에 포함 확인
+        assert "TestAudit" in fv.rationale or (fv.citations and "TestAudit" in fv.citations[0]), (
+            f"mssql 보류 rationale에 감사명 없음: {fv.rationale} | citations={fv.citations}"
+        )
+
+    def test_mssql_dbm011_note_does_not_hide_vuln(self):
+        """mssql DBM-011: NOTE 존재해도 미수집(취약) 판정이 가려지지 않음 — 거짓음성 방지."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        # 빈 RESULT + NOTE — NOTE 강제보류로 취약이 보류로 바뀌면 거짓음성
+        raw = _make_raw_ev({
+            "DBM-011": {
+                "RESULT": [],
+                "NOTE": "For audit log upload settings, refer to the PISM-011 script results.",
+            }
+        })
+        fv = judge("DBM-011", raw, "mssql_native", {})
+        assert fv.verdict != "판단보류" or fv.verdict == "취약", (
+            f"mssql 미수집인데 NOTE로 보류 가려짐(거짓음성): verdict={fv.verdict}"
+        )
+        # 정확히는 취약이어야 함
+        assert fv.verdict == "취약", (
+            f"mssql 미수집(RESULT=[]): 취약 기대, 실제={fv.verdict} "
+            "(NOTE 강제보류 우회 실패 — _judge_one LLM 경로로 라우팅됐을 가능성)"
+        )
+
+    def test_mssql_dbm011_no_false_good(self):
+        """mssql DBM-011: 양호 자동판정 절대 금지."""
         import judge_tool.det_adapters.db as _db
         _db._RUN_CACHE.clear()
         raw = _make_raw_ev({"DBM-011": {"RESULT": []}})
         fv = judge("DBM-011", raw, "mssql_native", {})
-        assert fv.handled is False, (
-            f"mssql DBM-011: STUB인데 handled=True — LLM 폴백 불가: {fv}"
-        )
         assert fv.verdict != "양호", f"mssql DBM-011 거짓양호: verdict={fv.verdict}"
 
-    def test_mssql_dbm011_classify_stub(self):
-        """mssql DBM-011: classify=STUB 확인."""
+    # ── pg DBM-011: Phase 4e DET 승격(STUB→DET, pgaudit 신규 포맷 탐지) ──────
+
+    def test_pg_dbm011_det_classify(self):
+        """pg DBM-011: Phase 4e STUB→DET 승격 — classify=DET 확인."""
         reload_det_source()
-        assert classify("DBM-011", "mssql") == "STUB", (
-            "mssql DBM-011 classify가 STUB 아님"
+        assert classify("DBM-011", "pg") == "DET", (
+            "pg DBM-011 classify가 DET 아님 — DET_SOURCE 갱신 미반영"
         )
 
-    # ── pg DBM-011: STUB 유지(수집형식 불일치) ──────────────────────────────
-
-    def test_pg_dbm011_stub_gate_blocked(self):
-        """pg DBM-011: STUB 유지(수집형식 불일치) → gate 차단 → handled=False."""
+    def test_pg_dbm011_pgaudit_not_loaded_new_format_is_vuln(self):
+        """pg DBM-011: 신규 포맷 pgaudit 미로드(value 없음, pgaudit_settings=[]) → 취약."""
         import judge_tool.det_adapters.db as _db
         _db._RUN_CACHE.clear()
         raw = _make_raw_ev({
@@ -1503,17 +1574,85 @@ class TestDBM011DetectVulnElseHold:
             ]}
         })
         fv = judge("DBM-011", raw, "pg_native", {})
-        assert fv.handled is False, (
-            f"pg DBM-011: STUB인데 handled=True — 거짓양호 위험: {fv}"
+        assert fv.handled is True, f"pg DBM-011 미로드 handled=False: {fv}"
+        assert fv.verdict == "취약", (
+            f"pg pgaudit 미로드인데 취약 아님: verdict={fv.verdict} — 거짓양호 위험"
+        )
+        assert fv.ev_status == "bad"
+
+    def test_pg_dbm011_pgaudit_loaded_new_format_is_hold(self):
+        """pg DBM-011: 신규 포맷 pgaudit 로드됨(value에 pgaudit 포함) → 판단보류(모드C)."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-011": {"RESULT": [
+                {"setting_name": "shared_preload_libraries",
+                 "value": "pgaudit,pg_stat_statements",
+                 "pgaudit_settings": [{"pgaudit.log": "ddl,write"}]}
+            ]}
+        })
+        fv = judge("DBM-011", raw, "pg_native", {})
+        assert fv.handled is True, f"pg DBM-011 로드됨 handled=False: {fv}"
+        assert fv.verdict == "판단보류", (
+            f"pg pgaudit 로드됨인데 판단보류 아님: verdict={fv.verdict} — 양호 자동판정 금지"
+        )
+        assert fv.verdict != "양호", f"pg DBM-011 거짓양호: verdict={fv.verdict}"
+        # 확인내용(pgaudit) rationale에 포함 확인
+        assert "pgaudit" in fv.rationale.lower() or (fv.citations and "pgaudit" in fv.citations[0].lower()), (
+            f"pg 보류 rationale에 pgaudit 내용 없음: {fv.rationale} | citations={fv.citations}"
+        )
+
+    def test_pg_dbm011_pgaudit_status_not_loaded_is_vuln(self):
+        """pg DBM-011: pgaudit_status='Not Loaded' 포맷 → 취약."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-011": {"RESULT": [
+                {"pgaudit_status": "Not Loaded", "pgaudit_settings": []}
+            ]}
+        })
+        fv = judge("DBM-011", raw, "pg_native", {})
+        assert fv.handled is True, f"pg DBM-011 pgaudit_status=Not Loaded handled=False: {fv}"
+        assert fv.verdict == "취약", f"pgaudit_status=Not Loaded인데 취약 아님: {fv.verdict}"
+
+    def test_pg_dbm011_pgaudit_status_loaded_is_hold(self):
+        """pg DBM-011: pgaudit_status='Loaded' → 판단보류(모드C)."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-011": {"RESULT": [
+                {"pgaudit_status": "Loaded", "pgaudit_settings": [{"pgaudit.log": "ddl"}]}
+            ]}
+        })
+        fv = judge("DBM-011", raw, "pg_native", {})
+        assert fv.handled is True, f"pg DBM-011 pgaudit_status=Loaded handled=False: {fv}"
+        assert fv.verdict == "판단보류", (
+            f"pg pgaudit_status=Loaded인데 판단보류 아님: verdict={fv.verdict}"
         )
         assert fv.verdict != "양호", f"pg DBM-011 거짓양호: verdict={fv.verdict}"
 
-    def test_pg_dbm011_classify_stub(self):
-        """pg DBM-011: classify=STUB 유지 확인."""
-        reload_det_source()
-        assert classify("DBM-011", "pg") == "STUB", (
-            "pg DBM-011 classify가 STUB 아님 — 수집형식 불일치로 STUB 유지 필요"
-        )
+    def test_pg_dbm011_legacy_korean_string_is_vuln(self):
+        """pg DBM-011: 옛 한글 문자열('로드된 라이브러리가 없습니다.') 하위호환 → 취약."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-011": {"RESULT": ["로드된 라이브러리가 없습니다."]}
+        })
+        fv = judge("DBM-011", raw, "pg_native", {})
+        assert fv.handled is True, f"pg DBM-011 한글 하위호환 handled=False: {fv}"
+        assert fv.verdict == "취약", f"pg 한글 미로드 하위호환 취약 아님: {fv.verdict}"
+
+    def test_pg_dbm011_no_false_good(self):
+        """pg DBM-011: 양호 자동판정 절대 금지."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-011": {"RESULT": [
+                {"setting_name": "shared_preload_libraries", "value": "", "pgaudit_settings": []}
+            ]}
+        })
+        fv = judge("DBM-011", raw, "pg_native", {})
+        assert fv.verdict != "양호", f"pg DBM-011 거짓양호: verdict={fv.verdict}"
 
     # ── cloud variants: DET 항목은 모드C 동작, STUB은 gate 차단 ─────────────
 
@@ -1534,12 +1673,13 @@ class TestDBM011DetectVulnElseHold:
     # ── 거짓양호 전수 확인 ───────────────────────────────────────────────────
 
     def test_no_false_good_all_det_engines_empty_result(self):
-        """DBM-011: 빈 RESULT로 DET 엔진 전수 호출 시 양호 자동판정 0건."""
+        """DBM-011: 빈 RESULT로 DET 엔진 전수 호출 시 양호 자동판정 0건 (Phase 4d/4e 전 엔진)."""
         import judge_tool.det_adapters.db as _db
         det_variants = [
             ("mysql_native", "mysql"),
             ("oracle_native", "oracle"),
             ("mariadb_native", "mariadb"),
+            ("mssql_native", "mssql"),  # Phase 4e 추가
         ]
         for variant, _eng in det_variants:
             _db._RUN_CACHE.clear()
@@ -1548,3 +1688,145 @@ class TestDBM011DetectVulnElseHold:
             assert fv.verdict != "양호", (
                 f"거짓양호 발생: DBM-011/{variant} 빈RESULT인데 양호 판정: {fv}"
             )
+        # pg: 빈 pgaudit_settings → 미로드 → 취약 (양호 아님)
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-011": {"RESULT": [
+                {"setting_name": "shared_preload_libraries", "value": "", "pgaudit_settings": []}
+            ]}
+        })
+        fv = judge("DBM-011", raw, "pg_native", {})
+        assert fv.verdict != "양호", (
+            f"거짓양호 발생: DBM-011/pg_native pgaudit미로드인데 양호 판정: {fv}"
+        )
+
+    # ── 모드C 보류 rationale 확인내용 테스트 ─────────────────────────────────
+
+    def test_hold_rationale_contains_audit_detail_mysql(self):
+        """mysql DBM-011: 판단보류 rationale에 audit_log 확인내용 포함."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-011": {"RESULT": [
+            {"VARIABLE_NAME": "audit_log_file", "VARIABLE_VALUE": "/var/log/mysql/audit.log"},
+        ]}})
+        fv = judge("DBM-011", raw, "mysql_native", {})
+        assert fv.verdict == "판단보류", f"mysql DBM-011 수집됨 → 판단보류 기대: {fv.verdict}"
+        assert "audit_log" in fv.rationale.lower() or (
+            fv.citations and any("audit_log" in c.lower() for c in fv.citations)
+        ), f"mysql 보류 rationale에 audit_log 내용 없음: {fv.rationale} | {fv.citations}"
+
+    def test_hold_rationale_contains_audit_detail_pg_loaded(self):
+        """pg DBM-011: 판단보류 rationale에 pgaudit 확인내용 포함."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-011": {"RESULT": [
+            {"setting_name": "shared_preload_libraries",
+             "value": "pgaudit",
+             "pgaudit_settings": [{"pgaudit.log": "ddl"}]},
+        ]}})
+        fv = judge("DBM-011", raw, "pg_native", {})
+        assert fv.verdict == "판단보류", f"pg DBM-011 로드됨 → 판단보류 기대: {fv.verdict}"
+        assert "pgaudit" in fv.rationale.lower() or (
+            fv.citations and any("pgaudit" in c.lower() for c in fv.citations)
+        ), f"pg 보류 rationale에 pgaudit 내용 없음: {fv.rationale} | {fv.citations}"
+
+    def test_hold_rationale_contains_audit_detail_mssql_loaded(self):
+        """mssql DBM-011: 판단보류 rationale에 감사명 포함."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-011": {"RESULT": [
+            {"audit_name": "FinAudit", "audit_action": "SCHEMA_OBJECT_ACCESS_GROUP",
+             "create_date": "2024-01-01", "modify_date": "2024-06-01"},
+        ], "NOTE": "For audit log upload settings, refer to the PISM-011 script results."}})
+        fv = judge("DBM-011", raw, "mssql_native", {})
+        assert fv.verdict == "판단보류", f"mssql DBM-011 활성감사 → 판단보류 기대: {fv.verdict}"
+        assert "FinAudit" in fv.rationale or (
+            fv.citations and any("FinAudit" in c for c in fv.citations)
+        ), f"mssql 보류 rationale에 감사명 없음: {fv.rationale} | {fv.citations}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# M1 회귀가드: _extract_audit_detail citation 마스킹
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestExtractAuditDetailMasking:
+    """M1: _extract_audit_detail이 반환하는 citation 문자열에 raw 민감값 미포함.
+
+    audit detail은 _mask_row를 경유해야 한다 — raw config 비마스킹 노출 금지.
+    플러그인명/감사명/경로 등 식별자는 노출 OK, 민감 자격증명(해시/패스워드)은 마스킹.
+    """
+
+    def _make_data_with_secret(self, engine: str) -> dict:
+        """각 엔진별 DBM-011 RESULT에 민감값(해시/패스워드류) 키를 포함한 행."""
+        if engine == "mysql":
+            return {"DBM-011": {"RESULT": [
+                {"VARIABLE_NAME": "audit_log_file",
+                 "VARIABLE_VALUE": "/var/log/mysql/audit.log",
+                 "secret": "plain_password_here"}
+            ]}}
+        if engine == "mariadb":
+            return {"DBM-011": {"RESULT": [
+                {"VARIABLE_NAME": "SERVER_AUDIT_FILE_PATH",
+                 "VARIABLE_VALUE": "/var/log/mariadb/audit.log",
+                 "password": "db_secret_123"}
+            ]}}
+        if engine == "oracle":
+            return {"DBM-011": {"RESULT": [
+                {"name": "audit_trail", "value": "DB",
+                 "auth_token": "abcdef1234567890abcd"}  # 해시류 토큰
+            ]}}
+        if engine == "postgresql":
+            return {"DBM-011": {"RESULT": [
+                {"pgaudit_status": "Loaded",
+                 "pgaudit_settings": ["log"],
+                 "password": "pg_secret_456"}
+            ]}}
+        if engine == "mssql":
+            return {"DBM-011": {"RESULT": [
+                {"audit_name": "FSI_Audit",
+                 "audit_action": "SCHEMA_OBJECT_ACCESS_GROUP",
+                 "secret": "mssql_secret_789"},
+            ]}}
+        return {}
+
+    def _call_extract(self, engine: str, data: dict) -> str:
+        import importlib
+        db_mod = importlib.import_module("judge_tool.det_adapters.db")
+        return db_mod._extract_audit_detail(engine, data)
+
+    def _assert_no_raw_sensitive(self, detail: str, secrets: list[str]):
+        """detail 문자열에 secrets 원문이 없음을 단언."""
+        for s in secrets:
+            assert s not in detail, (
+                f"citation에 민감값 원문 노출: secret={s!r} in detail={detail!r}"
+            )
+
+    def test_mysql_no_sensitive_in_detail(self):
+        data = self._make_data_with_secret("mysql")
+        detail = self._call_extract("mysql", data)
+        self._assert_no_raw_sensitive(detail, ["plain_password_here"])
+        assert "audit_log_file" in detail  # 식별자는 노출 OK
+
+    def test_mariadb_no_sensitive_in_detail(self):
+        data = self._make_data_with_secret("mariadb")
+        detail = self._call_extract("mariadb", data)
+        self._assert_no_raw_sensitive(detail, ["db_secret_123"])
+        assert "SERVER_AUDIT_FILE_PATH" in detail
+
+    def test_oracle_no_sensitive_in_detail(self):
+        data = self._make_data_with_secret("oracle")
+        detail = self._call_extract("oracle", data)
+        # auth_token 값이 해시류이므로 마스킹되어야 한다
+        self._assert_no_raw_sensitive(detail, ["abcdef1234567890abcd"])
+
+    def test_postgresql_no_sensitive_in_detail(self):
+        data = self._make_data_with_secret("postgresql")
+        detail = self._call_extract("postgresql", data)
+        self._assert_no_raw_sensitive(detail, ["pg_secret_456"])
+        assert "pgaudit" in detail
+
+    def test_mssql_no_sensitive_in_detail(self):
+        data = self._make_data_with_secret("mssql")
+        detail = self._call_extract("mssql", data)
+        self._assert_no_raw_sensitive(detail, ["mssql_secret_789"])
+        assert "FSI_Audit" in detail  # 감사명은 노출 OK

@@ -75,17 +75,19 @@ def test_parse_returns_items_with_context():
     assert len(res001) == 2
     assert all("FAKEFAKE" not in r.evidence for r in res001)
     assert any("REDACTED" in r.evidence for r in res001)
-    # DBM-017: 빈 RESULT → resources 0건
+    # DBM-017: 빈 RESULT → 실증거 0건 (Phase 4e: raw-carrier 더미 리소스만 있을 수 있음)
     res017, _ = by_id["DBM-017"]
-    assert res017 == []
+    real_res017 = [r for r in res017 if r.detail != "(raw-carrier)"]
+    assert real_res017 == []
     # DBM-011: bare 문자열 행 + NOTE(context)
     res011, ctx011 = by_id["DBM-011"]
     assert any("not loaded" in r.evidence or "not loaded" in r.detail
                for r in res011)
     assert ctx011 and "PISM-011" in ctx011
-    # DBM-019: NOTE-only → resources 0건, context에 N/A
+    # DBM-019: NOTE-only → 실증거 0건, context에 N/A (Phase 4e: raw-carrier 더미 리소스만 있을 수 있음)
     res019, ctx019 = by_id["DBM-019"]
-    assert res019 == []
+    real_res019 = [r for r in res019 if r.detail != "(raw-carrier)"]
+    assert real_res019 == []
     assert ctx019 and "N/A" in ctx019
     # DBM-022: 키only dict → 죽지 않고 처리(빈 resources 또는 context)
     assert "DBM-022" in by_id

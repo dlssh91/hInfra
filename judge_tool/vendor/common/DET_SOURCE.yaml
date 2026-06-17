@@ -446,9 +446,9 @@ items:
     variants:
       mysql: DET
       oracle: DET
-      mssql: STUB           # native mssql: 빈 본문(dbm_result=[]만) → STUB, LLM 경로
+      mssql: DET            # Phase 4e: STUB→DET 승격 — 활성 감사 탐지(0행→취약, ≥1행→보류)
       mariadb: DET          # Phase 4d: "not loaded" 탐지 복원 — 취약 탐지→취약, 위반0→판단보류(DETECT_VULN_ELSE_HOLD)
-      pg: STUB              # pg native: 수집형식 불일치(pgaudit_settings:[] dict vs 한글문자열 탐지) → STUB 유지
+      pg: DET               # Phase 4e: STUB→DET 승격 — pgaudit 미로드 탐지(신규 포맷 + 한글 하위호환)
       # 클라우드 변형 (Phase 4b)
       mysql_rds: DET       # cloud mysql: audit_log_enabled / server_audit_logging 비교 → DET
       mysql_aurora: DET
@@ -459,14 +459,20 @@ items:
       pg_rds: DET          # cloud pg: pgaudit 설정 복합 로직(AWS/Azure 분기) → DET
       pg_aurora: DET
       pg_azure: DET
-    # Phase 4d DBM-011 분류 근거:
+    # Phase 4d/4e DBM-011 분류 근거:
     #   mysql/oracle native: DET — 미수집 탐지→취약 확정, 위반0→판단보류(백업주기 미검증, DETECT_VULN_ELSE_HOLD)
     #   mariadb native: DET 복원 — analysis에 "not loaded" + SERVER_AUDIT_FILE_PATH 검사 실재.
     #     수집형식: RESULT=["server_audit.so plugin is not loaded!"] → not loaded 탐지 정상.
     #     이전 STUB 사유(수집형식 불일치/KeyError)는 실제 데이터로 검증 결과 불일치 없음.
-    #   mssql native/cloud: STUB — 빈 본문(dbm_result=[]만), 결정론 불가 → LLM(label A)
-    #   pg native: STUB 유지 — analysis 탐지조건('로드된 라이브러리가 없습니다.' in str(datum))이
-    #     실수집 데이터(pgaudit_settings:[] dict 구조)와 불일치 → 거짓양호 위험 → 보수적 STUB
+    #   mssql native: STUB→DET 승격 (Phase 4e) — 활성 서버감사 행 탐지 로직 추가.
+    #     수집형식: RESULT=[{audit_name,audit_action,create_date,modify_date}](is_state_enabled=1만).
+    #     0행→취약(미수집), ≥1행→위반0(수집됨)→모드C 보류.
+    #     ⚠️ NOTE("...refer to PISM-011") 항상 존재 → db_mssql.yaml에 det_common 부여로
+    #        _det_common_handler 경유(NOTE 강제 우회) — 미수집→취약이 NOTE에 안 가려짐.
+    #   pg native: STUB→DET 승격 (Phase 4e) — 신규 포맷(pgaudit_settings) 탐지 로직 추가.
+    #     수집형식 A: {"setting_name":"shared_preload_libraries","value":"...","pgaudit_settings":[...]}
+    #     수집형식 B: {"pgaudit_status":"Not Loaded"|"Loaded","pgaudit_settings":[...]}
+    #     pgaudit 미로드→위반→취약, 로드됨→위반0→보류. 옛 한글 문자열 하위호환 유지.
 
   DBM-013:                          # 원격접근통제
     variants:

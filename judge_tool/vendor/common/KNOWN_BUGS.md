@@ -368,3 +368,53 @@ result 매핑 직전에 **`len(violations)==0 and base in exc_keys`** 이면 `ha
 **한계**: pg `idle_in_transaction_session_timeout`은 트랜잭션 유휴만 커버. 일반 유휴세션 타임아웃은 PG14+ `idle_session_timeout` 별도(미수집 시 needs_review). DBM-009 pg는 needs_review로 사람 재확인.
 
 **회귀 핀**: value=0→취약, value=300→양호, value=900→양호, value=1000→취약.
+
+---
+
+## R-PG011. pg dbm_011 옛 한글포맷 → 신규 포맷 미대응 (VENDOR-EDIT)
+
+**id**: `R-PG011`
+**위치**: `judge_tool/vendor/common/db/postgresql/analysis.py` `dbm_011`
+**상태**: VENDOR-EDIT 필요
+
+### 증상
+pg 수집 스크립트는 초기(옛) 포맷에서 pgaudit 상태를 한글 문자열(예: `"로드됨"`, `"미설치"`) 또는 bare 텍스트로 출력했다. 신규 수집 포맷은 `{"pgaudit_status": "Loaded", "pgaudit_settings": [...]}` 구조체로 변경되었으나, `dbm_011` 메서드는 신규 구조를 인식하지 못한다.
+
+결과: 신규 포맷 데이터가 들어오면 `dbm_011`이 위반0으로 반환 → `_DETECT_VULN_ELSE_HOLD` 모드에서 판단보류(양호 자동판정 없음)로 처리 — 즉시 거짓양호는 없으나, 활성 pgaudit 설치가 확인됐음에도 위반0=취약 경로를 타지 않아 rationale 문구가 엔진 내부 기본값("로드됨")으로 빠질 수 있다.
+
+### Corrected 동작 (VENDOR-EDIT)
+`dbm_011` 내부에서 신규 구조체 포맷(`pgaudit_status == "Loaded"`)을 인식해:
+- `pgaudit_status == "Loaded"` → 위반0(감사 수집됨) 반환
+- `pgaudit_status` 없음 또는 `"Not Loaded"` → 기존 옛 포맷 탐지 경로 유지
+
+### 회귀테스트 핀
+- `{"DBM-011": {"RESULT": [{"pgaudit_status":"Loaded","pgaudit_settings":["log"]}]}}` → `dbm_011` 위반0 → 어댑터 판단보류
+- `{"DBM-011": {"RESULT": [{"pgaudit_status":"Not Loaded"}]}}` → `dbm_011` 위반≥1 → 어댑터 취약
+- 옛 bare 텍스트 포맷 — `"audit_log.so ... not loaded"` 등 — 기존 동작 불변
+
+---
+
+## R-MS011. mssql dbm_011 빈 RESULT(0 audit행) → 활성 감사 행 판단 (VENDOR-EDIT)
+
+**id**: `R-MS011`
+**위치**: `judge_tool/vendor/common/db/mssql/analysis.py` `dbm_011` (또는 동등 메서드)
+**상태**: VENDOR-EDIT 필요
+
+### 증상
+mssql DBM-011 활성 감사 점검에서 수집 스크립트가 `sys.server_audits`/`sys.server_audit_specifications` 쿼리를 실행하나, 감사정책이 없거나 비활성인 경우 RESULT 행이 0건으로 비어 있다.
+
+현재 `dbm_011` 메서드는 빈 RESULT를 위반0(양호)로 취급한다. 그러나 RESULT=0은 "활성 감사 없음 = 취약"이어야 한다. `_DETECT_VULN_ELSE_HOLD` 모드에서 어댑터가 위반0을 받으면 판단보류로 처리하는 안전망이 있으나, 그 전에 벤더 로직이 잘못된 방향으로 판정을 내리면 거짓양호 위험이 있다.
+
+현재 어댑터 계층 보호(`_DETECT_VULN_ELSE_HOLD`): 위반0이어도 자동 양호 판정을 하지 않고 판단보류를 강제한다. 따라서 현재는 즉각적인 거짓양호는 없지만 올바른 취약 판정을 내리지 못하는 상태.
+
+RESULT=0행(활성 감사 없음)은 `dbm_011`이 위반1건 이상(취약 경로)을 반환해야 한다. 어댑터(`_DETECT_VULN_ELSE_HOLD`)가 취약 탐지 → 취약 확정 경로를 탈 수 있도록 벤더 로직 수정이 필요.
+
+### Corrected 동작 (VENDOR-EDIT)
+- `sys.server_audits` 결과가 비어있음(0행) → `dbm_011` 위반1건 반환(취약 신호)
+- `sys.server_audits` 결과에 활성 감사 행이 있음 → 위반0(수집됨) 반환
+- 어댑터(`_DETECT_VULN_ELSE_HOLD`): 위반≥1 → 취약 확정, 위반0 → 판단보류
+
+### 회귀테스트 핀
+- `{"DBM-011": {"RESULT": []}}` → `dbm_011` 위반≥1 → 어댑터 취약 판정
+- `{"DBM-011": {"RESULT": [{"audit_name":"FSI_Audit","audit_action":"..."}]}}` → `dbm_011` 위반0 → 어댑터 판단보류
+- raw-carrier 더미 리소스를 통한 `_raw_evidence_for_det` 동작 불변 확인
