@@ -15,6 +15,8 @@
   (l) Phase 4b: cloud 변형 라우팅/gate/DET/캐시 분리 (합성 픽스처)
   (m) DBM-015 label B 라우팅: oracle/mssql/pg native → det_common 어댑터 미호출,
       classify=STUB, judgment_method=interview
+  (n) DBM-017 label B 라우팅: mysql/mariadb/oracle/mssql/pg native → det_common 어댑터 미호출,
+      classify=STUB, 거짓양호 0(pg PUBLIC 과탐/exception 오판 차단), 클라우드 DET 유지
 """
 import json
 import os
@@ -689,12 +691,23 @@ class TestMysqlNativeE2E:
         assert fv.verdict in ("양호", "취약")
         assert fv.confidence == 0.9
 
-    def test_det_dbm017_handled(self):
-        """DBM-017 mysql: DET → handled=True (sub-suffix _1~_4 포함)."""
+    def test_det_dbm017_gate_blocked(self):
+        """DBM-017 mysql: label B 이관 → STUB → gate 차단 → handled=False.
+
+        이전: mysql native DBM-017 = DET → handled=True + 양호/취약(exception-기반 과탐/미탐 위험).
+        수정 후: DET_SOURCE mysql→STUB, judgment_method 제거 → STUB gate 차단 → handled=False.
+        "업무상 불필요" 맥락 판단 → label B(인터뷰) + LLM 요약 라우팅.
+        """
         raw_ev = self._get_raw_ev()
         fv = judge("DBM-017", raw_ev, "mysql_native", {})
-        assert fv.handled is True
-        assert fv.verdict in ("양호", "취약")
+        assert fv.handled is False, (
+            "mysql DBM-017: STUB → gate 차단되어야 함. "
+            "handled=True이면 exception-기반 과탐/미탐 경로를 타고 있음! "
+            "DET_SOURCE mysql:STUB 또는 yaml judgment_method 제거 확인 필요."
+        )
+        assert fv.verdict != "양호", (
+            "mysql DBM-017: 거짓양호 금지 — STUB gate 차단 후 양호가 나오면 안 됨."
+        )
 
     def test_evidence_guard_absent_key(self):
         """data_key 부재 항목 → handled=False (거짓양호 차단)."""
@@ -2486,6 +2499,282 @@ class TestDBM015LabelBRouting:
             "interview_summary가 None — LLM 요약 호출 실패"
         )
         assert "불필요" in j.interview_summary or "sys" in j.interview_summary or "orders" in j.interview_summary, (
+            f"interview_summary에 요약 내용 없음: {j.interview_summary!r}"
+        )
+        assert j.label == "B"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (n) DBM-017 label B 라우팅 — mysql/mariadb/oracle/mssql/pg native
+#
+# 설계 계약:
+#   - mysql/mariadb/oracle native DBM-017 → DET_SOURCE = STUB → gate 차단(handled=False).
+#     이전: DET(exception-기반 비교) → 과탐/미탐 위험.
+#     label B + judgment_method: det_common 제거 → classify_method=interview → _summarize_one.
+#   - mssql native: 빈 본문 → STUB(기존). label B + no det_common → interview 경로.
+#   - pg native: R3 보수처리로 이미 STUB. label B + no det_common → interview 경로.
+#   - classify_method: label='B', has_summary=True → 'interview' (det_common 어댑터 미호출).
+#   - 거짓양호(양호 자동판정) 0 — 특히 pg PUBLIC 과탐 경로 차단.
+#   - 클라우드 변형(mysql_rds, oracle_rds, mariadb_rds, pg_rds 등)은 DET 유지.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestDBM017LabelBRouting:
+    """DBM-017 label B(인터뷰) 라우팅 검증.
+
+    핵심 불변식:
+      1. classify('DBM-017', 'mysql_native') == 'STUB'   (label B 이관 후 DET_SOURCE 정정)
+      2. classify('DBM-017', 'oracle_native') == 'STUB'
+      3. classify('DBM-017', 'mariadb_native') == 'STUB'
+      4. classify('DBM-017', 'mssql_native') == 'STUB'   (기존 STUB 유지)
+      5. classify('DBM-017', 'pg_native') == 'STUB'      (기존 STUB 유지)
+      6. judge('DBM-017', ..., 'mysql_native') → handled=False (gate STUB 차단)
+         → det_common 어댑터 미호출 → 거짓양호(exception-기반 오판) 경로 차단
+      7. judge('DBM-017', ..., 'pg_native') → handled=False (pg PUBLIC 과탐 차단)
+      8. classify_method('B', has_summary=True) → 'interview' (det_common 아님)
+      9. DB 항목 yaml: mysql/mariadb/oracle/mssql/pg DBM-017 summary_instruction + 'judgment_method' 없음
+      10. 클라우드 변형(mysql_rds, oracle_rds, mariadb_rds, pg_rds)은 DET 유지
+    """
+
+    def setup_method(self):
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        reload_det_source()
+
+    def test_mysql_dbm017_classify_stub(self):
+        """mysql native DBM-017: label B 이관 후 DET_SOURCE=STUB → gate 차단 확인."""
+        result = classify("DBM-017", "mysql_native")
+        assert result == "STUB", (
+            f"mysql DBM-017가 DET로 분류되면 exception-기반 과탐/미탐 경로 탐!\n"
+            f"got: {result}"
+        )
+
+    def test_oracle_dbm017_classify_stub(self):
+        """oracle native DBM-017: label B 이관 후 DET_SOURCE=STUB → gate 차단 확인."""
+        result = classify("DBM-017", "oracle_native")
+        assert result == "STUB", (
+            f"oracle DBM-017가 DET로 분류되면 exception-기반 과탐/미탐 경로 탐!\n"
+            f"got: {result}"
+        )
+
+    def test_mariadb_dbm017_classify_stub(self):
+        """mariadb native DBM-017: label B 이관 후 DET_SOURCE=STUB → gate 차단 확인."""
+        result = classify("DBM-017", "mariadb_native")
+        assert result == "STUB", (
+            f"mariadb DBM-017가 DET로 분류되면 exception-기반 과탐/미탐 경로 탐!\n"
+            f"got: {result}"
+        )
+
+    def test_mssql_dbm017_classify_stub(self):
+        """mssql native DBM-017: 빈 본문 STUB(기존 유지)."""
+        result = classify("DBM-017", "mssql_native")
+        assert result == "STUB", f"mssql DBM-017 STUB 기대, got: {result}"
+
+    def test_pg_dbm017_classify_stub(self):
+        """pg native DBM-017: R3 보수처리 + grantee==PUBLIC 과탐 → STUB(기존 유지)."""
+        result = classify("DBM-017", "pg_native")
+        assert result == "STUB", f"pg DBM-017 STUB 기대, got: {result}"
+
+    def test_mysql_dbm017_gate_blocked(self):
+        """mysql native DBM-017: STUB → gate 차단 → handled=False (det_common 어댑터 미호출).
+
+        이전 동작: DET → exception-기반 비교 → 과탐(거짓취약)/미탐(거짓양호) 위험.
+        수정 후: STUB → gate 차단 → handled=False → label B 라우팅(_summarize_one).
+        """
+        raw = _make_raw_ev({
+            "DBM-017_1": {"RESULT": [
+                {"GRANTEE": "app_user@%", "TABLE_NAME": "information_schema.TABLES", "PRIVILEGE_TYPE": "SELECT"},
+                {"GRANTEE": "app_user@%", "TABLE_NAME": "mysql.user", "PRIVILEGE_TYPE": "SELECT"},
+            ]}
+        })
+        fv = judge("DBM-017", raw, "mysql_native", {})
+        assert fv.handled is False, (
+            "mysql DBM-017: STUB → gate 차단되어야 함. "
+            "handled=True이면 exception-기반 과탐/미탐 경로를 타고 있음!"
+        )
+
+    def test_oracle_dbm017_gate_blocked(self):
+        """oracle native DBM-017: STUB → gate 차단 → handled=False."""
+        raw = _make_raw_ev({
+            "DBM-017": {"RESULT": [
+                {"GRANTEE": "APP_USER", "TABLE_NAME": "DBA_TABLES", "PRIVILEGE": "SELECT"}
+            ]}
+        })
+        fv = judge("DBM-017", raw, "oracle_native", {})
+        assert fv.handled is False, (
+            "oracle DBM-017: STUB → gate 차단되어야 함 — 거짓양호 방지"
+        )
+
+    def test_mariadb_dbm017_gate_blocked(self):
+        """mariadb native DBM-017: STUB → gate 차단 → handled=False."""
+        raw = _make_raw_ev({
+            "DBM-017_1": {"RESULT": [
+                {"GRANTEE": "app_user@%", "TABLE_NAME": "information_schema.TABLES", "PRIVILEGE_TYPE": "SELECT"},
+            ]}
+        })
+        fv = judge("DBM-017", raw, "mariadb_native", {})
+        assert fv.handled is False, (
+            "mariadb DBM-017: STUB → gate 차단되어야 함 — 거짓양호 방지"
+        )
+
+    def test_pg_dbm017_gate_blocked_no_public_false_positive(self):
+        """pg native DBM-017: STUB → gate 차단 → handled=False (PUBLIC 과탐 차단).
+
+        이전 동작: grantee=='PUBLIC' + pg_catalog SELECT → 거짓취약(과탐).
+        수정 후: STUB gate → handled=False. pg PUBLIC 기본 권한 과탐 없음.
+        """
+        raw = _make_raw_ev({
+            "DBM-017_1": {"RESULT": [
+                {"grantee": "PUBLIC", "table_name": "pg_stat_activity", "privilege_type": "SELECT"},
+            ]}
+        })
+        fv = judge("DBM-017", raw, "pg_native", {})
+        assert fv.handled is False, (
+            "pg DBM-017: STUB → gate 차단되어야 함 — PUBLIC 과탐 차단"
+        )
+        # 핵심: 양호 자동판정 없음
+        assert fv.verdict != "양호", (
+            "pg DBM-017: 거짓양호 금지 — STUB gate 차단 후 양호가 나오면 안 됨."
+        )
+
+    def test_mssql_dbm017_gate_blocked(self):
+        """mssql native DBM-017: STUB(빈 본문) → gate 차단 → handled=False."""
+        raw = _make_raw_ev({
+            "DBM-017": {"RESULT": [
+                {"permission_name": "SELECT", "grantee": "PUBLIC", "object_name": "sys.tables"},
+            ]}
+        })
+        fv = judge("DBM-017", raw, "mssql_native", {})
+        assert fv.handled is False, (
+            "mssql DBM-017: STUB → gate 차단되어야 함."
+        )
+
+    def test_no_judgment_method_in_yaml(self):
+        """mysql/mariadb/oracle yaml DBM-017에 judgment_method 키가 없어야 함.
+
+        judgment_method가 있으면 criteria_loader가 yaml_method 우선 → det_common 어댑터 호출 → 거짓양호.
+        """
+        import yaml
+        for fname in [
+            "db_mysql.yaml", "db_mariadb.yaml", "db_oracle.yaml",
+            "db_mssql.yaml", "db_postgresql.yaml",
+        ]:
+            path = f"judge_tool/item_configs/{fname}"
+            with open(path, encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            item = data.get("DBM-017", {})
+            assert "judgment_method" not in item, (
+                f"{fname} DBM-017에 judgment_method가 있음! "
+                "criteria_loader yaml_method 우선 → det_common 어댑터 호출 → 거짓양호."
+            )
+
+    def test_db_yaml_dbm017_label_b_and_summary_instruction(self):
+        """5엔진 yaml DBM-017: label=B + summary_instruction(업무상 불필요 + 판정금지) 확인."""
+        import yaml
+        engine_kws = [
+            ("db_mysql.yaml",      "information_schema"),
+            ("db_mariadb.yaml",    "information_schema"),
+            ("db_oracle.yaml",     "SYS"),
+            ("db_mssql.yaml",      "sys"),
+            ("db_postgresql.yaml", "pg_catalog"),
+        ]
+        for fname, engine_kw in engine_kws:
+            path = f"judge_tool/item_configs/{fname}"
+            with open(path, encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            item = data.get("DBM-017", {})
+            assert item.get("label") == "B", f"{fname} DBM-017 label != B"
+            assert "judgment_method" not in item, (
+                f"{fname} DBM-017에 judgment_method가 있으면 det_common이 우선 → 거짓양호 위험!"
+            )
+            si = item.get("summary_instruction", "")
+            assert si, f"{fname} DBM-017 summary_instruction 비어있음"
+            assert engine_kw in si, (
+                f"{fname} DBM-017 summary_instruction에 '{engine_kw}' 없음 "
+                f"(시스템권한 구분 지시 필요)"
+            )
+            assert ("판정" in si and ("말고" in si or "내리지 말" in si)), (
+                f"{fname} DBM-017 summary_instruction에 '판정 금지' 지시 없음"
+            )
+            assert "업무상 불필요" in si, (
+                f"{fname} DBM-017 summary_instruction에 '업무상 불필요' 없음"
+            )
+
+    def test_cloud_mysql_rds_dbm017_still_det(self):
+        """cloud mysql_rds DBM-017는 DET 유지 — native만 label B 이관."""
+        result = classify("DBM-017", "mysql_rds")
+        assert result == "DET", (
+            f"mysql_rds DBM-017는 DET여야 함(cloud 변형), got {result}"
+        )
+
+    def test_cloud_oracle_rds_dbm017_still_det(self):
+        """cloud oracle_rds DBM-017는 DET 유지."""
+        result = classify("DBM-017", "oracle_rds")
+        assert result == "DET", (
+            f"oracle_rds DBM-017는 DET여야 함, got {result}"
+        )
+
+    def test_cloud_mariadb_rds_dbm017_still_det(self):
+        """cloud mariadb_rds DBM-017는 DET 유지."""
+        result = classify("DBM-017", "mariadb_rds")
+        assert result == "DET", (
+            f"mariadb_rds DBM-017는 DET여야 함, got {result}"
+        )
+
+    def test_cloud_pg_rds_dbm017_still_det(self):
+        """cloud pg_rds DBM-017는 DET 유지 (grantee==PUBLIC 비교 가능한 스키마)."""
+        result = classify("DBM-017", "pg_rds")
+        assert result == "DET", (
+            f"pg_rds DBM-017는 DET여야 함, got {result}"
+        )
+
+    def test_fake_llm_summarize_path_mysql(self):
+        """fake LLM client로 DBM-017 label B → _summarize_one → verdict=판단보류 + interview_summary.
+
+        실 Ollama 미필요 — FakeSummarizeClient가 요약 텍스트 반환.
+        mysql 엔진 예시.
+        """
+        from judge_tool.main import _summarize_one, JudgeContext
+        from judge_tool.models import Criterion, EvidenceItem, ResourceEvidence
+        from judge_tool.profile import DB_MYSQL
+
+        class FakeSummarizeClient:
+            """LLM을 흉내 내는 fake client: summary_instruction 응답."""
+            def chat(self, system, user):
+                return (
+                    "시스템 계정: information_schema(SELECT) — 기본 부여(정상). "
+                    "일반 계정 app_user@%: mysql.user(SELECT) — 업무상 불필요 의심."
+                )
+
+        crit = Criterion(
+            item_id="DBM-017", item_name="시스템 테이블 접근 권한", risk=4.0,
+            variant="mysql_native",
+            eval_type="스크립트", standard="양호: 업무상 불필요한 접근 권한 없음", method="인터뷰",
+            applicable=True, label="B",
+            summary_instruction="시스템 테이블 접근 권한을 정리하라. 판정하지 말 것.",
+            judgment_method="interview")
+        item = EvidenceItem(
+            item_id="DBM-017", variant="mysql_native",
+            resources=[ResourceEvidence(
+                resource_id="r1", status="review",
+                detail="app_user@%: mysql.user SELECT",
+                evidence="app_user@%: mysql.user SELECT")])
+        ctx = JudgeContext(
+            profile=DB_MYSQL, profile_key="db_mysql",
+            client=FakeSummarizeClient(), items={}, variant="mysql_native")
+
+        j = _summarize_one(crit, item, ctx)
+        assert j is not None, "_summarize_one이 None 반환 — 라우팅 실패"
+        assert j.verdict == "판단보류", (
+            f"label B → verdict='판단보류' 고정이어야 함, got '{j.verdict}'"
+        )
+        assert j.interview_summary is not None, (
+            "interview_summary가 None — LLM 요약 호출 실패"
+        )
+        assert (
+            "불필요" in j.interview_summary
+            or "mysql" in j.interview_summary
+            or "app_user" in j.interview_summary
+        ), (
             f"interview_summary에 요약 내용 없음: {j.interview_summary!r}"
         )
         assert j.label == "B"

@@ -1,12 +1,12 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-17 (**상태저장. 이번 세션 완료: DBM-016 D+판단보류+힌트 정책 전환 SHIP + 서버 SRV-007/064/179 canned 강화 + 온라인조회 없음 확인, 1299 passed. ★다음 착수=DBM-016 이후 분류검토 재개(017~부터).**). **"다음에 진행해줘" → 아래 ★다음 착수(DBM-017~ 분류 검토 재개)부터.**
+> 마지막 업데이트: 2026-06-17 (**상태저장. 이번 세션 완료: DBM-017 label B(인터뷰)+LLM요약 SHIP, 1316 passed. ★다음 착수=DBM-017 이후 분류검토 재개(019~부터).**). **"다음에 진행해줘" → 아래 ★다음 착수(DBM-019~ 분류 검토 재개)부터.**
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. 이 파일이 단일 진실원천.
 >  재개 트리거: "개발진행해"/"개발해줘"/"이어서 진행"/"다음 작업"/**"다음에 진행해"** → 아래 TL;DR ★다음 착수부터.)
 
 ## ▶ 다음 세션 즉시 시작점 (TL;DR)
-- **★다음 착수 = DBM-017~ 분류 검토 재개** (사용자와 항목별 1:1 검토 중. 001~009·011·013·015·016 완료, 다음=DBM-017)
-  **검토 진행 방식**: 항목별로 [항목명/상세설명/판단기준/엔진별 벤더 결정론 로직(현행 동작)/내 분류 권고] 제시 → 사용자 결정. 남은 항목: 017/019/020/021/022/024/025/026/028/029/030/031/032/033/034/035/036.
+- **★다음 착수 = DBM-019~ 분류 검토 재개** (사용자와 항목별 1:1 검토 중. 001~009·011·013·015·016·017 완료, 다음=DBM-019)
+  **검토 진행 방식**: 항목별로 [항목명/상세설명/판단기준/엔진별 벤더 결정론 로직(현행 동작)/내 분류 권고] 제시 → 사용자 결정. 남은 항목: 019/020/021/022/024/025/026/028/029/030/031/032/033/034/035/036.
 
   **✅ DBM-016 D+판단보류+힌트 정책 전환 SHIP (2026-06-17, 1299 passed, 자동verdict 0건)**:
   - **정책**: 패치/EOL/버전-최신성 항목 verdict=판단보류 고정, 자동 양호/취약 금지. 버전 기준선은 eol.yaml(as_of 스탬프), 힌트만 제공.
@@ -18,6 +18,20 @@
   - **검증**: 5엔진 전부 `judge_patch` 반환 판단보류 + 힌트("현재vX vs 기준일 최신vY → 미적용 후보"). oracle 19.26 < 19.28 힌트 생성. 온라인 호출 없음(eol.yaml 로컬 정적). 거짓양호 0, 거짓취약 0.
   - **신규 테스트(8건)**: DBM-016 gate STUB 전 variant(14개 variant), mysql/mssql/oracle/pg native 판단보류+힌트, mariadb canned 폴백, 5엔진 포괄 자동verdict 0 단언.
   - **수정 파일**: `vendor/common/DET_SOURCE.yaml`, `judge_tool/eol.yaml`, `item_configs/server.yaml`, `tests/test_eol.py`(oracle latest 테스트 갱신), `tests/test_main_db_e2e.py`(+8건).
+
+  **✅ DBM-017 label B(인터뷰)+LLM요약 구현 SHIP (2026-06-17, 1316 passed, 양호자동판정 0건)**:
+  - **판단기준**: 양호=업무상 필요한 시스템테이블 접근권한만 / 취약=업무상 불필요한 권한 존재. "업무상 불필요"=맥락 판단 → 결정론 부적합.
+  - **문제**: mysql/mariadb/oracle = DET(exception-기반 비교) → 과탐/미탐 위험. mssql = STUB(빈 본문), pg = STUB(수집형식 불일치·PUBLIC 과탐). 전부 결정론으로 "업무상 불필요" 판단 불가.
+  - **해결: label B(인터뷰)로 전 native 5종 이관** — `judgment_method: det_common` 제거(mysql/mariadb/oracle), label B + 상세 `summary_instruction` → `classify_method=interview` → `_summarize_one` 라우팅(det_common 어댑터 미호출).
+  - **db_{mysql,mariadb}.yaml DBM-017**: `judgment_method: det_common` + `needs_review: true` 제거. `label: B` + 상세 `summary_instruction`(information_schema 구분·업무상 불필요 의심 DML·판정 금지). 라우팅 주석 추가.
+  - **db_oracle.yaml DBM-017**: `judgment_method: det_common` + `needs_review: true` 제거. `label: B` + 상세 `summary_instruction`(SYS·DBA_*·딕셔너리 구분·업무상 불필요 의심·판정 금지).
+  - **db_mssql.yaml DBM-017**: 기존 label B 유지. `summary_instruction` 상세화(sys·INFORMATION_SCHEMA 구분·업무상 불필요 의심·판정 금지).
+  - **db_postgresql.yaml DBM-017**: 기존 label B 유지. `needs_review: true` 제거. `summary_instruction` 상세화(pg_catalog·information_schema 구분·PUBLIC 기본권한 설명·업무상 불필요 의심·판정 금지).
+  - **DET_SOURCE.yaml DBM-017**: mysql/oracle/mariadb native `DET→STUB` + 주석 "label B 이관(exception-기반 과탐/미탐 회피)". mssql/pg STUB 유지(기존). 클라우드 변형(mysql_rds/oracle_rds/mariadb_rds/pg_rds 등)은 DET 유지.
+  - **라우팅 확인**: label B + summary_instruction → `classify_method(B, has_summary=True)='interview'` → `_summarize_one` → `verdict=판단보류`, `interview_summary` 채움. det_common 어댑터(exception-기반 오판 경로) 완전 우회. pg PUBLIC 과탐 해소.
+  - **기존 테스트 갱신**: `test_det_dbm017_handled`(DET/handled=True 단언) → `test_det_dbm017_gate_blocked`(STUB/handled=False + 거짓양호 없음 단언).
+  - **신규 테스트(17건)**: `TestDBM017LabelBRouting` — classify=STUB(5엔진), gate 차단(5엔진), pg PUBLIC 과탐 차단, judgment_method 없음 yaml 검증, summary_instruction 키워드(5엔진), 클라우드 DET 유지(4변형), fake LLM summary 생성경로.
+  - **수정 파일**: `item_configs/db_mysql.yaml`, `item_configs/db_mariadb.yaml`, `item_configs/db_oracle.yaml`, `item_configs/db_mssql.yaml`, `item_configs/db_postgresql.yaml`, `vendor/common/DET_SOURCE.yaml`, `tests/test_det_adapters_db.py`(+17건, docstring 갱신).
 
   **✅ DBM-015 label B(인터뷰)+LLM요약 구현 SHIP (2026-06-17, 1291 passed, 양호자동판정 0건)**:
   - **문제**: mssql DET였으나 `rules['permission_name']=[]`(빈) → `datum in []` 항상 False → 위반 0 → handled=True+양호(거짓양호). pg STUB이나 `privilege_type` KeyError → pg_catalog 기본 PUBLIC SELECT 과탐(거짓취약). oracle 015_1/2 `lambda:True` 과탐.

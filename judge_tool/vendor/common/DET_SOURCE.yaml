@@ -546,13 +546,21 @@ items:
       pg_azure: STUB     # 구 DET → STUB
 
   DBM-017:                          # 시스템테이블 접근권한
+    # ★ 정책(2026-06-17): native 5종 전부 label B(인터뷰) 이관 → native DET → STUB.
+    # "업무상 불필요"는 맥락 판단 → 결정론 부적합.
+    #   mysql/mariadb native: exception-기반 비교 → 과탐/미탐 → label B 이관.
+    #   oracle native: exception-기반 비교 → 과탐/미탐 → label B 이관.
+    #   mssql native: 빈 본문 → STUB 확정(기존).
+    #   pg native: 수집형식 {"*": python_repr_str} → grantee KeyError → 거짓양호(R3) → STUB(기존).
+    # label B → classify_method=interview → _summarize_one 라우팅. det_common 어댑터 미호출.
+    # 클라우드 변형은 데이터 스키마 다름 → DET 유지.
     variants:
-      mysql: DET
-      oracle: DET
-      mssql: STUB
-      mariadb: DET
-      pg: STUB
-      # 클라우드 변형 (Phase 4b)
+      mysql: STUB           # label B 이관(거짓양호/미탐 회피): judgment_method=interview, DET 어댑터 미호출
+      oracle: STUB          # label B 이관(거짓양호/미탐 회피): judgment_method=interview, DET 어댑터 미호출
+      mssql: STUB           # 빈 본문 → STUB(기존 유지)
+      mariadb: STUB         # label B 이관(거짓양호/미탐 회피): judgment_method=interview, DET 어댑터 미호출
+      pg: STUB              # R3 보수처리(수집형식 불일치) + grantee==PUBLIC 과탐 → STUB(기존 유지)
+      # 클라우드 변형 (Phase 4b): 데이터 스키마 다름 → DET 유지
       mysql_rds: DET
       mysql_aurora: DET
       mysql_azure: DET
@@ -562,8 +570,6 @@ items:
       pg_rds: DET          # cloud pg: grantee == 'PUBLIC' 비교 → DET(native와 다른 데이터 스키마)
       pg_aurora: DET
       pg_azure: DET
-    # mssql native: 빈 본문 → STUB (§B=MANUAL, 빈본문이므로 STUB이 보수적)
-    # pg native: 수집 형식 {"*": python_repr_str} — analysis가 'grantee' KeyError 삼킴 → [] → 거짓양호(R3)
 
   DBM-019:                          # 비밀번호 재사용
     variants:
