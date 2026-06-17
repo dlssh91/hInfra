@@ -1,12 +1,21 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-17 (**상태저장. 이번 세션 완료: DBM-011 pg/mssql LLM→DET(모드C) 승격 + 판단보류 rationale 확인내용 강화 SHIP. pg(pgaudit 신규포맷), mssql(활성감사탐지), 전엔진 보류 rationale에 확인내용 명시. 1210 passed. ★다음 착수=DBM-013~ 분류검토 재개.**). **"다음에 진행해줘" → 아래 ★다음 착수(DBM-013~ 분류 검토 재개)부터.**
+> 마지막 업데이트: 2026-06-17 (**상태저장. 이번 세션 완료: DBM-013 확정 분류 구현 SHIP — mysql/mariadb HOST 와일드카드 보강(R-MY013/R-MA013), oracle/mssql/pg STUB gate 차단 확인, 1270 passed. ★다음 착수=DBM-014~ 분류검토 재개.**). **"다음에 진행해줘" → 아래 ★다음 착수(DBM-014~ 분류 검토 재개)부터.**
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. 이 파일이 단일 진실원천.
 >  재개 트리거: "개발진행해"/"개발해줘"/"이어서 진행"/"다음 작업"/**"다음에 진행해"** → 아래 TL;DR ★다음 착수부터.)
 
 ## ▶ 다음 세션 즉시 시작점 (TL;DR)
-- **★다음 착수 = DBM-013~ 분류 검토 재개** (사용자와 항목별 1:1 검토 중. 001~009·011 완료, 다음=DBM-013)
-  **검토 진행 방식**: 항목별로 [항목명/상세설명/판단기준/엔진별 벤더 결정론 로직(현행 동작)/내 분류 권고] 제시 → 사용자 결정. 남은 항목: 013/014/015/016/017/019/020/021/022/024/025/026/028/029/030/031/032/033/034/035/036.
+- **★다음 착수 = DBM-014~ 분류 검토 재개** (사용자와 항목별 1:1 검토 중. 001~009·011·013 완료, 다음=DBM-014)
+  **검토 진행 방식**: 항목별로 [항목명/상세설명/판단기준/엔진별 벤더 결정론 로직(현행 동작)/내 분류 권고] 제시 → 사용자 결정. 남은 항목: 014/015/016/017/019/020/021/022/024/025/026/028/029/030/031/032/033/034/035/036.
+
+  **✅ DBM-013 확정 분류 구현 SHIP (2026-06-17, 1270 passed, 양호자동판정 0건)**:
+  - **mysql/mariadb DET + HOST 와일드카드 보강(R-MY013/R-MA013)**: `vendor/common/db/{mysql,mariadb}/analysis.py dbm_013` 기존 `datum['HOST'] in rules['HOST']`(정확매칭) → `'%' in datum['HOST']`(포함 매칭)으로 변경. `'%'`(전체), `'10.%'`(서브넷), `'%.dom'`(도메인) 등 부분 와일드카드 미탐 거짓양호 갭 차단. localhost/특정IP/특정호스트 → 양호 유지. exception USER 제외 보존. VENDOR-EDIT(c) 등재.
+  - **oracle STUB 명확화**: `vendor/common/db/oracle/analysis.py dbm_013` — lambda:True(무조건 취약=과탐)에 주석 "미사용(STUB, gate 차단)" 명기. DET_SOURCE oracle=STUB → gate 차단(handled=False) → LLM 라우팅. db_oracle.yaml DBM-013에 라우팅 주석 추가.
+  - **mssql/pg 증거미수집 보류**: 빈본문(STUB) → gate 차단 → 양호 자동판정 금지. db_mssql.yaml·db_postgresql.yaml DBM-013에 보류 경로 주석 추가.
+  - **KNOWN_BUGS.md**: R-MY013, R-MA013 신규 등재(위치/증상/수정/회귀핀).
+  - **실데이터 검증**: mysql 실데이터(root@% → exception 제외 → 양호), 합성 와일드카드 3종(전체/서브넷/도메인) → 취약, 특정호스트/localhost → 양호. oracle/mssql/pg → gate 차단(양호 자동판정 0).
+  - **신규 테스트**: `TestDBM013HostWildcard` 19종(mysql/mariadb 와일드카드·양호·예외, oracle/mssql/pg gate차단, judge() 통합). 1270 passed.
+  - **수정 파일**: `vendor/common/db/mysql/analysis.py`, `vendor/common/db/mariadb/analysis.py`, `vendor/common/db/oracle/analysis.py`, `vendor/common/KNOWN_BUGS.md`, `item_configs/db_oracle.yaml`, `item_configs/db_mssql.yaml`, `item_configs/db_postgresql.yaml`, `tests/test_det_adapters_db.py`.
 
   **✅ DBM-011 pg/mssql DET 승격 + rationale 확인내용 강화 SHIP (2026-06-17, 1210 passed)**:
   - **pg STUB→DET 승격**: `vendor/common/db/postgresql/analysis.py dbm_011` 신규 포맷(pgaudit_settings) 탐지 추가. VENDOR-EDIT(c) §R-PG011. pgaudit 미로드(value에 pgaudit 없음 OR pgaudit_status≠Loaded OR pgaudit_settings==[]) → 위반 → 취약. 로드됨 → 위반0 → 모드C 보류. 옛 한글 문자열 하위호환 유지. `DET_SOURCE.yaml` pg: STUB→DET. `db_postgresql.yaml` DBM-011에 `judgment_method: det_common` 추가.

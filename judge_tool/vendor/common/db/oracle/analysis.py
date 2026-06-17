@@ -238,9 +238,12 @@ class OracleAnalysis:
     
     # xml 결과로 출력
     def dbm_013(self, result_key='DBM-013'):
+        # ⚠️ STUB — [lambda datum: True] 과탐(무조건 취약). 결정론 부적합.
+        # DET_SOURCE.yaml: oracle DBM-013 = STUB → gate(handled=False) → LLM 라우팅.
+        # 이 코드는 gate에 막혀 실행되지 않음. 혼란 방지를 위해 주석 유지.
         self.dbm_result[result_key] = []
         self.dbm_process_data(result_key, 'DBM-013', [
-            lambda datum: True
+            lambda datum: True  # 미사용(STUB, gate 차단) — 과탐 위험으로 결정론 비활성
         ])
         
     def dbm_014(self, result_key='DBM-014'):

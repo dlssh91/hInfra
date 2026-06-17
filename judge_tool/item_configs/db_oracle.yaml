@@ -54,6 +54,9 @@ DBM-011:
   needs_review: true
   label: A
 DBM-013:
+  # oracle DBM-013: [lambda datum: True] → STUB(과탐). DET_SOURCE oracle=STUB → gate 차단(handled=False) → LLM 라우팅.
+  # det_common 미부여(STUB이므로). 증거 있으면 LLM 판정, 증거 없으면 보수적 보류.
+  # 양호 자동판정 금지 — oracle 원격접근통제는 네트워크/OS 레벨 확인이 추가로 필요.
   label: A
 DBM-014:
   judgment_method: det_common

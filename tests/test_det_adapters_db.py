@@ -1927,3 +1927,333 @@ class TestExtractAuditDetailMasking:
         detail = self._call_extract("mssql", data)
         self._assert_no_raw_sensitive(detail, ["mssql_secret_789"])
         assert "FSI_Audit" in detail  # 감사명은 노출 OK
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DBM-013 원격 접속 접근제어 — HOST 와일드카드 보강 (R-MY013/R-MA013)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestDBM013HostWildcard:
+    """DBM-013 mysql/mariadb HOST 와일드카드 보강 핀고정 테스트 (R-MY013/R-MA013).
+
+    검증 항목:
+      (1) '%' 전체 와일드카드 HOST → 취약
+      (2) '10.%' 서브넷 와일드카드 HOST → 취약 (거짓양호 갭 차단)
+      (3) '%.domain.com' 도메인 와일드카드 HOST → 취약 (거짓양호 갭 차단)
+      (4) 'localhost' → 양호 (과탐 아님)
+      (5) 특정 IP(192.168.1.1) → 양호 (과탐 아님)
+      (6) 예외계정(root 등 exception USER) → 제외 유지
+      (7) oracle/mssql/pg DET_SOURCE STUB → gate 차단 → 양호 자동판정 0
+    """
+
+    def setup_method(self):
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+
+    def _run_analysis_mysql(self, rows):
+        """mysql analysis dbm_013 직접 단위 테스트."""
+        import json
+        from judge_tool.vendor.common.db.mysql.analysis import MySQLAnalysis
+        config_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "judge_tool", "vendor", "common", "db", "config", "mysql-config.json"
+        )
+        with open(config_path, encoding="utf-8") as f:
+            config = json.load(f)
+        data = {"DBM-013": {"RESULT": rows}}
+        analysis = MySQLAnalysis(config, data)
+        result = analysis.run
+        return result.get("DBM-013", [])
+
+    def _run_analysis_mariadb(self, rows):
+        """mariadb analysis dbm_013 직접 단위 테스트."""
+        import json
+        from judge_tool.vendor.common.db.mariadb.analysis import MariaDBAnalysis
+        config_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "judge_tool", "vendor", "common", "db", "config", "mariadb-config.json"
+        )
+        with open(config_path, encoding="utf-8") as f:
+            config = json.load(f)
+        data = {"DBM-013": {"RESULT": rows}}
+        analysis = MariaDBAnalysis(config, data)
+        result = analysis.run
+        return result.get("DBM-013", [])
+
+    # ── mysql 와일드카드 취약 케이스 ─────────────────────────────────────────
+
+    def test_mysql_full_wildcard_is_vuln(self):
+        """mysql: HOST='%' 전체 와일드카드 → 위반 포함(취약)."""
+        rows = [{"USER": "app_user", "HOST": "%"}]
+        violations = self._run_analysis_mysql(rows)
+        assert len(violations) > 0, (
+            "HOST='%'인데 위반 미포함 — 거짓양호 R-MY013"
+        )
+
+    def test_mysql_subnet_wildcard_is_vuln(self):
+        """mysql: HOST='10.%' 서브넷 와일드카드 → 위반 포함(취약). R-MY013 거짓양호 갭 차단."""
+        rows = [{"USER": "app_user", "HOST": "10.%"}]
+        violations = self._run_analysis_mysql(rows)
+        assert len(violations) > 0, (
+            "HOST='10.%'인데 위반 미포함 — 거짓양호 갭 R-MY013 미수정"
+        )
+
+    def test_mysql_domain_wildcard_is_vuln(self):
+        """mysql: HOST='%.domain.com' 도메인 와일드카드 → 위반 포함(취약). R-MY013 갭 차단."""
+        rows = [{"USER": "app_user", "HOST": "%.domain.com"}]
+        violations = self._run_analysis_mysql(rows)
+        assert len(violations) > 0, (
+            "HOST='%.domain.com'인데 위반 미포함 — 거짓양호 갭 R-MY013 미수정"
+        )
+
+    # ── mysql 양호 케이스(과탐 아님) ──────────────────────────────────────────
+
+    def test_mysql_localhost_is_good(self):
+        """mysql: HOST='localhost' → 위반 미포함(양호). 과탐 아님."""
+        rows = [{"USER": "app_user", "HOST": "localhost"}]
+        violations = self._run_analysis_mysql(rows)
+        # Note 항목({***:...})은 취약행이 아니므로 실취약행만 검사
+        real_violations = [v for v in violations if "***" not in v and "@@@" not in v]
+        assert len(real_violations) == 0, (
+            f"HOST='localhost'인데 위반 포함 — 과탐 R-MY013: {violations}"
+        )
+
+    def test_mysql_specific_ip_is_good(self):
+        """mysql: HOST='192.168.1.1' 특정IP → 위반 미포함(양호). 과탐 아님."""
+        rows = [{"USER": "app_user", "HOST": "192.168.1.1"}]
+        violations = self._run_analysis_mysql(rows)
+        real_violations = [v for v in violations if "***" not in v and "@@@" not in v]
+        assert len(real_violations) == 0, (
+            f"HOST='192.168.1.1'인데 위반 포함 — 과탐 R-MY013: {violations}"
+        )
+
+    def test_mysql_specific_hostname_is_good(self):
+        """mysql: HOST='db.internal' 특정호스트 → 위반 미포함(양호). 과탐 아님."""
+        rows = [{"USER": "app_user", "HOST": "db.internal"}]
+        violations = self._run_analysis_mysql(rows)
+        real_violations = [v for v in violations if "***" not in v and "@@@" not in v]
+        assert len(real_violations) == 0, (
+            f"HOST='db.internal'인데 위반 포함 — 과탐 R-MY013: {violations}"
+        )
+
+    # ── mysql _ 와일드카드 취약 케이스 (High-2 R-MY013) ────────────────────────
+
+    def test_mysql_underscore_wildcard_is_vuln(self):
+        """mysql: HOST='10.0.0._' 단일문자 와일드카드 → 위반 포함(취약). High-2 R-MY013."""
+        rows = [{"USER": "app_user", "HOST": "10.0.0._"}]
+        violations = self._run_analysis_mysql(rows)
+        real_violations = [v for v in violations if "***" not in v and "@@@" not in v]
+        assert len(real_violations) > 0, (
+            f"HOST='10.0.0._' 단일문자 와일드카드인데 위반 미포함 — 거짓양호 R-MY013 High-2: {violations}"
+        )
+
+    def test_mysql_hostdb_underscore_is_vuln(self):
+        """mysql: HOST='host_db' 단일문자 와일드카드 포함 → 위반 포함(취약). R-MY013."""
+        rows = [{"USER": "app_user", "HOST": "host_db"}]
+        violations = self._run_analysis_mysql(rows)
+        real_violations = [v for v in violations if "***" not in v and "@@@" not in v]
+        assert len(real_violations) > 0, (
+            f"HOST='host_db' _ 와일드카드인데 위반 미포함 — 거짓양호 R-MY013 High-2: {violations}"
+        )
+
+    # ── mysql Critical-1: root@% → 취약 / root@localhost → 양호 (R-MY013) ────
+
+    def test_mysql_root_wildcard_host_is_vuln(self):
+        """mysql: root@% → 취약. Critical-1 거짓양호 차단 (R-MY013 exception USER 비움).
+
+        기존 exception USER에 root가 포함되어 root@%가 양호로 처리됐던 거짓양호를 차단.
+        DBM-013 exception USER = [] (원격접근통제 항목에선 어떤 계정도 와일드카드-Host
+        검사에서 면제하면 안 됨).
+        """
+        rows = [{"USER": "root", "HOST": "%"}]
+        violations = self._run_analysis_mysql(rows)
+        real_violations = [v for v in violations if "***" not in v and "@@@" not in v]
+        assert len(real_violations) > 0, (
+            f"root@% 인데 위반 미포함 — Critical-1 거짓양호 미차단 R-MY013: {violations}"
+        )
+
+    def test_mysql_root_localhost_is_good(self):
+        """mysql: root@localhost → 양호. 와일드카드 없는 특정호스트는 과탐 아님."""
+        rows = [{"USER": "root", "HOST": "localhost"}]
+        violations = self._run_analysis_mysql(rows)
+        real_violations = [v for v in violations if "***" not in v and "@@@" not in v]
+        assert len(real_violations) == 0, (
+            f"root@localhost인데 위반 포함 — 과탐 R-MY013: {violations}"
+        )
+
+    def test_mysql_appuser_wildcard_is_vuln(self):
+        """mysql: appuser@% 비root 와일드카드 → 취약."""
+        rows = [{"USER": "appuser", "HOST": "%"}]
+        violations = self._run_analysis_mysql(rows)
+        real_violations = [v for v in violations if "***" not in v and "@@@" not in v]
+        assert len(real_violations) > 0, (
+            f"appuser@% 비root 와일드카드인데 위반 미포함 — 거짓양호 R-MY013: {violations}"
+        )
+
+    # ── mysql 예외계정 제외 (DBM-013 exception USER=[] 이후 동작 변경) ────────
+    # Critical-1 수정: exception DBM-013 USER를 비웠으므로 root@%는 이제 취약.
+    # 아래 테스트는 그 수정을 핀고정한다.
+
+    # ── mariadb 와일드카드 취약 케이스 ───────────────────────────────────────
+
+    def test_mariadb_full_wildcard_is_vuln(self):
+        """mariadb: HOST='%' → 위반 포함(취약)."""
+        rows = [{"USER": "app_user", "HOST": "%"}]
+        violations = self._run_analysis_mariadb(rows)
+        assert len(violations) > 0, (
+            "mariadb HOST='%'인데 위반 미포함 — 거짓양호 R-MA013"
+        )
+
+    def test_mariadb_subnet_wildcard_is_vuln(self):
+        """mariadb: HOST='10.%' 서브넷 와일드카드 → 위반 포함(취약). R-MA013 갭 차단."""
+        rows = [{"USER": "app_user", "HOST": "10.%"}]
+        violations = self._run_analysis_mariadb(rows)
+        assert len(violations) > 0, (
+            "mariadb HOST='10.%'인데 위반 미포함 — 거짓양호 갭 R-MA013 미수정"
+        )
+
+    def test_mariadb_domain_wildcard_is_vuln(self):
+        """mariadb: HOST='%.dom' → 위반 포함(취약). R-MA013 갭 차단."""
+        rows = [{"USER": "app_user", "HOST": "%.dom"}]
+        violations = self._run_analysis_mariadb(rows)
+        assert len(violations) > 0, (
+            "mariadb HOST='%.dom'인데 위반 미포함 — 거짓양호 갭 R-MA013 미수정"
+        )
+
+    # ── mariadb 양호 케이스 ───────────────────────────────────────────────────
+
+    def test_mariadb_localhost_is_good(self):
+        """mariadb: HOST='localhost' → 위반 미포함(양호)."""
+        rows = [{"USER": "app_user", "HOST": "localhost"}]
+        violations = self._run_analysis_mariadb(rows)
+        real_violations = [v for v in violations if "***" not in v and "@@@" not in v]
+        assert len(real_violations) == 0, (
+            f"mariadb HOST='localhost'인데 위반 포함 — 과탐 R-MA013: {violations}"
+        )
+
+    def test_mariadb_specific_ip_is_good(self):
+        """mariadb: HOST='192.168.1.1' → 위반 미포함(양호)."""
+        rows = [{"USER": "app_user", "HOST": "192.168.1.1"}]
+        violations = self._run_analysis_mariadb(rows)
+        real_violations = [v for v in violations if "***" not in v and "@@@" not in v]
+        assert len(real_violations) == 0, (
+            f"mariadb HOST='192.168.1.1'인데 위반 포함 — 과탐 R-MA013: {violations}"
+        )
+
+    # ── mariadb _ 와일드카드 취약 케이스 (High-2 R-MA013) ────────────────────
+
+    def test_mariadb_underscore_wildcard_is_vuln(self):
+        """mariadb: HOST='10.0.0._' 단일문자 와일드카드 → 위반 포함(취약). High-2 R-MA013."""
+        rows = [{"USER": "app_user", "HOST": "10.0.0._"}]
+        violations = self._run_analysis_mariadb(rows)
+        real_violations = [v for v in violations if "***" not in v and "@@@" not in v]
+        assert len(real_violations) > 0, (
+            f"HOST='10.0.0._' 단일문자 와일드카드인데 위반 미포함 — 거짓양호 R-MA013 High-2: {violations}"
+        )
+
+    # ── mariadb Critical-1: root@% → 취약 / root@localhost → 양호 (R-MA013) ──
+
+    def test_mariadb_root_wildcard_host_is_vuln(self):
+        """mariadb: root@% → 취약. Critical-1 거짓양호 차단 (R-MA013 exception USER 비움).
+
+        기존 exception USER에 root가 포함되어 root@%가 양호로 처리됐던 거짓양호를 차단.
+        DBM-013 exception USER = [] (원격접근통제 항목에선 어떤 계정도 와일드카드-Host
+        검사에서 면제하면 안 됨).
+        """
+        rows = [{"USER": "root", "HOST": "%"}]
+        violations = self._run_analysis_mariadb(rows)
+        real_violations = [v for v in violations if "***" not in v and "@@@" not in v]
+        assert len(real_violations) > 0, (
+            f"root@% 인데 위반 미포함 — Critical-1 거짓양호 미차단 R-MA013: {violations}"
+        )
+
+    def test_mariadb_root_localhost_is_good(self):
+        """mariadb: root@localhost → 양호. 와일드카드 없는 특정호스트는 과탐 아님."""
+        rows = [{"USER": "root", "HOST": "localhost"}]
+        violations = self._run_analysis_mariadb(rows)
+        real_violations = [v for v in violations if "***" not in v and "@@@" not in v]
+        assert len(real_violations) == 0, (
+            f"root@localhost인데 위반 포함 — 과탐 R-MA013: {violations}"
+        )
+
+    def test_mariadb_appuser_wildcard_is_vuln(self):
+        """mariadb: appuser@% 비root 와일드카드 → 취약."""
+        rows = [{"USER": "appuser", "HOST": "%"}]
+        violations = self._run_analysis_mariadb(rows)
+        real_violations = [v for v in violations if "***" not in v and "@@@" not in v]
+        assert len(real_violations) > 0, (
+            f"appuser@% 비root 와일드카드인데 위반 미포함 — 거짓양호 R-MA013: {violations}"
+        )
+
+    # ── mariadb 예외계정 제외 (DBM-013 exception USER=[] 이후 동작 변경) ─────
+    # Critical-1 수정: exception DBM-013 USER를 비웠으므로 root@%는 이제 취약.
+    # 아래 테스트는 그 수정을 핀고정한다.
+
+    # ── oracle/mssql/pg STUB → gate 차단 → 양호 자동판정 0 ──────────────────
+
+    def test_oracle_native_dbm013_stub_blocked(self):
+        """oracle native DBM-013: STUB([lambda datum: True]) → gate 차단 → handled=False.
+        양호 자동판정 금지 확인.
+        """
+        raw = _make_raw_ev({"DBM-013": {"RESULT": [{"HOST": "%"}]}})
+        fv = judge("DBM-013", raw, "oracle_native", {})
+        assert fv.handled is False, (
+            f"oracle DBM-013 STUB인데 handled=True — 양호 자동판정 위험: {fv}"
+        )
+
+    def test_mssql_native_dbm013_stub_blocked(self):
+        """mssql native DBM-013: 빈 본문(STUB) → gate 차단 → handled=False.
+        양호 자동판정 금지 확인.
+        """
+        raw = _make_raw_ev({"DBM-013": {"RESULT": [{"HOST": "%"}]}})
+        fv = judge("DBM-013", raw, "mssql_native", {})
+        assert fv.handled is False, (
+            f"mssql DBM-013 STUB인데 handled=True — 양호 자동판정 위험: {fv}"
+        )
+
+    def test_pg_native_dbm013_stub_blocked(self):
+        """pg native DBM-013: 빈 본문(STUB) → gate 차단 → handled=False.
+        양호 자동판정 금지 확인.
+        """
+        raw = _make_raw_ev({"DBM-013": {"RESULT": [{"HOST": "%"}]}})
+        fv = judge("DBM-013", raw, "pg_native", {})
+        assert fv.handled is False, (
+            f"pg DBM-013 STUB인데 handled=True — 양호 자동판정 위험: {fv}"
+        )
+
+    def test_oracle_rds_dbm013_absent_blocked(self):
+        """oracle_rds DBM-013: ABSENT(run()에 미호출) → gate 차단 → handled=False."""
+        raw = _make_raw_ev({"DBM-013": {"RESULT": [{"HOST": "%"}]}})
+        fv = judge("DBM-013", raw, "oracle_rds", {})
+        assert fv.handled is False, (
+            f"oracle_rds DBM-013 ABSENT인데 handled=True: {fv}"
+        )
+
+    def test_mysql_native_dbm013_full_wildcard_vuln(self):
+        """mysql_native judge(): HOST='%' 계정 있음 → handled=True + verdict=취약.
+        어댑터 통합 경로 확인.
+        """
+        raw = _make_raw_ev({"DBM-013": {"RESULT": [{"USER": "app_user", "HOST": "%"}]}})
+        fv = judge("DBM-013", raw, "mysql_native", {})
+        if fv.handled:
+            assert fv.verdict == "취약", (
+                f"mysql_native DBM-013 HOST='%' 있는데 취약이 아님: {fv}"
+            )
+
+    def test_mysql_native_dbm013_localhost_only_good(self):
+        """mysql_native judge(): 전 계정이 localhost → handled=True + verdict=양호.
+        양호 경로 과탐 없음 확인.
+        """
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-013": {"RESULT": [
+                {"USER": "app_user", "HOST": "localhost"},
+                {"USER": "svc_user", "HOST": "192.168.1.10"},
+            ]}
+        })
+        fv = judge("DBM-013", raw, "mysql_native", {})
+        if fv.handled:
+            assert fv.verdict == "양호", (
+                f"mysql_native DBM-013 특정호스트만인데 양호가 아님: {fv}"
+            )

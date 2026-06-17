@@ -425,6 +425,96 @@ data = {"DBM-011": {"RESULT": [{"setting_name": "shared_preload_libraries",
 
 ---
 
+## R-MY013. mysql dbm_013 복합 수정 (VENDOR-EDIT(b)+(c))
+
+**id**: `R-MY013`
+**위치**: `judge_tool/vendor/common/db/mysql/analysis.py` `dbm_013` +
+         `judge_tool/vendor/common/db/config/mysql-config.json` `exception.DBM-013.USER`
+**상태**: VENDOR-EDIT(c) 완료 (2026-06-17) + VENDOR-EDIT(b) 추가 완료 (2026-06-17)
+
+### 증상-1 (Critical: root@% 거짓양호 — VENDOR-EDIT(b))
+`mysql-config.json` `exception.DBM-013.USER`에 `["root", "mysql.infoschema", "mysql.session", "mysql.sys"]`가 포함되어 있었다 — DBM-003(불필요계정) 리스트를 그대로 복붙한 것.
+
+DBM-013(원격접근통제) 검사 조건 `datum['USER'] not in exception['USER']`에서 root가 예외 처리되어 `root@%` 입력 시 위반0 → verdict=양호 0.9 = **거짓양호(Critical)**.
+
+재현(수정 전):
+```python
+# mysql-config.json DBM-013 exception USER = ["root", ...]
+rows = [{"USER": "root", "HOST": "%"}]
+# root in exception → 조건 탈락 → 위반0 → 거짓양호
+```
+
+수정(VENDOR-EDIT(b)): `exception.DBM-013.USER = []` (빈 배열).  
+근거: 원격접근통제 항목에선 어떤 계정도 와일드카드-Host 검사에서 면제하면 안 됨.  
+시스템계정은 보통 `@localhost`(와일드카드 없음)라 exception 비워도 영향 없음.
+
+### 증상-2 (거짓양호 갭: 부분 와일드카드 미탐 — VENDOR-EDIT(c))
+기존 코드는 `datum['HOST'] in self.rules['DBM-013']['HOST']` — 즉 `rules['HOST'] == ['%']` 와 정확매칭하여 HOST가 정확히 `'%'`인 경우만 취약으로 잡는다.
+
+`'10.%'`(서브넷 와일드카드), `'%.domain.com'`(도메인 와일드카드), `'10.0.0._'`(`_` 단일문자 와일드카드) 등 부분 와일드카드가 포함된 HOST는 정확매칭에서 탈락하여 양호로 오판 — **거짓양호 갭**.
+
+재현(수정 전):
+```python
+datum = {"USER": "app_user", "HOST": "10.%"}
+# datum['HOST'] in ['%'] → False → 위반 미포함 → 거짓양호
+datum = {"USER": "app_user", "HOST": "10.0.0._"}
+# '_' 와일드카드 → '%' in HOST → False → 위반 미포함 → 거짓양호
+```
+
+### 증상-3 (High: _ 단일문자 와일드카드 미탐 — VENDOR-EDIT(b))
+VENDOR-EDIT(c) 이후에도 `'%' in datum['HOST']` 검사만으로는 MySQL `_`(임의 1문자) 와일드카드 미탐.
+`'10.0.0._'`, `'host_db'` 등 `_`만 포함된 HOST가 광역 원격허용임에도 양호로 오판.
+
+### Corrected 동작 (VENDOR-EDIT(b)+(c) 통합)
+수정-1: `mysql-config.json` `exception.DBM-013.USER = []`  
+수정-2: 와일드카드 매칭 `'%' in HOST` → `'%' in HOST or '_' in HOST`
+
+수정 후:
+- `HOST = '%'` (전체 와일드카드) → 취약 ✓
+- `HOST = '10.%'` (서브넷 와일드카드) → 취약 ✓
+- `HOST = '%.domain.com'` (도메인 와일드카드) → 취약 ✓
+- `HOST = '10.0.0._'` (`_` 단일문자 와일드카드) → 취약 ✓
+- `HOST = 'localhost'` → 양호 ✓ (과탐 아님)
+- `HOST = '192.168.1.100'` (특정IP) → 양호 ✓ (과탐 아님)
+- `HOST = 'root@localhost'` → 양호 ✓ (와일드카드 없음)
+- `USER = 'root', HOST = '%'` → **취약** ✓ (Critical-1 거짓양호 차단)
+
+### 회귀테스트 핀
+- `{"USER": "app_user", "HOST": "%"}` → 위반 포함 → 취약
+- `{"USER": "app_user", "HOST": "10.%"}` → 위반 포함 → 취약
+- `{"USER": "app_user", "HOST": "%.dom"}` → 위반 포함 → 취약
+- `{"USER": "app_user", "HOST": "10.0.0._"}` → 위반 포함 → 취약 (High-2)
+- `{"USER": "app_user", "HOST": "host_db"}` → 위반 포함 → 취약 (High-2)
+- `{"USER": "root", "HOST": "%"}` → 위반 포함 → **취약** (Critical-1)
+- `{"USER": "root", "HOST": "localhost"}` → 위반 미포함 → 양호
+- `{"USER": "appuser", "HOST": "%"}` → 위반 포함 → 취약 (비root 와일드카드)
+- `{"USER": "app_user", "HOST": "localhost"}` → 위반 미포함 → 양호
+- `{"USER": "app_user", "HOST": "192.168.1.1"}` → 위반 미포함 → 양호
+
+---
+
+## R-MA013. mariadb dbm_013 복합 수정 (VENDOR-EDIT(b)+(c))
+
+**id**: `R-MA013`
+**위치**: `judge_tool/vendor/common/db/mariadb/analysis.py` `dbm_013` +
+         `judge_tool/vendor/common/db/config/mariadb-config.json` `exception.DBM-013.USER`
+**상태**: VENDOR-EDIT(c) 완료 (2026-06-17) + VENDOR-EDIT(b) 추가 완료 (2026-06-17)
+
+### 증상
+R-MY013과 동일.
+- `mariadb-config.json` `exception.DBM-013.USER`에 `["root", "mariadb.sys", "healthcheck"]` 포함 → `root@%` 거짓양호(Critical).
+- `'%' in HOST`만으로는 `_` 와일드카드 미탐(High).
+
+### Corrected 동작 (VENDOR-EDIT(b)+(c) 통합)
+R-MY013과 동일.
+- `mariadb-config.json` `exception.DBM-013.USER = []`
+- 와일드카드 매칭: `'%' in HOST or '_' in HOST`
+
+### 회귀테스트 핀
+R-MY013과 동일 (mariadb engine 대상).
+
+---
+
 ## R-MS011. mssql dbm_011 빈 RESULT(0 audit행) → 활성 감사 행 판단 (VENDOR-EDIT)
 
 **id**: `R-MS011`

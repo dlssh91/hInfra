@@ -31,7 +31,7 @@
     "DBM-012": {
     },
     "DBM-013": {
-      "USER": ["root", "mariadb.sys", "healthcheck"]
+      "USER": []
     },
     "DBM-014": {
     },

@@ -154,12 +154,19 @@ class MariaDBAnalysis:
     
     def dbm_013(self, result_key='DBM-013'):
         # 원격 접속에 대한 접근 제어 미흡
-        # 기준 : mysql.user 테이블에서 계정별 Host 칼럼이 %인 경우 취약
+        # 기준 : mysql.user 테이블에서 계정별 Host 칼럼에 '%' 또는 '_'(와일드카드)가 포함된 경우 취약
+        # VENDOR-EDIT(c): R-MA013 — 기존 정확매칭 ['%'] → '%' in HOST 포함 매칭으로 확장.
+        #   '%' 전체 와일드카드뿐 아니라 '10.%'(서브넷), '%.domain.com'(부분 와일드카드) 등
+        #   광역 원격허용은 모두 취약. localhost/특정IP/특정호스트(와일드카드 없음) → 양호.
+        #   거짓양호 갭(부분 와일드카드 미탐) 차단. 예외계정(exception USER) 제외 유지.
+        # VENDOR-EDIT(b): R-MA013 exception USER 비움 — 원격접근통제 항목에선 어떤 계정도
+        #   와일드카드-Host 검사에서 면제하면 안 됨. root@% 거짓양호 차단.
+        # VENDOR-EDIT(b): R-MA013 '_' 단일문자 와일드카드 추가 — '10.0.0._' 등 미탐 차단.
         self.dbm_result[result_key] = []
-        
+
         self.dbm_process_data(result_key, 'DBM-013', [
             lambda datum: datum['USER'] not in self.exception[result_key]['USER'],
-            lambda datum: datum['HOST'] in self.rules[result_key]['HOST']
+            lambda datum: '%' in datum['HOST'] or '_' in datum['HOST'],
         ])
         
     def dbm_016(self, result_key='DBM-016'):

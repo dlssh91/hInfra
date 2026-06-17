@@ -34,7 +34,7 @@
     "DBM-012": {
     },
     "DBM-013": {
-      "USER": ["root", "mysql.infoschema", "mysql.session", "mysql.sys"]
+      "USER": []
     },
     "DBM-014": {
     },

@@ -59,6 +59,9 @@ DBM-011:
   needs_review: true
   label: A
 DBM-013:
+  # mssql DBM-013: 빈 본문(STUB) → DET_SOURCE mssql=STUB → gate 차단 → 증거 미수집 보류.
+  # 원격접근통제는 pg_hba.conf/OS 방화벽 레벨로 SQL 스크립트 미수집(확인됨).
+  # det_common 미부여. 양호 자동판정 절대 금지.
   label: A
 DBM-015:
   judgment_method: det_common
