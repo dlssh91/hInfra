@@ -194,17 +194,22 @@ class MariaDBAnalysis:
         
     def dbm_019(self, result_key='DBM-019'):
         # 비밀번호 재사용 방지 설정 미흡
+        # VENDOR-EDIT(c): R-MA019-polarity — xlsx 판단기준은 "설정 여부"(이진).
+        #   PASSWORD_REUSE_CHECK_INTERVAL > 0 → 재사용방지 설정됨 → 양호.
+        #   INTERVAL == 0 → 무제한(미설정) → 취약.
+        #   기존 코드: INTERVAL > DAY[0] or INTERVAL == 0 → 취약 (역전 오판, 60일 등 강한 설정도 취약).
+        #   수정: INTERVAL == 0 만 위반 조건. DAY 임계값 개념 없음.
         self.dbm_result[result_key] = []
-        
+
         self.dbm_process_data(result_key, 'DBM-019', [
             lambda datum: type(datum) == str,
             lambda datum: "not loaded" in datum
         ])
-        
+
         self.dbm_process_data(result_key, 'DBM-019', [
             lambda datum: type(datum) == dict,
             lambda datum: datum['VARIABLE_NAME'] == "PASSWORD_REUSE_CHECK_INTERVAL",
-            lambda datum: int(datum['VARIABLE_VALUE']) > int(self.rules[result_key]['DAY'][0]) or int(datum['VARIABLE_VALUE']) == 0
+            lambda datum: int(datum['VARIABLE_VALUE']) == 0
         ])
         
     def dbm_020(self, result_key='DBM-020'):

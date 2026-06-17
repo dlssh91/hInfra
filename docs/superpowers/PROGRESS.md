@@ -1,12 +1,22 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-17 (**상태저장. 이번 세션 완료: DBM-019 모드D 확장(Opus Critical 갭 수정) SHIP, 1344 passed. ★다음 착수=DBM-020~ 분류 검토 재개.**). **"다음에 진행해줘" → 아래 ★다음 착수(DBM-020~ 분류 검토 재개)부터.**
+> 마지막 업데이트: 2026-06-17 (**상태저장. 이번 세션 완료: DBM-019 mariadb polarity 버그픽스(R-MA019) SHIP, 1346 passed. ★다음 착수=DBM-020~ 분류 검토 재개.**). **"다음에 진행해줘" → 아래 ★다음 착수(DBM-020~ 분류 검토 재개)부터.**
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. 이 파일이 단일 진실원천.
 >  재개 트리거: "개발진행해"/"개발해줘"/"이어서 진행"/"다음 작업"/**"다음에 진행해"** → 아래 TL;DR ★다음 착수부터.)
 
 ## ▶ 다음 세션 즉시 시작점 (TL;DR)
 - **★다음 착수 = DBM-020~ 분류 검토 재개** (사용자와 항목별 1:1 검토 중. 001~009·011·013·015·016·017·019 완료, 다음=DBM-020)
   **검토 진행 방식**: 항목별로 [항목명/상세설명/판단기준/엔진별 벤더 결정론 로직(현행 동작)/내 분류 권고] 제시 → 사용자 결정. 남은 항목: 020/021/022/024/025/026/028/029/030/031/032/033/034/035/036.
+
+  **✅ DBM-019 mariadb polarity 버그픽스 (R-MA019) SHIP (2026-06-17, 1346 passed)**:
+  - **버그**: `mariadb/analysis.py dbm_019` — `INTERVAL > DAY[0](30) or INTERVAL == 0 → 취약`. INTERVAL=60(강한 설정) → 거짓취약.
+  - **xlsx 판단기준**: "설정 여부"(이진). `INTERVAL > 0 → 양호`, `INTERVAL == 0 / not-loaded → 취약`. DAY 임계값 개념 없음(사용자 확정 'B').
+  - **수정**: `dbm_019` dict 분기 → `int(datum['VARIABLE_VALUE']) == 0` 만 위반조건. `DAY[0]` 임계값 비교 제거.
+  - **config**: `mariadb-config.json rules.DBM-019.DAY["30"]` 제거 → `{}` (미사용, 근거 KNOWN_BUGS.md R-MA019).
+  - **KNOWN_BUGS.md**: `R-MA019` 항목 신규 등록(위치·증상·corrected 동작·회귀테스트 핀).
+  - **신규 테스트(+2건)**: `test_mariadb_interval_60_is_good`(핵심 거짓취약 케이스), `test_mariadb_interval_1_is_good`.
+  - **실데이터 불변**: mariadb_native DBM-019=취약(plugin not loaded). 변경 없음.
+  - **수정 파일**: `vendor/common/db/mariadb/analysis.py`(이미 수정됨), `vendor/common/db/config/mariadb-config.json`, `vendor/common/KNOWN_BUGS.md`, `tests/test_det_adapters_db.py`(+2건).
 
   **✅ DBM-019 모드D 확장(Opus Critical 갭 수정) SHIP (2026-06-17, 1344 passed, 거짓양호 0건)**:
   - **Critical 수정**: `det_adapters/db.py` 모드D를 "기대변수 부재 → 판단보류"로 확장.
@@ -16,7 +26,7 @@
     - 판단보류 사유: `"[재사용방지 설정 변수 미수집 → 판단보류] RESULT에 N행이 있으나 재사용 방지 기대 변수가 포함되지 않음 — 자동 양호 판정 불가"`.
   - **신규 테스트(+7건)**: `TestDBM019PasswordReuse` §8 — mysql Critical재현(→판단보류), mysql 다수행 기대변수 부재(→판단보류), mysql 기대변수+기타행 혼재(→양호 불변), mariadb Critical재현(→판단보류), mariadb 다수행 기대신호 부재(→판단보류), mariadb 기대변수+기타행(→양호 불변), mariadb not-loaded+기타행(→취약 불변).
   - **실데이터 불변 확인**: mysql_native DBM-019=취약(history=0,reuse_interval=0), mariadb_native DBM-019=취약(plugin not loaded). 변경 없음.
-  - **Medium 미수정**: mariadb `INTERVAL > 30 → 취약` polarity 의심은 사용자 결정 대기. 손대지 않음.
+  - **Medium 해결(R-MA019)**: mariadb `INTERVAL > 30 → 취약` polarity 버그 → 이번 세션 수정 완료. `analysis.py dbm_019` + `config DAY 제거` + `KNOWN_BUGS.md R-MA019` + 테스트 +2건.
   - **수정 파일**: `det_adapters/db.py`, `tests/test_det_adapters_db.py`(+7건).
 
   **✅ DBM-019 비밀번호 재사용 방지 SHIP (2026-06-17, 1337 passed, 거짓양호 0건)**:

@@ -515,6 +515,56 @@ R-MY013과 동일 (mariadb engine 대상).
 
 ---
 
+## R-MA019. mariadb dbm_019 polarity 역전 — INTERVAL 임계값 오판 (VENDOR-EDIT(c) 완료)
+
+**id**: `R-MA019`
+**위치**: `judge_tool/vendor/common/db/mariadb/analysis.py` `dbm_019` +
+         `judge_tool/vendor/common/db/config/mariadb-config.json` `rules.DBM-019`
+**상태**: VENDOR-EDIT(c) 완료 (2026-06-17)
+
+### 증상
+기존 코드: `PASSWORD_REUSE_CHECK_INTERVAL > DAY[0](30) or INTERVAL == 0` → 취약.
+60일처럼 강한 재사용방지 설정(INTERVAL=60)도 `60 > 30`이라 취약으로 오판 — 거짓취약(Critical).
+
+xlsx 판단기준(제2026-1호) = **"이전 비밀번호 재사용 방지 설정 여부"(이진)**: 설정됨(켜짐)→양호 / 미설정(꺼짐)→취약.
+INTERVAL 일(day) 값의 크기로 판단하는 것이 아니라 켜짐/꺼짐만 본다.
+
+```python
+# 버그 코드 (수정 전)
+lambda datum: int(datum['VARIABLE_VALUE']) > int(self.rules[result_key]['DAY'][0]) or int(datum['VARIABLE_VALUE']) == 0
+# → INTERVAL=60 → 60 > 30 → True → 취약 (거짓취약!)
+```
+
+### Corrected 동작 (VENDOR-EDIT(c))
+- `str` 분기 `"not loaded"` 포함 → 취약 (플러그인 미설치=꺼짐)
+- `INTERVAL == 0` → 취약 (무제한=꺼짐)
+- `INTERVAL > 0` → 양호 (며칠이든 재사용방지 켜짐)
+
+```python
+# 수정 후 (VENDOR-EDIT(c): R-MA019)
+self.dbm_process_data(result_key, 'DBM-019', [
+    lambda datum: type(datum) == str,
+    lambda datum: "not loaded" in datum
+])
+self.dbm_process_data(result_key, 'DBM-019', [
+    lambda datum: type(datum) == dict,
+    lambda datum: datum['VARIABLE_NAME'] == "PASSWORD_REUSE_CHECK_INTERVAL",
+    lambda datum: int(datum['VARIABLE_VALUE']) == 0   # ← DAY[0] 임계값 비교 제거
+])
+```
+
+config `rules.DBM-019.DAY` 미사용 → `Note`로 교체: `"미사용: 설정여부 이진 판정(INTERVAL>0=양호, 0/not-loaded=취약). DAY 임계값 개념 없음(R-MA019)."`.
+
+### 회귀테스트 핀 (tests/test_det_adapters_db.py::TestDBM019PasswordReuse)
+- `INTERVAL=60` → **양호** (핵심: 수정 전 거짓취약 케이스)
+- `INTERVAL=1` → 양호
+- `INTERVAL=30` → 양호 (기존 테스트 불변)
+- `INTERVAL=0` → 취약
+- `"not loaded"` 포함 str → 취약
+- 실데이터(mariadb_native): 플러그인 미로드 → **취약 불변**
+
+---
+
 ## R-MS011. mssql dbm_011 빈 RESULT(0 audit행) → 활성 감사 행 판단 (VENDOR-EDIT)
 
 **id**: `R-MS011`

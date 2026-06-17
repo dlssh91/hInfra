@@ -2885,6 +2885,38 @@ class TestDBM019PasswordReuse:
             f"mariadb 적절 설정인데 양호 아님: verdict={fv.verdict}"
         )
 
+    def test_mariadb_interval_60_is_good(self):
+        """MariaDB R-MA019: INTERVAL=60(강한 설정) → 양호. 수정 전 거짓취약 핵심 케이스."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-019": {"RESULT": [
+                {"VARIABLE_NAME": "PASSWORD_REUSE_CHECK_INTERVAL", "VARIABLE_VALUE": "60"},
+            ]}
+        })
+        fv = judge("DBM-019", raw, "mariadb_native", {})
+        assert fv.handled is True, f"mariadb interval=60 handled=False: {fv}"
+        assert fv.verdict == "양호", (
+            f"mariadb INTERVAL=60 → 양호 기대인데 {fv.verdict} "
+            f"— R-MA019 거짓취약 재발! (수정 전 60>30 → 취약 오판)"
+        )
+
+    def test_mariadb_interval_1_is_good(self):
+        """MariaDB R-MA019: INTERVAL=1(최소 설정 켜짐) → 양호."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-019": {"RESULT": [
+                {"VARIABLE_NAME": "PASSWORD_REUSE_CHECK_INTERVAL", "VARIABLE_VALUE": "1"},
+            ]}
+        })
+        fv = judge("DBM-019", raw, "mariadb_native", {})
+        assert fv.handled is True, f"mariadb interval=1 handled=False: {fv}"
+        assert fv.verdict == "양호", (
+            f"mariadb INTERVAL=1 → 양호 기대인데 {fv.verdict} "
+            f"— 이진 판정(>0=양호) 위반"
+        )
+
     # ── 3. 설정 부적절 → 취약 ────────────────────────────────────────────────
 
     def test_mysql_zero_history_is_vuln(self):
