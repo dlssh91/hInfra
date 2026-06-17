@@ -128,6 +128,14 @@ class PostgreSQLAnalysis:
         #         옛 한글 문자열('로드된 라이브러리가 없습니다.')도 하위호환 유지.
         #   판정: 미로드 탐지 → violations 비어있지 않음 → 모드C → 취약.
         #          로드됨(violations=0) → 모드C → 판단보류(양호 자동판정 절대 금지).
+        # VENDOR-EDIT(c) §R-PG011 (2026-06-17) — 빈 pgaudit_settings 거짓음성 보강:
+        #   버그: pgaudit 로드됨(Loaded/value에 pgaudit 포함)이어도 pgaudit_settings=[]이면
+        #         위반0으로 처리 → 판단보류로 빠져 "감사 클래스 미설정" 취약을 못 잡음.
+        #   수정 Case A: pgaudit_status=='Loaded' AND pgaudit_settings==[] → 위반(취약).
+        #         이유: 확장은 로드됐으나 감사 클래스 미설정(pgaudit_settings 비어있음) = 실질 미수집.
+        #   수정 Case B: 'pgaudit' in value AND pgaudit_settings==[] → 위반(취약).
+        #         이유: 동일. pgaudit 로드됐어도 감사 클래스 미설정이면 감사 미수행.
+        #   단서: pgaudit_settings 비어있지 않음(실제 감사 클래스 설정됨) → violations=0 → 판단보류(과탐 아님).
         self.dbm_result[result_key] = []
         try:
             if 'DBM-011' in self.data:
@@ -143,22 +151,39 @@ class PostgreSQLAnalysis:
                         continue
                     # ── 신규 포맷 케이스 A: pgaudit_status 필드 직접 명시 ──
                     if 'pgaudit_status' in datum:
+                        pgaudit_settings_a = datum.get('pgaudit_settings', [])
                         if datum['pgaudit_status'] != 'Loaded':
+                            # 미로드 → 위반
                             self.dbm_result[result_key].append({"pgaudit_status": datum['pgaudit_status']})
-                        # Loaded → 위반 아님(아무것도 추가 안 함)
+                        elif not pgaudit_settings_a:
+                            # VENDOR-EDIT(c) §R-PG011: Loaded이지만 감사 클래스 미설정 → 위반
+                            self.dbm_result[result_key].append({
+                                "pgaudit_status": "Loaded",
+                                "pgaudit_settings": pgaudit_settings_a,
+                                "violation_reason": "pgaudit 로드됨 but 감사 클래스 미설정(pgaudit_settings 비어있음)",
+                            })
+                        # Loaded + 비어있지 않은 settings → 위반 아님(판단보류 경로)
                         continue
                     # ── 신규 포맷 케이스 B: shared_preload_libraries value 필드 ──
                     if datum.get('setting_name') == 'shared_preload_libraries':
                         value = datum.get('value', '')
                         pgaudit_settings = datum.get('pgaudit_settings', [])
-                        # pgaudit가 value에 없고, pgaudit_settings도 비어 있으면 미로드
-                        if 'pgaudit' not in str(value).lower() and not pgaudit_settings:
+                        if 'pgaudit' not in str(value).lower():
+                            # pgaudit 미로드 → 위반(settings 여부 무관)
                             self.dbm_result[result_key].append({
                                 "pgaudit_status": "Not Loaded",
                                 "shared_preload_libraries": value or "(empty)",
                                 "pgaudit_settings": pgaudit_settings,
                             })
-                        # 로드됨 → 위반 아님(아무것도 추가 안 함)
+                        elif not pgaudit_settings:
+                            # VENDOR-EDIT(c) §R-PG011: pgaudit 로드됐으나 감사 클래스 미설정 → 위반
+                            self.dbm_result[result_key].append({
+                                "pgaudit_status": "Loaded (no audit classes)",
+                                "shared_preload_libraries": value,
+                                "pgaudit_settings": pgaudit_settings,
+                                "violation_reason": "pgaudit 로드됨 but 감사 클래스 미설정(pgaudit_settings 비어있음)",
+                            })
+                        # pgaudit 로드됨 + 비어있지 않은 settings → 위반 아님(판단보류 경로)
                         continue
                 # remove duplicate (JSON 기반 — pgaudit_settings list 포함 시 tuple 해시 불가 회피)
                 import json as _json

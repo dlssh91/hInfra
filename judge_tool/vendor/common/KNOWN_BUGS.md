@@ -371,26 +371,57 @@ result 매핑 직전에 **`len(violations)==0 and base in exc_keys`** 이면 `ha
 
 ---
 
-## R-PG011. pg dbm_011 옛 한글포맷 → 신규 포맷 미대응 (VENDOR-EDIT)
+## R-PG011. pg dbm_011 옛 한글포맷 → 신규 포맷 미대응 + 빈 pgaudit_settings 거짓음성 (VENDOR-EDIT)
 
 **id**: `R-PG011`
 **위치**: `judge_tool/vendor/common/db/postgresql/analysis.py` `dbm_011`
-**상태**: VENDOR-EDIT 필요
+**상태**: VENDOR-EDIT 완료 (2026-06-17, 2차 보강 포함)
 
-### 증상
+### 증상 (1차: 포맷-lag)
 pg 수집 스크립트는 초기(옛) 포맷에서 pgaudit 상태를 한글 문자열(예: `"로드됨"`, `"미설치"`) 또는 bare 텍스트로 출력했다. 신규 수집 포맷은 `{"pgaudit_status": "Loaded", "pgaudit_settings": [...]}` 구조체로 변경되었으나, `dbm_011` 메서드는 신규 구조를 인식하지 못한다.
 
 결과: 신규 포맷 데이터가 들어오면 `dbm_011`이 위반0으로 반환 → `_DETECT_VULN_ELSE_HOLD` 모드에서 판단보류(양호 자동판정 없음)로 처리 — 즉시 거짓양호는 없으나, 활성 pgaudit 설치가 확인됐음에도 위반0=취약 경로를 타지 않아 rationale 문구가 엔진 내부 기본값("로드됨")으로 빠질 수 있다.
 
-### Corrected 동작 (VENDOR-EDIT)
-`dbm_011` 내부에서 신규 구조체 포맷(`pgaudit_status == "Loaded"`)을 인식해:
-- `pgaudit_status == "Loaded"` → 위반0(감사 수집됨) 반환
-- `pgaudit_status` 없음 또는 `"Not Loaded"` → 기존 옛 포맷 탐지 경로 유지
+### 증상 (2차: 빈 pgaudit_settings 거짓음성, 2026-06-17 Codex 발견)
+신규 포맷 대응 후에도 추가 거짓음성이 잔존했다:
 
-### 회귀테스트 핀
-- `{"DBM-011": {"RESULT": [{"pgaudit_status":"Loaded","pgaudit_settings":["log"]}]}}` → `dbm_011` 위반0 → 어댑터 판단보류
-- `{"DBM-011": {"RESULT": [{"pgaudit_status":"Not Loaded"}]}}` → `dbm_011` 위반≥1 → 어댑터 취약
-- 옛 bare 텍스트 포맷 — `"audit_log.so ... not loaded"` 등 — 기존 동작 불변
+- **Case A** (`pgaudit_status` 필드): `pgaudit_status == 'Loaded'`이면 `pgaudit_settings` 여부에 상관없이 위반0으로 처리.  
+  → `{"pgaudit_status": "Loaded", "pgaudit_settings": []}` 입력 시 취약 탐지 못함(거짓음성).
+- **Case B** (`shared_preload_libraries` value 필드): `'pgaudit' in value AND pgaudit_settings=[]` 조합을 위반으로 처리하지 않음.  
+  → `{"value": "pgaudit", "pgaudit_settings": []}` 입력 시 취약 탐지 못함(거짓음성).
+
+실제 의미: pgaudit 확장은 로드됐으나 `pgaudit.log` 등 감사 클래스가 미설정 = 실질적으로 감사 미수행 = **취약(미수집)**.  
+기존 로직은 이를 "수집됨(로드됨)" 상태로 오인해 판단보류로 빠뜨렸다.
+
+재현(수정 전):
+```python
+# Case A
+data = {"DBM-011": {"RESULT": [{"pgaudit_status": "Loaded", "pgaudit_settings": []}]}}
+# → dbm_011 위반0 → 어댑터 판단보류  (버그: 취약이어야 함)
+
+# Case B
+data = {"DBM-011": {"RESULT": [{"setting_name": "shared_preload_libraries",
+                                 "value": "pgaudit", "pgaudit_settings": []}]}}
+# → dbm_011 위반0 → 어댑터 판단보류  (버그: 취약이어야 함)
+```
+
+### Corrected 동작 (VENDOR-EDIT, 2차 보강 포함)
+`dbm_011` 내부 수정 — 빈 `pgaudit_settings`는 단독으로 위반:
+
+- **Case A**: `pgaudit_status == 'Loaded'` + `pgaudit_settings == []` → **위반 추가** (`violation_reason: "pgaudit 로드됨 but 감사 클래스 미설정(pgaudit_settings 비어있음)"`)
+- **Case A-OK**: `pgaudit_status == 'Loaded'` + `pgaudit_settings` 비어있지 않음 → 위반0(판단보류 경로, 과탐 아님)
+- **Case B**: `'pgaudit' in value` + `pgaudit_settings == []` → **위반 추가** (동일 `violation_reason`)
+- **Case B-OK**: `'pgaudit' in value` + `pgaudit_settings` 비어있지 않음 → 위반0(판단보류 경로)
+- **Case B-미로드**: `'pgaudit' not in value` → 기존 "Not Loaded" 위반 경로 유지(settings 무관)
+- 옛 한글 문자열 하위호환 불변.
+
+### 회귀테스트 핀 (tests/test_det_adapters_db.py::TestDBM011DetectVulnElseHold)
+- `{"pgaudit_status":"Loaded","pgaudit_settings":["log"]}` → 위반0 → 어댑터 판단보류 (회귀 불변)
+- `{"pgaudit_status":"Not Loaded"}` → 위반≥1 → 어댑터 취약 (회귀 불변)
+- **신규** `{"pgaudit_status":"Loaded","pgaudit_settings":[]}` → **위반≥1** → 어댑터 **취약** (§R-PG011 2차 보강)
+- **신규** `{"setting_name":"shared_preload_libraries","value":"pgaudit","pgaudit_settings":[]}` → **위반≥1** → 어댑터 **취약**
+- **신규** `{"value":"pgaudit,pg_stat_statements","pgaudit_settings":[{"pgaudit.log":"ddl,write,role"}]}` → 위반0 → 판단보류 (과탐 없음)
+- 옛 bare 텍스트 포맷 — `"로드된 라이브러리가 없습니다."` — 기존 동작 불변
 
 ---
 

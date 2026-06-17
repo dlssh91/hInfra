@@ -1631,6 +1631,103 @@ class TestDBM011DetectVulnElseHold:
         )
         assert fv.verdict != "양호", f"pg DBM-011 거짓양호: verdict={fv.verdict}"
 
+    # ── R-PG011 빈 pgaudit_settings 거짓음성 보강 (VENDOR-EDIT(c) §R-PG011, 2026-06-17) ─
+
+    def test_pg_dbm011_status_loaded_empty_settings_is_vuln(self):
+        """pg DBM-011 §R-PG011: pgaudit_status='Loaded' + pgaudit_settings=[] → 취약.
+        pgaudit 확장 로드됐으나 감사 클래스 미설정 = 실질 미수집 → 위반(취약)."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-011": {"RESULT": [
+                {"pgaudit_status": "Loaded", "pgaudit_settings": []}
+            ]}
+        })
+        fv = judge("DBM-011", raw, "pg_native", {})
+        assert fv.handled is True, f"pg DBM-011 §R-PG011 CaseA handled=False: {fv}"
+        assert fv.verdict == "취약", (
+            f"pg DBM-011 §R-PG011 CaseA: pgaudit Loaded + empty settings → 취약 기대, "
+            f"실제: {fv.verdict} — 거짓음성(감사 클래스 미설정 미탐)"
+        )
+        assert fv.ev_status == "bad", f"pg DBM-011 §R-PG011 CaseA ev_status != bad: {fv.ev_status}"
+
+    def test_pg_dbm011_value_has_pgaudit_empty_settings_is_vuln(self):
+        """pg DBM-011 §R-PG011: shared_preload_libraries에 pgaudit 포함 + pgaudit_settings=[] → 취약.
+        pgaudit 로드됐으나 감사 클래스 미설정 = 실질 미수집 → 위반(취약)."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-011": {"RESULT": [
+                {"setting_name": "shared_preload_libraries",
+                 "value": "pgaudit",
+                 "pgaudit_settings": []}
+            ]}
+        })
+        fv = judge("DBM-011", raw, "pg_native", {})
+        assert fv.handled is True, f"pg DBM-011 §R-PG011 CaseB handled=False: {fv}"
+        assert fv.verdict == "취약", (
+            f"pg DBM-011 §R-PG011 CaseB: pgaudit in value + empty settings → 취약 기대, "
+            f"실제: {fv.verdict} — 거짓음성(감사 클래스 미설정 미탐)"
+        )
+        assert fv.ev_status == "bad", f"pg DBM-011 §R-PG011 CaseB ev_status != bad: {fv.ev_status}"
+
+    def test_pg_dbm011_loaded_with_real_settings_is_hold(self):
+        """pg DBM-011 §R-PG011 회귀: pgaudit 로드 + pgaudit_settings 비어있지 않음 → 판단보류(과탐 아님).
+        감사 클래스가 실제로 설정된 경우는 위반이 아니라 판단보류(수집됨)로 처리."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-011": {"RESULT": [
+                {"setting_name": "shared_preload_libraries",
+                 "value": "pgaudit,pg_stat_statements",
+                 "pgaudit_settings": [{"pgaudit.log": "ddl,write,role"}]}
+            ]}
+        })
+        fv = judge("DBM-011", raw, "pg_native", {})
+        assert fv.handled is True, f"pg DBM-011 §R-PG011 회귀 handled=False: {fv}"
+        assert fv.verdict == "판단보류", (
+            f"pg DBM-011 §R-PG011 회귀: pgaudit 로드 + 실 settings → 판단보류 기대, "
+            f"실제: {fv.verdict} — 과탐(거짓취약) 위험"
+        )
+        assert fv.verdict != "양호", f"pg DBM-011 §R-PG011 회귀: 거짓양호 금지: {fv.verdict}"
+
+    def test_pg_dbm011_not_loaded_still_vuln(self):
+        """pg DBM-011 §R-PG011 회귀: pgaudit 미로드(value 없음) → 취약(기존 동작 불변)."""
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-011": {"RESULT": [
+                {"setting_name": "shared_preload_libraries",
+                 "value": "",
+                 "pgaudit_settings": []}
+            ]}
+        })
+        fv = judge("DBM-011", raw, "pg_native", {})
+        assert fv.handled is True, f"pg DBM-011 §R-PG011 미로드 회귀 handled=False: {fv}"
+        assert fv.verdict == "취약", (
+            f"pg DBM-011 §R-PG011 미로드 회귀: 취약 기대, 실제: {fv.verdict}"
+        )
+
+    def test_pg_dbm011_no_auto_good_after_r_pg011(self):
+        """pg DBM-011 §R-PG011: 양호 자동판정 0건 — CaseA/B 모두 취약 또는 보류, 양호 없음."""
+        import judge_tool.det_adapters.db as _db
+        cases = [
+            # (설명, raw_data)
+            ("CaseA_loaded_empty", {"pgaudit_status": "Loaded", "pgaudit_settings": []}),
+            ("CaseB_value_pgaudit_empty", {"setting_name": "shared_preload_libraries",
+                                           "value": "pgaudit", "pgaudit_settings": []}),
+            ("CaseA_not_loaded", {"pgaudit_status": "Not Loaded", "pgaudit_settings": []}),
+            ("CaseB_not_loaded_val", {"setting_name": "shared_preload_libraries",
+                                      "value": "", "pgaudit_settings": []}),
+        ]
+        for desc, datum in cases:
+            _db._RUN_CACHE.clear()
+            raw = _make_raw_ev({"DBM-011": {"RESULT": [datum]}})
+            fv = judge("DBM-011", raw, "pg_native", {})
+            assert fv.verdict != "양호", (
+                f"pg DBM-011 §R-PG011 거짓양호 발생 ({desc}): verdict={fv.verdict}"
+            )
+
     def test_pg_dbm011_legacy_korean_string_is_vuln(self):
         """pg DBM-011: 옛 한글 문자열('로드된 라이브러리가 없습니다.') 하위호환 → 취약."""
         import judge_tool.det_adapters.db as _db
