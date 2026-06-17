@@ -522,23 +522,28 @@ items:
     # pg native: 수집 형식 {"*": python_repr_str} — analysis가 'privilege_type' KeyError 삼킴 → [] → 거짓양호(R3)
 
   DBM-016:                          # 보안패치 버전
+    # ★ 정책(2026-06-17): 자동 verdict(양호/취약) 금지 → 전 variant STUB 전환.
+    # verdict=판단보류 고정 + judge_patch 힌트(현재vX vs 기준일 최신vY) 경로:
+    #   DET_SOURCE=STUB → gate() handled=False → _det_common_label_route → label D
+    #   → _defer_or_eol → judge_patch → "최신패치 미적용 후보" 힌트(판단보류).
+    # 이전: mysql/oracle/mssql/pg(+cloud) = DET → 벤더 analysis.dbm_016()이 하드코딩
+    #   rules['version']과 비교해 자동 취약/양호를 냈음(stale 기준, 정책 위반).
     variants:
-      mysql: DET
-      oracle: DET
-      mssql: DET
-      mariadb: STUB
-      pg: DET
-      # 클라우드 변형 (Phase 4b)
-      mysql_rds: DET
-      mysql_aurora: DET
-      mysql_azure: DET
-      oracle_rds: STUB     # cloud oracle: dbm_016 전체 주석 처리(empty body effectively) → STUB
-      mssql_rds: DET       # cloud mssql: version_info 비교 → DET
-      mariadb_rds: STUB    # cloud mariadb: 빈본문 → STUB
-      pg_rds: DET          # cloud pg: check_minor_ver(datum['version']) → DET
-      pg_aurora: DET
-      pg_azure: DET
-    # mariadb native: 빈 본문 → STUB
+      mysql: STUB    # 구 DET: analysis.dbm_016() 버전비교 자동verdict → 정책위반, STUB 전환
+      oracle: STUB   # 구 DET: analysis.dbm_016() 버전비교 자동verdict → 정책위반, STUB 전환
+      mssql: STUB    # 구 DET: analysis.dbm_016() 버전비교 자동verdict → 정책위반, STUB 전환
+      mariadb: STUB  # 기존 STUB 유지
+      pg: STUB       # 구 DET: analysis.dbm_016() 버전비교 자동verdict → 정책위반, STUB 전환
+      # 클라우드 변형 (Phase 4b) — 전부 STUB: 관리형 서비스 패치채널이 커뮤니티와 달라 단정 불가
+      mysql_rds: STUB    # 구 DET → STUB(관리형 패치채널 차이 + 정책)
+      mysql_aurora: STUB # 구 DET → STUB
+      mysql_azure: STUB  # 구 DET → STUB
+      oracle_rds: STUB   # 기존 STUB 유지
+      mssql_rds: STUB    # 구 DET → STUB(관리형 패치채널 차이 + 정책)
+      mariadb_rds: STUB  # 기존 STUB 유지
+      pg_rds: STUB       # 구 DET → STUB(관리형 패치채널 차이 + 정책)
+      pg_aurora: STUB    # 구 DET → STUB
+      pg_azure: STUB     # 구 DET → STUB
 
   DBM-017:                          # 시스템테이블 접근권한
     variants:

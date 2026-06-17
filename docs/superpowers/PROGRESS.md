@@ -1,12 +1,23 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-17 (**상태저장. 이번 세션 완료: DBM-015 label B(인터뷰)+LLM요약 구현 SHIP — mssql 거짓양호(permission_name=[])/pg 과탐 해소, 1291 passed. ★다음 착수=DBM-014~ 분류검토 재개(016~부터).**). **"다음에 진행해줘" → 아래 ★다음 착수(DBM-016~ 분류 검토 재개)부터.**
+> 마지막 업데이트: 2026-06-17 (**상태저장. 이번 세션 완료: DBM-016 D+판단보류+힌트 정책 전환 SHIP + 서버 SRV-007/064/179 canned 강화 + 온라인조회 없음 확인, 1299 passed. ★다음 착수=DBM-016 이후 분류검토 재개(017~부터).**). **"다음에 진행해줘" → 아래 ★다음 착수(DBM-017~ 분류 검토 재개)부터.**
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. 이 파일이 단일 진실원천.
 >  재개 트리거: "개발진행해"/"개발해줘"/"이어서 진행"/"다음 작업"/**"다음에 진행해"** → 아래 TL;DR ★다음 착수부터.)
 
 ## ▶ 다음 세션 즉시 시작점 (TL;DR)
-- **★다음 착수 = DBM-016~ 분류 검토 재개** (사용자와 항목별 1:1 검토 중. 001~009·011·013·015 완료, 다음=DBM-016)
-  **검토 진행 방식**: 항목별로 [항목명/상세설명/판단기준/엔진별 벤더 결정론 로직(현행 동작)/내 분류 권고] 제시 → 사용자 결정. 남은 항목: 016/017/019/020/021/022/024/025/026/028/029/030/031/032/033/034/035/036.
+- **★다음 착수 = DBM-017~ 분류 검토 재개** (사용자와 항목별 1:1 검토 중. 001~009·011·013·015·016 완료, 다음=DBM-017)
+  **검토 진행 방식**: 항목별로 [항목명/상세설명/판단기준/엔진별 벤더 결정론 로직(현행 동작)/내 분류 권고] 제시 → 사용자 결정. 남은 항목: 017/019/020/021/022/024/025/026/028/029/030/031/032/033/034/035/036.
+
+  **✅ DBM-016 D+판단보류+힌트 정책 전환 SHIP (2026-06-17, 1299 passed, 자동verdict 0건)**:
+  - **정책**: 패치/EOL/버전-최신성 항목 verdict=판단보류 고정, 자동 양호/취약 금지. 버전 기준선은 eol.yaml(as_of 스탬프), 힌트만 제공.
+  - **문제**: DET_SOURCE DBM-016 mysql/oracle/mssql/pg+cloud variant = DET → gate() 통과 → `analysis.dbm_016()` 하드코딩 `rules['version']`과 비교 → 자동 취약/양호 (stale 기준, 정책 위반).
+  - **해결A (DET_SOURCE.yaml)**: DBM-016 전 variant STUB 전환 (mysql/oracle/mssql/pg + 클라우드 _rds/_aurora/_azure). gate() → handled=False → `_det_common_label_route` → label D → `_defer_or_eol` → `judge_patch` → 판단보류 + 힌트.
+  - **해결B (eol.yaml)**: `as_of: 2026-06-17` 갱신. Oracle 19c `latest: "19.28.0.0.250715"` 신규 등재(oracle-config.json 2025.09 기준). mssql 2017 `latest: "14.0.3490.10"` 신규. MySQL 9.0 시리즈 추가. 구 MySQL 9.6/9.7 제거(PostgreSQL 시리즈와 혼동 방지). 기존 더 높은 버전 유지(8.4.9, 8.0.46, 15.0.4470.1, 16.0.4255.1, 13.23~17.10 등).
+  - **서버 B (server.yaml SRV-007/064/179)**: eol.yaml 베이스라인 없음 → canned 판단보류 유지. canned 문구에 "버전 기준선(as_of) 확보 시 힌트 제공 예정 — 현재 담당자 확인" 추가.
+  - **서버 audit**: 서버 det_common 항목(SRV-001/004/008 등) 전수 확인 → 버전/패치 자동 verdict 항목 없음. SRV-007/064/179 = label D + "det" 핸들러 → _defer_or_eol → canned 판단보류(정책 일치).
+  - **검증**: 5엔진 전부 `judge_patch` 반환 판단보류 + 힌트("현재vX vs 기준일 최신vY → 미적용 후보"). oracle 19.26 < 19.28 힌트 생성. 온라인 호출 없음(eol.yaml 로컬 정적). 거짓양호 0, 거짓취약 0.
+  - **신규 테스트(8건)**: DBM-016 gate STUB 전 variant(14개 variant), mysql/mssql/oracle/pg native 판단보류+힌트, mariadb canned 폴백, 5엔진 포괄 자동verdict 0 단언.
+  - **수정 파일**: `vendor/common/DET_SOURCE.yaml`, `judge_tool/eol.yaml`, `item_configs/server.yaml`, `tests/test_eol.py`(oracle latest 테스트 갱신), `tests/test_main_db_e2e.py`(+8건).
 
   **✅ DBM-015 label B(인터뷰)+LLM요약 구현 SHIP (2026-06-17, 1291 passed, 양호자동판정 0건)**:
   - **문제**: mssql DET였으나 `rules['permission_name']=[]`(빈) → `datum in []` 항상 False → 위반 0 → handled=True+양호(거짓양호). pg STUB이나 `privilege_type` KeyError → pg_catalog 기본 PUBLIC SELECT 과탐(거짓취약). oracle 015_1/2 `lambda:True` 과탐.

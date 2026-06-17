@@ -26,15 +26,15 @@
 
 SRV-007:
   label: D                        # DET-PARTIAL (SMTP active→(*) 패치버전); EOL/패치 → 규칙1 D
-  canned_message: "SMTP 패치버전 항목 — 외부지식(버전 목록) 필요, 판단보류(담당자 확인)"
+  canned_message: "SMTP 패치버전 항목 — 외부지식(버전 목록) 필요, 판단보류. 버전 기준선(as_of)이 eol.yaml에 등록되면 자동 힌트 제공 예정 — 현재 담당자 확인"
 
 SRV-064:
   label: D                        # DET-PARTIAL (DNS active→(*) 패치버전); EOL/패치 → 규칙1 D
-  canned_message: "DNS 패치버전 항목 — 외부지식(버전 목록) 필요, 판단보류(담당자 확인)"
+  canned_message: "DNS 패치버전 항목 — 외부지식(버전 목록) 필요, 판단보류. 버전 기준선(as_of)이 eol.yaml에 등록되면 자동 힌트 제공 예정 — 현재 담당자 확인"
 
 SRV-179:
   label: D                        # ABSENT; EOL/패치 → 규칙1 D
-  canned_message: "OS 패치 적용 항목 — 외부지식(패치 이력) 필요, 판단보류(담당자 확인)"
+  canned_message: "OS EoS(지원종료) 항목 — 외부지식(OS lifecycle 정책) 필요, 판단보류. 버전 기준선(as_of)이 eol.yaml에 등록되면 자동 힌트 제공 예정 — 현재 담당자 확인"
 
 # ─── C 라벨 — 크랙 기술한계 (판단보류 고정, LLM 호출 없음) ──────────────────────
 

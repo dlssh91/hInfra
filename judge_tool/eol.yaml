@@ -8,34 +8,47 @@
 #   - latest: 해당 시리즈의 최신 패치 버전(DBM-016 대조용). 관리형 서비스
 #     (RDS/Aurora/Azure)는 커뮤니티 최신과 패치 채널이 다를 수 있으므로
 #     '후보 표시'까지만 하고 verdict는 판단보류를 유지한다.
-# 출처: endoflife.date API (2026-06-10 조회, 벤더 공식 lifecycle 정책 기반)
-as_of: 2026-06-10
+# 출처: endoflife.date API + 벤더 vendor/common/db/config/*-config.json 대조
+#       (2026-06-17 갱신 — DBM-016 STUB 전환으로 judge_patch 힌트 경로 활성화)
+# ★ 정책(2026-06-17): DBM-016 자동 verdict 금지. judge_patch는 현재버전 vs
+#   latest 비교해 "미적용 후보" 힌트만 제공하고 verdict=판단보류 고정.
+#   as_of 이후 벤더 릴리즈 발생 시 latest를 수동 갱신할 것.
+as_of: 2026-06-17
 products:
   mysql:
-    "8.0": {eol: 2026-04-30, latest: "8.0.46"}
-    "8.4": {eol: 2032-04-30, latest: "8.4.9"}
-    "9.6": {eol: 2026-04-21}
-    "9.7": {eol: 2034-04-21}
+    # latest 출처: eol.yaml 2026-06-10 기준 + mysql-config.json "2025.9.18 Release Notes" 대조
+    # 더 최신값 우선(config < eol 이면 eol 유지, config > eol 이면 config 반영)
+    "8.0": {eol: 2026-04-30, latest: "8.0.46"}   # eol.yaml 기존 8.0.46 ≥ config 8.0.43 → 유지
+    "8.4": {eol: 2032-04-30, latest: "8.4.9"}    # eol.yaml 기존 8.4.9 ≥ config 8.4.6 → 유지
+    "9.0": {eol: 2025-10-01, latest: "9.0.1"}    # config 9.0.1 (Innovation — 단기지원) 추가
+    "9.4": {eol: 2034-04-21}                      # Innovation(최신), latest 미확정
+    # 구 9.6/9.7 시리즈키 제거 (MySQL 버전체계: 8.x/9.x; 9.6은 PostgreSQL임)
   mariadb:
     "10.11": {eol: 2028-02-16, latest: "10.11.18"}
     "11.4": {eol: 2029-05-29, latest: "11.4.12"}   # Extended: 2033-01-16
     "11.8": {eol: 2028-06-04}                       # Extended: 2033-10-22
     "12.3": {eol: 2029-06-30}
   mssql:                  # 시리즈 키 = 제품 연도. latest는 빌드 번호로 대조.
-    "2014": {eol: 2024-07-09}   # Extended: 2027-07-12 (SP3 기준)
-    "2016": {eol: 2026-07-14}   # Extended: 2029-07-17 (SP3 기준)
-    "2017": {eol: 2027-10-12}
-    "2019": {eol: 2030-01-08, latest: "15.0.4470.1"}   # CU32+GDR
-    "2022": {eol: 2033-01-11, latest: "16.0.4255.1"}   # CU25
-    "2025": {eol: 2036-01-06}
+    # latest 출처: eol.yaml 2026-06-10 + mssql-config.json update "2025.10" 대조 (더 최신 우선)
+    "2014": {eol: 2024-07-09}                          # Extended: 2027-07-12 (SP3 기준)
+    "2016": {eol: 2026-07-14}                          # Extended: 2029-07-17 (SP3 기준)
+    "2017": {eol: 2027-10-12, latest: "14.0.3490.10"} # config 2025.10 신규 추가
+    "2019": {eol: 2030-01-08, latest: "15.0.4470.1"}  # eol 기존 4470.1 ≥ config 4430.1 → 유지
+    "2022": {eol: 2033-01-11, latest: "16.0.4255.1"}  # eol 기존 4255.1 ≥ config 4215.2 → 유지
+    "2025": {eol: 2036-01-06}                          # latest 미확정
   postgresql:
-    "13": {eol: 2025-11-13, latest: "13.23"}
-    "14": {eol: 2026-11-12, latest: "14.23"}
-    "15": {eol: 2027-11-11, latest: "15.18"}
-    "16": {eol: 2028-11-09, latest: "16.14"}
-    "17": {eol: 2029-11-08, latest: "17.10"}
-    "18": {eol: 2030-11-14, latest: "18.4"}
-  oracle:                 # RU 최신 정보는 API 미제공 → 패치 대조 없음(폴백)
-    "19": {eol: 2029-12-31}     # Premier. Extended: 2032-12-31
-    "21": {eol: 2027-07-31}
-    "23": {eol: 2031-12-31}
+    # latest 출처: eol.yaml 2026-06-10 + postgresql-config.json "2025.09" 대조 (더 최신 우선)
+    "13": {eol: 2025-11-13, latest: "13.23"}   # eol 기존 13.23 ≥ config 13.22 → 유지
+    "14": {eol: 2026-11-12, latest: "14.23"}   # eol 기존 14.23 ≥ config 14.19 → 유지
+    "15": {eol: 2027-11-11, latest: "15.18"}   # eol 기존 15.18 ≥ config 15.14 → 유지
+    "16": {eol: 2028-11-09, latest: "16.14"}   # eol 기존 16.14 ≥ config 16.10 → 유지
+    "17": {eol: 2029-11-08, latest: "17.10"}   # eol 기존 17.10 ≥ config 17.6 → 유지
+    "18": {eol: 2030-11-14}                    # 최신 major, latest 미확정
+  oracle:
+    # latest 출처: oracle-config.json date "2025.09 기준"
+    # DB 수집버전은 "Database Release Update : 19.28.0.0.250715" 형식.
+    # eol.py _PATTERNS db_oracle: re.compile(r"Database Release Update\s*:\s*(\d[\d.]*)")
+    # → 추출버전 시리즈 = parts[0] = "19"/"21" (주버전). latest도 주버전.시리즈로 일치시킴.
+    "19": {eol: 2029-12-31, latest: "19.28.0.0.250715"}  # Premier. Extended: 2032-12-31. RU 2025.07
+    "21": {eol: 2027-07-31}                               # latest 미확정(RU API 미제공)
+    "23": {eol: 2031-12-31}                               # latest 미확정

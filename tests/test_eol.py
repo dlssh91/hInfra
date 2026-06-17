@@ -169,11 +169,18 @@ def test_patch_mssql_compares_build_number():
     assert "미적용 후보" in r["rationale"]
 
 
-def test_patch_oracle_no_latest_falls_back():
-    """Oracle은 latest 미수록 → None 폴백(canned_message 사용)."""
+def test_patch_oracle_hint_generated():
+    """Oracle 19c: eol.yaml latest=19.28.0.0.250715 등록 후
+    judge_patch가 '미적용 후보' 힌트를 생성하고 verdict=판단보류를 반환한다.
+    (구: latest 미수록 → None 폴백. 2026-06-17 oracle-config.json 기준일로 latest 등록.)"""
     items = _items("DBM-016",
                    '{"description":"Database Release Update : 19.26.0.0.250121"}')
-    assert judge_patch("db_oracle", items) is None
+    r = judge_patch("db_oracle", items)
+    assert r is not None
+    assert r["verdict"] == "판단보류"
+    assert "19.26.0.0.250121" in r["rationale"]
+    assert "19.28.0.0.250715" in r["rationale"]
+    assert "미적용 후보" in r["rationale"]
 
 
 # ---------------------------------------------------------------------------
