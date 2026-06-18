@@ -392,6 +392,44 @@ def _dbm026_has_umask_token(result_rows: list) -> bool:
     return False
 
 
+# ── 모드 G: pg_hba.conf 미수집 거짓양호 가드 (DBM-032 — native pg 평문비번) ──
+# DBM-032 native 결정론: pg_hba.conf의 host/hostnossl+password 라인 탐지.
+# RESULT가 빈배열 → pg_hba.conf 미수집 → 판단보류.
+# RESULT에 행은 있지만 pg_hba connection type 라인(local/host/hostssl/hostnossl/
+# hostgssenc/hostnogssenc)이 하나도 없음 → pg_hba 포맷 미수집 → 판단보류.
+# 보수 원칙: pg_hba 없이는 평문비번 부재를 확인할 수 없음 → 판단보류(거짓양호 금지).
+# VENDOR-EDIT(c): R-032 (2026-06-19)
+_PG_HBA_GUARD: frozenset = frozenset({"DBM-032"})
+
+# pg_hba connection type 키워드 (소문자). 이 중 하나라도 라인 첫 필드이면 pg_hba 수집됨.
+_PG_HBA_CONN_TYPES = frozenset({
+    "local", "host", "hostssl", "hostnossl", "hostgssenc", "hostnogssenc",
+})
+
+
+def _dbm032_has_pghba_line(result_rows: list) -> bool:
+    """DBM-032 RESULT에서 pg_hba connection type 라인이 1개 이상 있는지 확인 (모드G 가드).
+
+    result_rows는 data['DBM-032']['RESULT'] — 원본 수집 행들(dict, output 키 포함).
+    각 행의 'output' 값에서 pg_hba connection type 라인(첫 필드가 local/host/... 중 하나)
+    을 탐색한다.
+    """
+    for row in result_rows:
+        if not isinstance(row, dict):
+            continue
+        output = row.get("output", "")
+        if not isinstance(output, str):
+            continue
+        for raw in output.splitlines():
+            line = raw.strip()
+            if not line or line.startswith('#'):
+                continue
+            fields = line.split()
+            if fields and fields[0].lower() in _PG_HBA_CONN_TYPES:
+                return True
+    return False
+
+
 # ── 모드 B: 구조적 취약 (DBM 분류 검토 Batch1) ─────────────────────────────
 # PostgreSQL 코어에 네이티브 기능(실패잠금/복잡도강제)이 없어 데이터 없이도 구조적 취약.
 # (base, variant) 키. pg_native만 — 클라우드(rds/aurora/azure)는 관리형 별도 처리(제외).
@@ -852,6 +890,54 @@ def judge(
                     f"RESULT에 {len(raw_result_rows)}행이 있으나 "
                     f"8진수 umask 값을 파싱할 수 없음 — "
                     f"umask 수집 실패(command not found 등) 또는 포맷 오류, 자동 양호 판정 불가 "
+                    f"(engine={engine}, item={base})"
+                ),
+                citations=[],
+                ev_status="review",
+                handled=True,
+            )
+
+    # ── 모드 G: DBM-032 pg_hba.conf 미수집 거짓양호 가드 ──────────────────────
+    # 위반0인 경우 두 가지 케이스를 판단보류로 처리:
+    #   (1) RESULT 0행(빈 배열) → pg_hba.conf 미수집
+    #   (2) RESULT 행 있으나 pg_hba connection type 라인 0건 → pg_hba 포맷 미확인
+    # 보수 원칙: pg_hba 내용을 확인하지 못하면 평문비번 부재를 보장할 수 없음 → 판단보류.
+    # VENDOR-EDIT(c): R-032 (2026-06-19)
+    if base in _PG_HBA_GUARD and not violations:
+        raw_result_rows = data.get(base, {}).get("RESULT", [])
+        # (1) RESULT 빈배열 → pg_hba 미수집
+        if not raw_result_rows:
+            log.warning(
+                "모드G 가드: base=%s engine=%s RESULT 0행(빈배열) → 판단보류(pg_hba 미수집)",
+                base, engine,
+            )
+            return ForcedVerdict(
+                verdict="판단보류",
+                confidence=0.0,
+                rationale=(
+                    f"[pg_hba.conf 미수집 → 판단보류] "
+                    f"RESULT가 빈 배열(0행) — "
+                    f"pg_hba.conf 수집 자체가 이루어지지 않아 자동 양호 판정 불가 "
+                    f"(engine={engine}, item={base})"
+                ),
+                citations=[],
+                ev_status="review",
+                handled=True,
+            )
+        # (2) RESULT 행 있으나 pg_hba connection type 라인 0건 → pg_hba 포맷 미확인
+        if not _dbm032_has_pghba_line(raw_result_rows):
+            log.warning(
+                "모드G 가드: base=%s engine=%s RESULT %d행 존재하나 pg_hba 라인 0건 → 판단보류(pg_hba 미수집)",
+                base, engine, len(raw_result_rows),
+            )
+            return ForcedVerdict(
+                verdict="판단보류",
+                confidence=0.0,
+                rationale=(
+                    f"[pg_hba.conf 미수집 → 판단보류] "
+                    f"RESULT에 {len(raw_result_rows)}행이 있으나 "
+                    f"pg_hba.conf connection type 라인(local/host/hostssl 등)이 포함되지 않음 — "
+                    f"pg_hba.conf 수집 실패 또는 포맷 오류, 자동 양호 판정 불가 "
                     f"(engine={engine}, item={base})"
                 ),
                 citations=[],

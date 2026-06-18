@@ -285,7 +285,7 @@ class PostgreSQLAnalysis:
             first_str = str_arr[0]
 
             # 첫 번째 문자열이 특정 패턴으로 시작하는지 확인 (DateTokenConverter.CONVERTER_KEY처럼 처리)
-            if len(first_str) > 0 and first_str.lower().startswith("d".lower()):  # "key"는 실제 패턴에 맞게 수정
+            if len(first_str) > 0 and first_str.lower().startswith(("d", "l")):  # R-022L: 디렉터리(d)·심볼릭링크(l) 제외 — 심링크 권한(lrwxrwxrwx)은 타깃과 무관, 거짓취약 방지
                 return False
 
             # 권한을 3자리씩 잘라서 추출 (3 * index에서 권한 3개를 추출)
@@ -390,6 +390,31 @@ class PostgreSQLAnalysis:
             lambda datum: True,
         ])
         
-    # 수동 점검 사항으로 교체됨
     def dbm_032(self, result_key='DBM-032'):
+        # VENDOR-EDIT(c): R-032 pg_hba.conf 평문비번 결정론 파서 (2026-06-19)
+        # 평가기준: host/hostnossl + method=password → 평문 비번 전송 → 취약.
+        # hostssl(TLS), local(소켓), md5/scram-sha-256(챌린지) → 양호 (제외).
+        # 주석 라인, 빈 라인 무효. password는 항상 마지막 토큰 (cert/ldap 옵션 동반 시에도 안전).
+        # R-032b: 인라인 주석(`host ... password # legacy`) 제거 후 토큰화 —
+        #   안 하면 마지막 토큰이 주석어가 되어 평문 라인 누락(거짓양호). pg_hba 값엔 '#' 미사용.
         self.dbm_result[result_key] = []
+        try:
+            if 'DBM-032' in self.data:
+                for datum in self.data['DBM-032'].get('RESULT', []):
+                    output = datum.get('output', '')
+                    if not isinstance(output, str):
+                        continue
+                    for raw in output.splitlines():
+                        line = raw.split('#', 1)[0].strip()  # 인라인 주석 제거 후 strip
+                        if not line:
+                            continue  # 주석/공백 스킵
+                        fields = line.split()
+                        if len(fields) < 4:
+                            continue
+                        conn_type = fields[0].lower()
+                        method = fields[-1].lower()  # password는 옵션 없어 항상 마지막 토큰
+                        if conn_type in ('host', 'hostnossl') and method == 'password':
+                            # 위반: 비-SSL 채널 평문 비번 노출 라인
+                            self.dbm_result[result_key].append(line)
+        except Exception as e:
+            print("[!] Exception Occurred PostgreSQL DBM-032: " + str(e))

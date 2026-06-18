@@ -736,12 +736,12 @@ items:
       mssql_rds: ABSENT    # cloud mssql run()에 dbm_031 없음 → ABSENT(M-1 수정)
     default: ABSENT
 
-  DBM-032:                          # pg 수동대체 — 빈 본문
+  DBM-032:                          # pg native: pg_hba.conf 평문비번 결정론
     variants:
-      pg: STUB
-      pg_rds: STUB         # cloud pg: 빈본문(run()에 호출됨, 단 빈본문) → STUB
-      pg_aurora: STUB
-      pg_azure: STUB
+      pg: DET              # native: pg_hba.conf host/hostnossl+password → 결정론
+      pg_rds: STUB         # cloud pg: pg_hba 직접접근 불가 → label C 판단보류
+      pg_aurora: STUB      # cloud pg: pg_hba 직접접근 불가 → label C 판단보류
+      pg_azure: STUB       # cloud pg: pg_hba 직접접근 불가 → label C 판단보류
     default: ABSENT
 
   DBM-033:                          # mysql 이중화 평문비번

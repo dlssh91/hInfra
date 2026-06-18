@@ -648,3 +648,13 @@ lambda datum: any(sub in str(int(datum['output'])%100) for sub in ["3", "4", "5"
 - `TestDBM026FalsePositiveBugFix.test_mysql_empty_result_is_hold` → **판단보류**
 - `TestDBM026FalsePositiveBugFix.test_mysql_command_not_found_is_hold` → **판단보류**
 - 전 엔진(oracle/mariadb/pg) 020→취약, 022→양호, 빈배열→판단보류
+
+
+## R-022L — DBM-022 심볼릭 링크 거짓취약 (2026-06-19)
+- 증상: `get_check_file_perm`이 디렉터리(`d`)만 제외, 심링크(`l`)는 검사 → `lrwxrwxrwx`(항상 777)가 owner 'x'로 항상 취약 오플래그. mariadb my.cnf 등 심링크 설정파일에서 체계적 거짓취약.
+- 수정: `startswith("d")` → `startswith(("d","l"))` (5엔진 mysql/oracle/mariadb/postgresql/tibero).
+- 회귀핀: 심링크→양호, 실 644 일반파일→취약 유지 (docker maria_dbm 실증).
+
+## R-032 / R-032b — DBM-032 pg_hba 평문비번 결정론 파서 (2026-06-19)
+- R-032: pg dbm_032 빈 STUB → pg_hba.conf 파서 구현. host/hostnossl + method=password → 취약. hostssl/local/md5/scram 제외. cloud(rds/aurora/azure)는 label C(파라미터 기반, 직접점검 불가).
+- R-032b: 인라인 주석(`host ... password # legacy`) 미제거 시 마지막토큰이 주석어가 되어 평문 라인 누락(거짓양호) → `line.split('#',1)[0]` 으로 인라인 주석 선제거. docker pg_dbm032 pg_hba_file_rules 뷰로 ground-truth 검증.

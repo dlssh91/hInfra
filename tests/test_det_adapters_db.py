@@ -26,6 +26,12 @@
       - 020/002/000/070/007 → 취약(거짓양호 봉쇄), 022/027/077 → 양호
       - RESULT 빈배열 / umask 토큰 없음(미파싱) → 판단보류(모드F 가드)
       - _dbm026_has_umask_token 헬퍼 단위테스트, judge() 전 엔진 대표 케이스
+  (q) 2026-06-19: DBM-032 pg_hba.conf 평문비번 결정론 (R-032) 회귀핀
+      - _dbm032_has_pghba_line 헬퍼 단위테스트 (모드G 가드)
+      - host/hostnossl+password → 취약, hostssl/local/scram/md5 → 양호
+      - 주석 무시, RESULT 빈배열 / pg_hba 라인 없음 → 판단보류
+      - 실 docker(pg_dbm032) 데이터 검증(host+password 위반 1건 → 취약)
+      - cloud(pg_rds/aurora/azure) → STUB → handled=False (label C canned 경로)
 """
 import json
 import os
@@ -47,6 +53,8 @@ from judge_tool.det_adapters.db import (  # noqa: E402
     _PERM_GUARD,
     _dbm026_has_umask_token,
     _UMASK_GUARD,
+    _dbm032_has_pghba_line,
+    _PG_HBA_GUARD,
 )
 from judge_tool.det_adapters.base import ForcedVerdict, _DET_ADAPTERS, reload_det_source, classify, gate  # noqa: E402
 
@@ -4112,3 +4120,335 @@ class TestDBM031SaAccount:
         raw = _make_raw_ev({"DBM-031": {"RESULT": []}})
         fv = judge("DBM-031", raw, "mssql_native", {})
         assert fv.verdict == "판단보류", f"DBM-031 빈배열 → {fv.verdict} (기대: 판단보류)"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DBM-032: pg 통신구간 평문비번 (pg_hba.conf 결정론) — 2026-06-19
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestDBM032PghbaHasPghbaLine:
+    """_dbm032_has_pghba_line 헬퍼 단위테스트 (모드G 가드)."""
+
+    def test_host_line_returns_true(self):
+        """host 라인 있는 output → True."""
+        rows = [{"output": "host all all 127.0.0.1/32 scram-sha-256"}]
+        assert _dbm032_has_pghba_line(rows) is True
+
+    def test_local_line_returns_true(self):
+        """local 라인 있는 output → True."""
+        rows = [{"output": "local all all trust"}]
+        assert _dbm032_has_pghba_line(rows) is True
+
+    def test_hostssl_line_returns_true(self):
+        """hostssl 라인 있는 output → True."""
+        rows = [{"output": "hostssl all all 0.0.0.0/0 scram-sha-256"}]
+        assert _dbm032_has_pghba_line(rows) is True
+
+    def test_comment_only_returns_false(self):
+        """주석만 있는 output → False."""
+        rows = [{"output": "# host all all 0.0.0.0/0 password\n# local all all trust"}]
+        assert _dbm032_has_pghba_line(rows) is False
+
+    def test_empty_output_returns_false(self):
+        """빈 output → False."""
+        rows = [{"output": ""}]
+        assert _dbm032_has_pghba_line(rows) is False
+
+    def test_empty_rows_returns_false(self):
+        """빈 rows → False."""
+        assert _dbm032_has_pghba_line([]) is False
+
+    def test_error_message_returns_false(self):
+        """에러 메시지(pg_hba 미수집) → False."""
+        rows = [{"output": "cat: /etc/postgresql/pg_hba.conf: No such file or directory"}]
+        assert _dbm032_has_pghba_line(rows) is False
+
+    def test_pg_hba_guard_contains_dbm032(self):
+        assert "DBM-032" in _PG_HBA_GUARD
+
+
+class TestDBM032PlainPasswordParsing:
+    """DBM-032 pg_hba.conf 평문비번 결정론 파서 — polarity 검증."""
+
+    def setup_method(self):
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+
+    def _make(self, pg_hba_text: str) -> object:
+        return judge(
+            "DBM-032",
+            _make_raw_ev({"DBM-032": {"RESULT": [{"output": pg_hba_text}]}}),
+            "pg_native",
+            {},
+        )
+
+    # ── 취약 케이스 ──────────────────────────────────────────────────────────
+
+    def test_host_password_is_vuln(self):
+        """host + password(평문) → 취약 (핵심 케이스)."""
+        fv = self._make("host all all 0.0.0.0/0 password")
+        assert fv.handled is True, f"host+password handled=False: {fv}"
+        assert fv.verdict == "취약", (
+            f"CRITICAL: host+password → {fv.verdict} (기대: 취약) — 거짓양호!"
+        )
+
+    def test_hostnossl_password_is_vuln(self):
+        """hostnossl + password → 취약 (비-SSL 채널 명시적)."""
+        fv = self._make("hostnossl all all 0.0.0.0/0 password")
+        assert fv.handled is True
+        assert fv.verdict == "취약", (
+            f"hostnossl+password → {fv.verdict} (기대: 취약)"
+        )
+
+    def test_multiple_violation_lines_counted(self):
+        """복수 위반 라인 → 취약 + 위반 2건."""
+        pg_hba = (
+            "local all all trust\n"
+            "host all all 0.0.0.0/0 password\n"
+            "hostnossl all all 10.0.0.0/8 password\n"
+        )
+        fv = self._make(pg_hba)
+        assert fv.verdict == "취약"
+        assert "2" in fv.rationale, f"위반 2건 미반영: {fv.rationale}"
+
+    # ── 양호 케이스 ──────────────────────────────────────────────────────────
+
+    def test_hostssl_password_is_good(self):
+        """hostssl + password → 양호 (TLS 채널 → 평문 아님, 제외)."""
+        fv = self._make(
+            "local all all trust\n"
+            "host all all 127.0.0.1/32 scram-sha-256\n"
+            "hostssl all all 10.0.0.0/8 password\n"
+        )
+        assert fv.handled is True
+        assert fv.verdict == "양호", (
+            f"hostssl+password → {fv.verdict} (기대: 양호) — hostssl은 TLS, 제외 대상"
+        )
+
+    def test_local_trust_is_good(self):
+        """local + trust → 양호 (소켓, 비번 전송 없음)."""
+        fv = self._make("local all all trust")
+        assert fv.verdict == "양호", f"local+trust → {fv.verdict}"
+
+    def test_scram_sha_256_is_good(self):
+        """host + scram-sha-256 → 양호 (챌린지 인증, 평문 아님)."""
+        fv = self._make("host all all 0.0.0.0/0 scram-sha-256")
+        assert fv.verdict == "양호", f"host+scram-sha-256 → {fv.verdict}"
+
+    def test_md5_is_good(self):
+        """host + md5 → 양호 (챌린지 인증)."""
+        fv = self._make("host all all 0.0.0.0/0 md5")
+        assert fv.verdict == "양호", f"host+md5 → {fv.verdict}"
+
+    def test_comment_line_ignored(self):
+        """주석 처리된 password 라인 → 무효, 위반 없음 → 양호."""
+        fv = self._make(
+            "local all all trust\n"
+            "host all all 127.0.0.1/32 scram-sha-256\n"
+            "# host all all 0.0.0.0/0 password\n"
+        )
+        assert fv.verdict == "양호", (
+            f"주석 password 라인 → {fv.verdict} (기대: 양호) — 주석 무효 처리 실패"
+        )
+
+    def test_hostgssenc_password_not_flagged(self):
+        """hostgssenc + password → 양호 (GSSAPI 암호화 채널, host/hostnossl 아님)."""
+        fv = self._make("hostgssenc all all 0.0.0.0/0 password")
+        assert fv.verdict == "양호", (
+            f"hostgssenc+password → {fv.verdict} (기대: 양호)"
+        )
+
+    def test_default_config_scram_is_good(self):
+        """기본 config(trust+scram-sha-256, password 없음) → 양호."""
+        pg_hba = (
+            "local   all   all                       trust\n"
+            "host    all   all   127.0.0.1/32         trust\n"
+            "host    all   all   ::1/128              trust\n"
+            "local   replication all                  trust\n"
+            "host    replication all 127.0.0.1/32     trust\n"
+            "host    replication all ::1/128          trust\n"
+            "host all all all scram-sha-256\n"
+        )
+        fv = self._make(pg_hba)
+        assert fv.verdict == "양호", (
+            f"기본 config(scram) → {fv.verdict} (기대: 양호)"
+        )
+
+    # ── 미수집 가드 ───────────────────────────────────────────────────────────
+
+    def test_empty_result_is_hold(self):
+        """RESULT 빈배열 → 판단보류 (pg_hba 미수집, 모드G 가드)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-032": {"RESULT": []}})
+        fv = judge("DBM-032", raw, "pg_native", {})
+        assert fv.handled is True, f"빈RESULT handled=False: {fv}"
+        assert fv.verdict == "판단보류", (
+            f"CRITICAL: 빈RESULT → {fv.verdict} (기대: 판단보류) — 거짓양호!"
+        )
+
+    def test_no_pghba_lines_in_output_is_hold(self):
+        """output에 pg_hba 라인 없음(에러 메시지 등) → 판단보류 (모드G 가드)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-032": {"RESULT": [{"output": "cat: /pg_hba.conf: No such file\n"}]}
+        })
+        fv = judge("DBM-032", raw, "pg_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "판단보류", (
+            f"pg_hba 미수집(No such file) → {fv.verdict} (기대: 판단보류) — 거짓양호!"
+        )
+
+    def test_comment_only_output_is_hold(self):
+        """주석만 있는 output → pg_hba 라인 0건 → 판단보류."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-032": {
+                "RESULT": [{"output": "# this is a comment\n# another comment\n"}]
+            }
+        })
+        fv = judge("DBM-032", raw, "pg_native", {})
+        assert fv.verdict == "판단보류", (
+            f"주석만 있는 output → {fv.verdict} (기대: 판단보류)"
+        )
+
+
+class TestDBM032DockerRealData:
+    """DBM-032 실 docker(pg_dbm032) 데이터 검증.
+
+    docker exec pg_dbm032 bash -c "cat $PGDATA/pg_hba.conf" 결과를 사용.
+    현재 pg_hba.conf에는:
+      - host all all 0.0.0.0/0 password   ← 위반 1건
+      - hostssl all all 10.0.0.0/8 password ← 제외(hostssl=TLS)
+      - host all all all scram-sha-256      ← 양호(챌린지)
+    → 취약 1건 기대.
+    """
+
+    # docker에서 수집한 실제 pg_hba.conf 내용 (주석 제거, 핵심 라인 포함)
+    _DOCKER_PG_HBA = (
+        "local   all             all                                     trust\n"
+        "host    all             all             127.0.0.1/32            trust\n"
+        "host    all             all             ::1/128                 trust\n"
+        "local   replication     all                                     trust\n"
+        "host    replication     all             127.0.0.1/32            trust\n"
+        "host    replication     all             ::1/128                 trust\n"
+        "host all all all scram-sha-256\n"
+        "host    all   all   0.0.0.0/0   password\n"
+        "hostssl all   all   10.0.0.0/8  password\n"
+        "# host  all   all   0.0.0.0/0   password  (이건 주석 — 무효)\n"
+    )
+
+    def setup_method(self):
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+
+    def test_docker_default_with_vuln_line_is_vuln(self):
+        """실 docker pg_hba.conf(위반 1건: host+password) → 취약."""
+        raw = _make_raw_ev({"DBM-032": {"RESULT": [{"output": self._DOCKER_PG_HBA}]}})
+        fv = judge("DBM-032", raw, "pg_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "취약", (
+            f"docker pg_hba(host+password 포함) → {fv.verdict} (기대: 취약)"
+        )
+
+    def test_docker_hostssl_password_not_flagged(self):
+        """hostssl+password 라인은 위반에 포함되지 않음 (TLS 제외 확인)."""
+        # hostssl만 남기고 host+password 제거 → 양호
+        good_hba = (
+            "local   all   all   trust\n"
+            "host    all   all   127.0.0.1/32 scram-sha-256\n"
+            "hostssl all   all   10.0.0.0/8  password\n"
+        )
+        raw = _make_raw_ev({"DBM-032": {"RESULT": [{"output": good_hba}]}})
+        fv = judge("DBM-032", raw, "pg_native", {})
+        assert fv.verdict == "양호", (
+            f"hostssl+password만 있는 경우 → {fv.verdict} (기대: 양호) — hostssl 트랩 발생!"
+        )
+
+    def test_docker_comment_password_not_flagged(self):
+        """주석 처리된 password 라인은 위반에 포함되지 않음."""
+        hba_with_comment = (
+            "local   all   all   trust\n"
+            "host    all   all   127.0.0.1/32 scram-sha-256\n"
+            "# host  all   all   0.0.0.0/0   password  (주석 — 무효)\n"
+        )
+        raw = _make_raw_ev({"DBM-032": {"RESULT": [{"output": hba_with_comment}]}})
+        fv = judge("DBM-032", raw, "pg_native", {})
+        assert fv.verdict == "양호", (
+            f"주석+password → {fv.verdict} (기대: 양호) — 주석 처리 실패!"
+        )
+
+
+class TestDBM032CloudLabelC:
+    """DBM-032 cloud variants(pg_rds/aurora/azure) → STUB → gate 차단 → label C 판단보류."""
+
+    def setup_method(self):
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+
+    def test_pg_rds_classify_is_stub(self):
+        """pg_rds DBM-032: DET_SOURCE classify = STUB."""
+        result = classify("DBM-032", "pg_rds")
+        assert result == "STUB", (
+            f"DBM-032/pg_rds: classify={result} (기대: STUB) — DET_SOURCE 미반영"
+        )
+
+    def test_pg_aurora_classify_is_stub(self):
+        """pg_aurora DBM-032: DET_SOURCE classify = STUB."""
+        result = classify("DBM-032", "pg_aurora")
+        assert result == "STUB", (
+            f"DBM-032/pg_aurora: classify={result} (기대: STUB)"
+        )
+
+    def test_pg_azure_classify_is_stub(self):
+        """pg_azure DBM-032: DET_SOURCE classify = STUB."""
+        result = classify("DBM-032", "pg_azure")
+        assert result == "STUB", (
+            f"DBM-032/pg_azure: classify={result} (기대: STUB)"
+        )
+
+    def test_pg_rds_judge_handled_false(self):
+        """pg_rds DBM-032: gate 차단 → handled=False (label C canned 경로로 라우팅)."""
+        raw = _make_raw_ev({"DBM-032": {"RESULT": [{"output": "host all all 0.0.0.0/0 password"}]}})
+        fv = judge("DBM-032", raw, "pg_rds", {})
+        assert fv.handled is False, (
+            f"DBM-032/pg_rds STUB인데 handled=True: {fv} — cloud가 결정론 판정 받음(거짓양호 위험)"
+        )
+
+    def test_pg_aurora_judge_handled_false(self):
+        """pg_aurora DBM-032: gate 차단 → handled=False."""
+        raw = _make_raw_ev({"DBM-032": {"RESULT": [{"output": "host all all 0.0.0.0/0 password"}]}})
+        fv = judge("DBM-032", raw, "pg_aurora", {})
+        assert fv.handled is False, f"DBM-032/pg_aurora handled=True: {fv}"
+
+    def test_pg_azure_judge_handled_false(self):
+        """pg_azure DBM-032: gate 차단 → handled=False."""
+        raw = _make_raw_ev({"DBM-032": {"RESULT": [{"output": "host all all 0.0.0.0/0 password"}]}})
+        fv = judge("DBM-032", raw, "pg_azure", {})
+        assert fv.handled is False, f"DBM-032/pg_azure handled=True: {fv}"
+
+    def test_pg_native_classify_is_det(self):
+        """pg_native DBM-032: DET_SOURCE classify = DET (native는 결정론 활성)."""
+        result = classify("DBM-032", "pg_native")
+        assert result == "DET", (
+            f"DBM-032/pg_native: classify={result} (기대: DET) — native 결정론 비활성!"
+        )
+
+
+class TestDBM032InlineComment:
+    """DBM-032 R-032b: pg_hba 인라인 주석 제거 (거짓양호 회귀핀)."""
+
+    def test_inline_comment_password_still_vuln(self):
+        """host...password # 주석 → 인라인주석 제거 후 취약 (거짓양호였던 케이스)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-032": {"RESULT": [{"output":
+            "local all all trust\nhost all all 0.0.0.0/0 password # legacy app"}]}})
+        fv = judge("DBM-032", raw, "pg_native", {})
+        assert fv.verdict == "취약", f"인라인주석+password → {fv.verdict} (기대 취약)"
+
+    def test_inline_comment_scram_still_good(self):
+        """host...scram # 주석 → 양호 (거짓취약 아님)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-032": {"RESULT": [{"output":
+            "local all all trust\nhost all all 0.0.0.0/0 scram-sha-256 # ok"}]}})
+        fv = judge("DBM-032", raw, "pg_native", {})
+        assert fv.verdict == "양호", f"인라인주석+scram → {fv.verdict} (기대 양호)"

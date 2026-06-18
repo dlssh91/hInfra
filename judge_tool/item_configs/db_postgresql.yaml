@@ -144,4 +144,6 @@ DBM-028:
   label: B
   summary_instruction: 오브젝트/권한을 소유자·계정별로 집계하여 요약. 시스템 내장 계정 소유 항목 별도 표시. 판정하지 말 것.
 DBM-032:
-  label: A
+  judgment_method: det_common
+  label: C
+  canned_message: "관리형 PostgreSQL(RDS/Aurora/Azure)은 pg_hba.conf 직접 점검 불가 → rds.force_ssl/ssl/require_secure_transport 파라미터로 통신 암호화 강제 여부 확인 필요(판단보류)."

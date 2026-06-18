@@ -250,7 +250,7 @@ class MariaDBAnalysis:
             first_str = str_arr[0]
 
             # 첫 번째 문자열이 특정 패턴으로 시작하는지 확인 (DateTokenConverter.CONVERTER_KEY처럼 처리)
-            if len(first_str) > 0 and first_str.lower().startswith("d".lower()):  # "key"는 실제 패턴에 맞게 수정
+            if len(first_str) > 0 and first_str.lower().startswith(("d", "l")):  # R-022L: 디렉터리(d)·심볼릭링크(l) 제외 — 심링크 권한(lrwxrwxrwx)은 타깃과 무관, 거짓취약 방지
                 return False
 
             # 권한을 3자리씩 잘라서 추출 (3 * index에서 권한 3개를 추출)
