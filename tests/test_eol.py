@@ -233,6 +233,90 @@ def test_patch_cloud_variant_preserves_existing_phrase():
     assert "관리형 서비스" in r_default["rationale"]
 
 
+# ---------------------------------------------------------------------------
+# 신선도 강등(옵션 C) 회귀핀 — DBM-025 staleness demotion
+# ---------------------------------------------------------------------------
+
+def _make_table_with_as_of(as_of_date):
+    """실제 eol.yaml 구조를 그대로 쓰되 as_of만 교체한 캐시 딕셔너리를 반환."""
+    import judge_tool.eol as eol_mod
+    import copy
+    original = eol_mod._load_table()
+    patched = copy.deepcopy(original)
+    patched["as_of"] = as_of_date
+    return patched
+
+
+def test_staleness_demotion_fresh_yields_good(monkeypatch):
+    """지원중 버전 + as_of 오늘-1일(신선) → 양호."""
+    import judge_tool.eol as eol_mod
+    today = datetime.date(2026, 6, 18)
+    as_of = today - datetime.timedelta(days=1)  # 1일 경과, 신선
+    monkeypatch.setattr(eol_mod, "_table_cache", _make_table_with_as_of(as_of))
+    items = _items("DBM-016",
+                   '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.4.4"}')
+    r = judge_eol("db_mysql", items, today=today)
+    assert r is not None
+    assert r["verdict"] == "양호", f"신선 as_of → 양호 기대, got {r['verdict']}"
+    assert r["confidence"] == 0.9
+
+
+def test_staleness_demotion_stale_yields_defer(monkeypatch):
+    """지원중 버전 + as_of 오늘-200일(stale >180일) → 판단보류(강등)."""
+    import judge_tool.eol as eol_mod
+    today = datetime.date(2026, 6, 18)
+    as_of = today - datetime.timedelta(days=200)  # 200일 경과, 오래됨
+    monkeypatch.setattr(eol_mod, "_table_cache", _make_table_with_as_of(as_of))
+    items = _items("DBM-016",
+                   '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.4.4"}')
+    r = judge_eol("db_mysql", items, today=today)
+    assert r is not None
+    assert r["verdict"] == "판단보류", f"stale as_of → 판단보류 기대, got {r['verdict']}"
+    assert r["confidence"] == 0.5
+    assert "200" in r["rationale"] or "기준선 노후" in r["rationale"]
+    assert "eol.yaml 갱신" in r["rationale"]
+    assert str(as_of) in r["rationale"]
+
+
+def test_staleness_demotion_eol_passed_unaffected(monkeypatch):
+    """EOL 경과 버전 → stale 여부와 무관하게 판단보류(불변)."""
+    import judge_tool.eol as eol_mod
+    today = datetime.date(2026, 6, 18)
+    as_of = today - datetime.timedelta(days=200)
+    monkeypatch.setattr(eol_mod, "_table_cache", _make_table_with_as_of(as_of))
+    items = _items("DBM-016",
+                   '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.0.32"}')
+    r = judge_eol("db_mysql", items, today=today)
+    assert r is not None
+    assert r["verdict"] == "판단보류"
+    assert "EOL 후보" in r["rationale"]  # EOL 경과 분기 메시지
+
+
+def test_staleness_demotion_as_of_none_yields_defer(monkeypatch):
+    """as_of=None → 기준일 불명, 양호 단정 불가 → 판단보류."""
+    import judge_tool.eol as eol_mod
+    today = datetime.date(2026, 6, 18)
+    monkeypatch.setattr(eol_mod, "_table_cache", _make_table_with_as_of(None))
+    items = _items("DBM-016",
+                   '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.4.4"}')
+    r = judge_eol("db_mysql", items, today=today)
+    assert r is not None
+    assert r["verdict"] == "판단보류", f"as_of None → 판단보류 기대, got {r['verdict']}"
+    assert "기준일을 알 수 없어" in r["rationale"]
+
+
+def test_staleness_demotion_realdata_1day_still_good():
+    """실데이터: eol.yaml as_of=2026-06-17, today=2026-06-18 → 1일 경과(신선) → 양호 불변."""
+    today = datetime.date(2026, 6, 18)
+    items = _items("DBM-016",
+                   '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.4.4"}')
+    r = judge_eol("db_mysql", items, today=today)
+    assert r is not None
+    assert r["verdict"] == "양호", (
+        f"실데이터 1일 경과(신선) → 양호 기대. eol.yaml as_of=2026-06-17. got {r['verdict']}"
+    )
+
+
 def test_defer_or_eol_preserves_verdict_with_empty_own_section():
     """DBM-025 자기 섹션이 비어 있고 버전이 타 항목에 있어도 EOL 판정의
     verdict(양호)가 reconcile '증거 없음' 가드에 덮어써지지 않는다.

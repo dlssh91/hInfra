@@ -45,6 +45,8 @@ _PATTERNS = {
 
 _table_cache: Optional[Dict] = None
 
+_STALE_DAYS = 180
+
 
 def _load_table() -> Dict:
     global _table_cache
@@ -146,13 +148,32 @@ def judge_eol(profile_key: str, items: Dict,
                              f"{series})의 커뮤니티 지원 종료일 {eol_date}이 "
                              f"경과함 — EOL 후보. {confirm_msg}.{suffix}",
                 "cited_evidence": [f"version={version}"]}
+    if isinstance(as_of, datetime.date) and (today - as_of).days > _STALE_DAYS:
+        n = (today - as_of).days
+        return {
+            "verdict": "판단보류", "confidence": 0.5,
+            "rationale": (
+                f"[EOL 자동판정] {product} {version}은 {eol_date}까지 지원 대상이나,"
+                f" EOL 테이블 기준일({as_of})이 {n}일 경과(>{_STALE_DAYS}일)"
+                f" — 기준선 노후로 양호 자동판정 보류. eol.yaml 갱신 후 재판정 필요."
+                f"{suffix}"
+            ),
+            "cited_evidence": [f"version={version}"],
+        }
+    if as_of is None:
+        return {
+            "verdict": "판단보류", "confidence": 0.5,
+            "rationale": (
+                f"[EOL 자동판정] {product} {version}은 {eol_date}까지 지원 대상이나,"
+                f" EOL 테이블 기준일을 알 수 없어 양호 자동판정 보류."
+                f" eol.yaml as_of 설정 후 재판정 필요.{suffix}"
+            ),
+            "cited_evidence": [f"version={version}"],
+        }
     return {"verdict": "양호", "confidence": 0.9,
             "rationale": f"[EOL 자동판정] {product} {version} (시리즈 {series})"
                          f"은 {eol_date}까지 벤더 지원 대상.{suffix}",
             "cited_evidence": [f"version={version}"]}
-
-
-_STALE_DAYS = 180
 
 
 def _staleness_warning(as_of, today) -> str:
