@@ -589,3 +589,62 @@ RESULT=0행(활성 감사 없음)은 `dbm_011`이 위반1건 이상(취약 경�
 - `{"DBM-011": {"RESULT": []}}` → `dbm_011` 위반≥1 → 어댑터 취약 판정
 - `{"DBM-011": {"RESULT": [{"audit_name":"FSI_Audit","audit_action":"..."}]}}` → `dbm_011` 위반0 → 어댑터 판단보류
 - raw-carrier 더미 리소스를 통한 `_raw_evidence_for_det` 동작 불변 확인
+
+---
+
+## R-026. DBM-026 umask 판정 로직 오류 — 10진 파싱 + 잘못된 휴리스틱 거짓양호 (VENDOR-EDIT(c) 완료)
+
+**id**: `R-026`
+**위치**: `judge_tool/vendor/common/db/{mysql,oracle,mariadb,postgresql,tibero}/analysis.py` `dbm_026`
+         `judge_tool/det_adapters/db.py` 모드F 가드 (_UMASK_GUARD)
+**상태**: VENDOR-EDIT(c) 완료 (2026-06-18)
+
+### 증상 (Critical 거짓양호)
+기존 코드:
+```python
+lambda datum: any(sub in str(int(datum['output'])%100) for sub in ["3", "4", "5"])
+```
+
+이중 버그:
+1. **10진 파싱**: `int(datum['output'])` — umask는 8진수인데 10진으로 파싱. `"022"` → `int("022")=22`, `"020"` → `int("020")=20`.
+2. **잘못된 휴리스틱**: `%100` 결과에 문자 "3"/"4"/"5" 포함 여부 — xlsx "022 이상" 기준이 전혀 아님.
+
+결과: umask **020/002/000/070/007**(모두 < 022, 취약이어야 함)이 **양호로 빠짐(거짓양호 Critical)**.
+- 000(가장 위험한 umask)조차 양호로 판정. 
+
+재현(수정 전):
+```python
+# umask 020 → int("020")=20 → 20%100=20 → str="20" → "3"/"4"/"5" 미포함 → 위반 아님 → 양호(거짓양호!)
+# umask 000 → 0%100=0 → "0" → "3"/"4"/"5" 미포함 → 양호(최악)
+```
+
+### Corrected 동작 (VENDOR-EDIT(c))
+벤더 5엔진(mysql/oracle/mariadb/postgresql/tibero) 모두에 `_umask_is_violation(output)` 헬퍼 추가:
+- 8진수 토큰 추출 (마지막 3자리 = owner/group/other)
+- **group 자리 ≥ 2 AND other 자리 ≥ 2 → 양호(위반 아님, False)**
+- 아니면 취약(위반, True)
+- 파싱 불가(8진 토큰 없음) → None — 어댑터 모드F가 판단보류로 처리
+
+어댑터 모드F 가드(`_UMASK_GUARD`, `_dbm026_has_umask_token`):
+- RESULT 0행(빈배열) → 판단보류(umask 미수집)
+- RESULT 행 있으나 8진 토큰 없음 → 판단보류(umask 미파싱/command not found 등)
+
+수정 후 판정:
+- umask **022** → group=2, other=2 → **양호** ✓
+- umask **027/077** → **양호** ✓
+- umask **020** → other=0 < 2 → **취약** ✓ (수정 전 거짓양호)
+- umask **002** → group=0 < 2 → **취약** ✓ (수정 전 거짓양호)
+- umask **000** → group=0, other=0 → **취약** ✓ (수정 전 최악 거짓양호)
+- umask **070/007** → **취약** ✓
+- "umask: command not found" → **판단보류** ✓
+- RESULT 빈배열 → **판단보류** ✓
+
+### 회귀테스트 핀 (tests/test_det_adapters_db.py::TestDBM026*)
+- `TestDBM026UmaskHelperUnit`: 헬퍼 단위테스트 (양호/취약/파싱불가, 5엔진 횡단)
+- `TestDBM026UmaskGuardUnit`: `_dbm026_has_umask_token` 및 `_UMASK_GUARD` 검증
+- `TestDBM026FalsePositiveBugFix.test_mysql_020_is_vuln` → **취약** (CRITICAL 핵심)
+- `TestDBM026FalsePositiveBugFix.test_mysql_000_is_vuln` → **취약** (최악 케이스)
+- `TestDBM026FalsePositiveBugFix.test_mysql_022_is_good` → **양호** (회귀 없음)
+- `TestDBM026FalsePositiveBugFix.test_mysql_empty_result_is_hold` → **판단보류**
+- `TestDBM026FalsePositiveBugFix.test_mysql_command_not_found_is_hold` → **판단보류**
+- 전 엔진(oracle/mariadb/pg) 020→취약, 022→양호, 빈배열→판단보류

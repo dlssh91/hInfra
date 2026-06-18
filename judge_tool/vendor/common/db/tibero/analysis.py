@@ -1,6 +1,27 @@
 from datetime import datetime
 import re
 
+# VENDOR-EDIT(c): R-026 umask 헬퍼 (2026-06-18)
+_UMASK_TOKEN_RE = re.compile(r'\b(0*[0-7]{1,4})\b')
+
+def _umask_is_violation(output: str):
+    """umask output 문자열에서 8진수 umask를 파싱해 위반(True)/양호(False)/파싱불가(None) 반환."""
+    if not isinstance(output, str):
+        return None
+    s = output.strip()
+    tokens = _UMASK_TOKEN_RE.findall(s)
+    if not tokens:
+        return None
+    raw = tokens[-1].lstrip('0') or '0'
+    padded = raw.zfill(3)[-3:]
+    try:
+        group_digit = int(padded[1])
+        other_digit = int(padded[2])
+    except (ValueError, IndexError):
+        return None
+    return not (group_digit >= 2 and other_digit >= 2)
+
+
 '''
 테스트 시스템 : docker pull dimensigon/tibero
 '''
@@ -267,10 +288,11 @@ class TiberoAnalysis:
         
     def dbm_026(self, result_key='DBM-026'):
         # 데이터베이스 구동 계정의 umask 설정 미흡
+        # VENDOR-EDIT(c): R-026 umask 판정 수정 (2026-06-18)
         self.dbm_result[result_key] = []
-        
+
         self.dbm_process_data(result_key, 'DBM-026', [
-            lambda datum: any(sub in str(int(datum['output'])%100) for sub in ["3", "4", "5"])
+            lambda datum: _umask_is_violation(datum.get('output', ''))
         ])
     
     def dbm_028(self, result_key='DBM-028'):

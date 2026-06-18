@@ -1,6 +1,37 @@
 from datetime import datetime, timedelta
 import re
 
+# VENDOR-EDIT(c): R-026 umask 헬퍼 (2026-06-18)
+# umask 8진 문자열에서 group/other 자리를 추출해 위반 여부를 반환한다.
+# 양호 조건: group 자리(마지막3자리 중 2번째) ≥ 2  AND  other 자리(마지막 자리) ≥ 2.
+# 즉 "022 이상" 기준. umask 022 → group=2, other=2 → 양호.
+# umask 020 → other=0 → 취약. umask 002 → group=0 → 취약. umask 000 → 취약.
+# 반환: True = 위반(취약), False = 양호.
+# 파싱 불가(8진 토큰 없음) → None 반환 — 호출자(lambda)가 falsy로 처리해 violations 미포함.
+# 어댑터 모드F(_UMASK_GUARD)가 "파싱 불가 = 판단보류"를 별도로 처리한다.
+_UMASK_TOKEN_RE = re.compile(r'\b(0*[0-7]{1,4})\b')
+
+def _umask_is_violation(output: str):
+    """umask output 문자열에서 8진수 umask를 파싱해 위반(True)/양호(False)/파싱불가(None) 반환."""
+    if not isinstance(output, str):
+        return None
+    s = output.strip()
+    # 8진 토큰 추출 (마지막 토큰이 umask 값)
+    tokens = _UMASK_TOKEN_RE.findall(s)
+    if not tokens:
+        return None
+    raw = tokens[-1].lstrip('0') or '0'
+    # umask는 최대 4자리(특수비트+3). 마지막 3자리를 owner/group/other로 해석.
+    padded = raw.zfill(3)[-3:]
+    try:
+        group_digit = int(padded[1])   # 가운데 자리 = group mask
+        other_digit = int(padded[2])   # 마지막 자리 = other mask
+    except (ValueError, IndexError):
+        return None
+    # 위반: group < 2 또는 other < 2
+    return not (group_digit >= 2 and other_digit >= 2)
+
+
 class MySQLAnalysis:
     def __init__(self, config, data={}):
         self.today = datetime.now()
@@ -325,10 +356,14 @@ class MySQLAnalysis:
         
     def dbm_026(self, result_key='DBM-026'):
         # 데이터베이스 구동 계정의 umask 설정 미흡
+        # VENDOR-EDIT(c): R-026 umask 판정 수정 (2026-06-18)
+        # 수정 전: int(output)%100에 "3"/"4"/"5" 포함 여부 — 10진 파싱 + 잘못된 휴리스틱(거짓양호)
+        # 수정 후: 8진 umask 파싱 → group≥2 AND other≥2 이면 양호, 아니면 취약.
+        #         파싱 불가(8진 토큰 없음) → violations에 추가하지 않음(어댑터 모드F 가드가 판단보류 처리).
         self.dbm_result[result_key] = []
-        
+
         self.dbm_process_data(result_key, 'DBM-026', [
-            lambda datum: any(sub in str(int(datum['output'])%100) for sub in ["3", "4", "5"])
+            lambda datum: _umask_is_violation(datum.get('output', ''))
         ])
         
     def dbm_028(self, result_key='DBM-028'):

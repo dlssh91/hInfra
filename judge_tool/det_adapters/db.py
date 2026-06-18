@@ -360,6 +360,34 @@ def _dbm022_has_perm_line(result_rows: list) -> bool:
     return False
 
 
+# ── 모드 F: umask 미수집/파싱불가 거짓양호 가드 (DBM-026 — 구동계정 umask 적절성) ──
+# DBM-026 RESULT가 빈배열 → umask 미수집 → 판단보류(양호 금지).
+# RESULT에 행은 있지만 8진수 umask 토큰이 하나도 없음 → umask 미파싱/확인불가 → 판단보류.
+# 보수 원칙: 파싱 불가(umask: command not found 등)를 "정상 양호"로 볼 수 없음 → 판단보류.
+# VENDOR-EDIT(c): R-026 (2026-06-18)
+_UMASK_GUARD: frozenset = frozenset({"DBM-026"})
+
+# 8진수 토큰 패턴 (벤더 _umask_is_violation과 동일한 기준)
+_UMASK_OCT_RE = re.compile(r'\b(0*[0-7]{1,4})\b')
+
+
+def _dbm026_has_umask_token(result_rows: list) -> bool:
+    """DBM-026 RESULT에서 8진수 umask 토큰이 1개 이상 있는지 확인 (모드F 가드).
+
+    result_rows는 data['DBM-026']['RESULT'] — 원본 수집 행들(dict, output 키 포함).
+    각 행의 'output' 값에서 8진수 토큰을 탐색한다.
+    """
+    for row in result_rows:
+        if not isinstance(row, dict):
+            continue
+        output = row.get("output", "")
+        if not isinstance(output, str):
+            continue
+        if _UMASK_OCT_RE.search(output.strip()):
+            return True
+    return False
+
+
 # ── 모드 B: 구조적 취약 (DBM 분류 검토 Batch1) ─────────────────────────────
 # PostgreSQL 코어에 네이티브 기능(실패잠금/복잡도강제)이 없어 데이터 없이도 구조적 취약.
 # (base, variant) 키. pg_native만 — 클라우드(rds/aurora/azure)는 관리형 별도 처리(제외).
@@ -772,6 +800,54 @@ def judge(
                     f"RESULT에 {len(raw_result_rows)}행이 있으나 "
                     f"권한 문자열(drwxrwxrwx 형식)이 포함되지 않음 — "
                     f"파일 접근 실패 또는 수집 오류 가능성, 자동 양호 판정 불가 "
+                    f"(engine={engine}, item={base})"
+                ),
+                citations=[],
+                ev_status="review",
+                handled=True,
+            )
+
+    # ── 모드 F: DBM-026 umask 미수집/파싱불가 거짓양호 가드 ──────────────────────
+    # 위반0인 경우 두 가지 케이스를 판단보류로 처리:
+    #   (1) RESULT 0행(빈 배열) → umask 미수집
+    #   (2) RESULT 행 있으나 8진수 umask 토큰 0건 → umask 미파싱(command not found 등)
+    # 벤더 _umask_is_violation이 파싱불가 → None(falsy) 반환 → violations 미포함 → 위반0처럼 보임.
+    # 이 가드가 "수집은 됐지만 파싱불가" 케이스도 판단보류로 잡아 거짓양호를 차단한다.
+    if base in _UMASK_GUARD and not violations:
+        raw_result_rows = data.get(base, {}).get("RESULT", [])
+        # (1) RESULT 빈배열 → umask 미수집
+        if not raw_result_rows:
+            log.warning(
+                "모드F 가드: base=%s engine=%s RESULT 0행(빈배열) → 판단보류(umask 미수집)",
+                base, engine,
+            )
+            return ForcedVerdict(
+                verdict="판단보류",
+                confidence=0.0,
+                rationale=(
+                    f"[umask 미수집 → 판단보류] "
+                    f"RESULT가 빈 배열(0행) — "
+                    f"umask 수집 자체가 이루어지지 않아 자동 양호 판정 불가 "
+                    f"(engine={engine}, item={base})"
+                ),
+                citations=[],
+                ev_status="review",
+                handled=True,
+            )
+        # (2) RESULT 행 있으나 8진수 umask 토큰 0건 → umask 미파싱
+        if not _dbm026_has_umask_token(raw_result_rows):
+            log.warning(
+                "모드F 가드: base=%s engine=%s RESULT %d행 존재하나 umask 8진 토큰 0건 → 판단보류(umask 미파싱)",
+                base, engine, len(raw_result_rows),
+            )
+            return ForcedVerdict(
+                verdict="판단보류",
+                confidence=0.0,
+                rationale=(
+                    f"[umask 미파싱 → 판단보류] "
+                    f"RESULT에 {len(raw_result_rows)}행이 있으나 "
+                    f"8진수 umask 값을 파싱할 수 없음 — "
+                    f"umask 수집 실패(command not found 등) 또는 포맷 오류, 자동 양호 판정 불가 "
                     f"(engine={engine}, item={base})"
                 ),
                 citations=[],

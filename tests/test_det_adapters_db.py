@@ -21,6 +21,11 @@
       - _filter_noise bare str 래핑 보존(드롭 금지) 단위테스트
       - DBM-022 취약 perm → 취약(mysql/mariadb/pg/oracle), 양호 perm → 양호, 권한라인0 → 판단보류
       - _dbm022_has_perm_line 헬퍼 단위테스트 (모드E 가드)
+  (p) CRITICAL 2026-06-18: DBM-026 umask 거짓양호 버그 수정 (R-026) 회귀핀
+      - _umask_is_violation 헬퍼 단위테스트 (벤더 5엔진 공통)
+      - 020/002/000/070/007 → 취약(거짓양호 봉쇄), 022/027/077 → 양호
+      - RESULT 빈배열 / umask 토큰 없음(미파싱) → 판단보류(모드F 가드)
+      - _dbm026_has_umask_token 헬퍼 단위테스트, judge() 전 엔진 대표 케이스
 """
 import json
 import os
@@ -40,6 +45,8 @@ from judge_tool.det_adapters.db import (  # noqa: E402
     _run_analysis,
     _dbm022_has_perm_line,
     _PERM_GUARD,
+    _dbm026_has_umask_token,
+    _UMASK_GUARD,
 )
 from judge_tool.det_adapters.base import ForcedVerdict, _DET_ADAPTERS, reload_det_source, classify, gate  # noqa: E402
 
@@ -3733,3 +3740,318 @@ class TestDBM022ModeEOpusReviewFixes:
         assert fv.verdict == "판단보류", (
             f"pg RESULT 빈배열 → {fv.verdict} (기대: 판단보류)"
         )
+
+
+# =============================================================================
+# CRITICAL 버그 수정 회귀핀: DBM-026 umask 거짓양호 (R-026, 2026-06-18)
+# =============================================================================
+
+class TestDBM026UmaskHelperUnit:
+    """벤더 _umask_is_violation 헬퍼 단위테스트 (R-026).
+
+    수정 전: int(output)%100에 "3"/"4"/"5" 포함 — 10진 파싱 + 잘못된 휴리스틱 → 거짓양호.
+    수정 후: 8진 umask 파싱 → group≥2 AND other≥2 이면 양호, 아니면 취약.
+    """
+
+    def _fn(self, output: str):
+        """mysql analysis 모듈의 _umask_is_violation 직접 호출."""
+        from judge_tool.vendor.common.db.mysql.analysis import _umask_is_violation
+        return _umask_is_violation(output)
+
+    # ── 양호 케이스 (위반 아님 → False) ─────────────────────────────────────
+
+    def test_022_is_good(self):
+        """umask 022 → 양호(False). group=2, other=2 — 기준값."""
+        assert self._fn("0022") is False
+        assert self._fn("022") is False
+        assert self._fn("22") is False
+
+    def test_027_is_good(self):
+        """umask 027 → 양호(False). group=2, other=7."""
+        assert self._fn("0027") is False
+        assert self._fn("027") is False
+
+    def test_077_is_good(self):
+        """umask 077 → 양호(False). group=7, other=7."""
+        assert self._fn("077") is False
+
+    def test_033_is_good(self):
+        """umask 033 → 양호(False). group=3(≥2), other=3(≥2)."""
+        assert self._fn("033") is False
+
+    # ── 취약 케이스 (위반 → True) — 거짓양호 봉쇄 핵심 ──────────────────────
+
+    def test_020_is_vuln(self):
+        """umask 020 → 취약(True). other=0 < 2. 핵심 거짓양호 케이스."""
+        assert self._fn("0020") is True
+        assert self._fn("020") is True
+
+    def test_002_is_vuln(self):
+        """umask 002 → 취약(True). group=0 < 2."""
+        assert self._fn("002") is True
+
+    def test_000_is_vuln(self):
+        """umask 000 → 취약(True). group=0, other=0. 최악 케이스."""
+        assert self._fn("000") is True
+        assert self._fn("0") is True
+
+    def test_070_is_vuln(self):
+        """umask 070 → 취약(True). other=0 < 2."""
+        assert self._fn("070") is True
+
+    def test_007_is_vuln(self):
+        """umask 007 → 취약(True). group=0 < 2."""
+        assert self._fn("007") is True
+
+    def test_010_is_vuln(self):
+        """umask 010 → 취약(True). other=0 < 2."""
+        assert self._fn("010") is True
+
+    def test_011_is_vuln(self):
+        """umask 011 → 취약(True). group=1 < 2, other=1 < 2."""
+        assert self._fn("011") is True
+
+    # ── 파싱 불가 케이스 (None) ──────────────────────────────────────────────
+
+    def test_command_not_found_is_none(self):
+        """umask: command not found → None(파싱불가)."""
+        assert self._fn("umask: command not found") is None
+
+    def test_empty_is_none(self):
+        """빈 문자열 → None."""
+        assert self._fn("") is None
+
+    def test_non_octal_text_is_none(self):
+        """8진 토큰 없는 텍스트 → None."""
+        assert self._fn("Permission denied") is None
+
+    def test_non_string_is_none(self):
+        """non-str 입력 → None."""
+        assert self._fn(None) is None
+        assert self._fn(22) is None
+
+    # ── 엔진 횡단: oracle/mariadb/pg/tibero도 동일 헬퍼 ──────────────────────
+
+    def test_oracle_helper_same_result(self):
+        """oracle 엔진도 동일 헬퍼 — 020→취약, 022→양호."""
+        from judge_tool.vendor.common.db.oracle.analysis import _umask_is_violation as fn
+        assert fn("020") is True
+        assert fn("022") is False
+
+    def test_mariadb_helper_same_result(self):
+        """mariadb 엔진도 동일 헬퍼."""
+        from judge_tool.vendor.common.db.mariadb.analysis import _umask_is_violation as fn
+        assert fn("020") is True
+        assert fn("022") is False
+
+    def test_pg_helper_same_result(self):
+        """postgresql 엔진도 동일 헬퍼."""
+        from judge_tool.vendor.common.db.postgresql.analysis import _umask_is_violation as fn
+        assert fn("020") is True
+        assert fn("022") is False
+
+    def test_tibero_helper_same_result(self):
+        """tibero 엔진도 동일 헬퍼."""
+        from judge_tool.vendor.common.db.tibero.analysis import _umask_is_violation as fn
+        assert fn("020") is True
+        assert fn("022") is False
+
+
+class TestDBM026UmaskGuardUnit:
+    """_dbm026_has_umask_token 헬퍼 단위테스트 (모드F 가드)."""
+
+    def test_octal_token_found_returns_true(self):
+        """8진수 토큰 포함 output → True."""
+        rows = [{"output": "0022"}]
+        assert _dbm026_has_umask_token(rows) is True
+
+    def test_octal_022_returns_true(self):
+        """022 토큰 → True."""
+        rows = [{"output": "022"}]
+        assert _dbm026_has_umask_token(rows) is True
+
+    def test_no_octal_token_returns_false(self):
+        """umask: command not found — 8진 토큰 없음 → False."""
+        rows = [{"output": "umask: command not found"}]
+        assert _dbm026_has_umask_token(rows) is False
+
+    def test_empty_rows_returns_false(self):
+        """빈 RESULT → False."""
+        assert _dbm026_has_umask_token([]) is False
+
+    def test_empty_output_returns_false(self):
+        """output 빈 문자열 → False."""
+        rows = [{"output": ""}]
+        assert _dbm026_has_umask_token(rows) is False
+
+    def test_umask_guard_contains_dbm026(self):
+        """_UMASK_GUARD에 DBM-026 포함."""
+        assert "DBM-026" in _UMASK_GUARD
+
+
+class TestDBM026FalsePositiveBugFix:
+    """CRITICAL: DBM-026 umask 거짓양호 버그 수정 회귀핀 (R-026, 2026-06-18).
+
+    수정 전: int(output)%100에 "3"/"4"/"5" 포함 휴리스틱 — 020/002/000 모두 양호로 빠짐(거짓양호).
+    수정 후: 8진 파싱 + group/other ≥ 2 조건 → 020/002/000 취약 정상 탐지.
+    """
+
+    def setup_method(self):
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+
+    def _raw(self, engine_variant: str, umask_value: str) -> str:
+        return _make_raw_ev({
+            "DBM-026": {
+                "RESULT": [{"output": umask_value}]
+            }
+        })
+
+    # ── 취약 케이스 (거짓양호 봉쇄) ─────────────────────────────────────────
+
+    def test_mysql_020_is_vuln(self):
+        """mysql: umask 020 → 취약. CRITICAL 거짓양호 봉쇄."""
+        fv = judge("DBM-026", self._raw("mysql_native", "020"), "mysql_native", {})
+        assert fv.handled is True, f"mysql 020 handled=False: {fv}"
+        assert fv.verdict == "취약", (
+            f"CRITICAL 거짓양호 회귀: mysql umask 020 → {fv.verdict} (기대: 취약)"
+        )
+
+    def test_mysql_002_is_vuln(self):
+        """mysql: umask 002 → 취약."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        fv = judge("DBM-026", self._raw("mysql_native", "002"), "mysql_native", {})
+        assert fv.verdict == "취약", f"mysql umask 002 → {fv.verdict} (기대: 취약)"
+
+    def test_mysql_000_is_vuln(self):
+        """mysql: umask 000 → 취약. 최악 케이스 봉쇄."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        fv = judge("DBM-026", self._raw("mysql_native", "000"), "mysql_native", {})
+        assert fv.verdict == "취약", (
+            f"CRITICAL 거짓양호: mysql umask 000 → {fv.verdict} (기대: 취약)"
+        )
+
+    def test_mysql_070_is_vuln(self):
+        """mysql: umask 070 → 취약. other=0."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        fv = judge("DBM-026", self._raw("mysql_native", "070"), "mysql_native", {})
+        assert fv.verdict == "취약", f"mysql umask 070 → {fv.verdict} (기대: 취약)"
+
+    def test_mysql_007_is_vuln(self):
+        """mysql: umask 007 → 취약. group=0."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        fv = judge("DBM-026", self._raw("mysql_native", "007"), "mysql_native", {})
+        assert fv.verdict == "취약", f"mysql umask 007 → {fv.verdict} (기대: 취약)"
+
+    # ── 양호 케이스 (회귀 없음) ─────────────────────────────────────────────
+
+    def test_mysql_022_is_good(self):
+        """mysql: umask 022 → 양호."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        fv = judge("DBM-026", self._raw("mysql_native", "022"), "mysql_native", {})
+        assert fv.handled is True, f"mysql 022 handled=False: {fv}"
+        assert fv.verdict == "양호", (
+            f"mysql umask 022 → {fv.verdict} (기대: 양호) — 거짓취약!"
+        )
+
+    def test_mysql_027_is_good(self):
+        """mysql: umask 027 → 양호."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        fv = judge("DBM-026", self._raw("mysql_native", "027"), "mysql_native", {})
+        assert fv.verdict == "양호", f"mysql umask 027 → {fv.verdict} (기대: 양호)"
+
+    def test_mysql_077_is_good(self):
+        """mysql: umask 077 → 양호."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        fv = judge("DBM-026", self._raw("mysql_native", "077"), "mysql_native", {})
+        assert fv.verdict == "양호", f"mysql umask 077 → {fv.verdict} (기대: 양호)"
+
+    # ── 미수집/미파싱 → 판단보류 (모드F 가드) ────────────────────────────────
+
+    def test_mysql_empty_result_is_hold(self):
+        """mysql: RESULT 빈배열 → 판단보류(umask 미수집)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-026": {"RESULT": []}})
+        fv = judge("DBM-026", raw, "mysql_native", {})
+        assert fv.handled is True, f"mysql 빈배열 handled=False: {fv}"
+        assert fv.verdict == "판단보류", (
+            f"mysql RESULT 빈배열 → {fv.verdict} (기대: 판단보류)"
+        )
+        assert "umask" in fv.rationale.lower() or "미수집" in fv.rationale, (
+            f"판단보류 rationale에 umask/미수집 언급 없음: {fv.rationale}"
+        )
+
+    def test_mysql_command_not_found_is_hold(self):
+        """mysql: 'umask: command not found' → 판단보류(umask 미파싱)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({
+            "DBM-026": {"RESULT": [{"output": "umask: command not found"}]}
+        })
+        fv = judge("DBM-026", raw, "mysql_native", {})
+        assert fv.handled is True, f"command-not-found handled=False: {fv}"
+        assert fv.verdict == "판단보류", (
+            f"umask: command not found → {fv.verdict} (기대: 판단보류)"
+        )
+
+    # ── 엔진 횡단 대표 케이스 ──────────────────────────────────────────────
+
+    def test_oracle_020_is_vuln(self):
+        """oracle: umask 020 → 취약."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        fv = judge("DBM-026", self._raw("oracle_native", "020"), "oracle_native", {})
+        assert fv.handled is True, f"oracle 020 handled=False: {fv}"
+        assert fv.verdict == "취약", f"oracle umask 020 → {fv.verdict} (기대: 취약)"
+
+    def test_oracle_022_is_good(self):
+        """oracle: umask 022 → 양호."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        fv = judge("DBM-026", self._raw("oracle_native", "022"), "oracle_native", {})
+        assert fv.handled is True, f"oracle 022 handled=False: {fv}"
+        assert fv.verdict == "양호", f"oracle umask 022 → {fv.verdict} (기대: 양호)"
+
+    def test_mariadb_020_is_vuln(self):
+        """mariadb: umask 020 → 취약."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        fv = judge("DBM-026", self._raw("mariadb_native", "020"), "mariadb_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "취약", f"mariadb umask 020 → {fv.verdict} (기대: 취약)"
+
+    def test_mariadb_022_is_good(self):
+        """mariadb: umask 022 → 양호."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        fv = judge("DBM-026", self._raw("mariadb_native", "022"), "mariadb_native", {})
+        assert fv.verdict == "양호", f"mariadb umask 022 → {fv.verdict} (기대: 양호)"
+
+    def test_pg_020_is_vuln(self):
+        """pg: umask 020 → 취약."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        fv = judge("DBM-026", self._raw("pg_native", "020"), "pg_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "취약", f"pg umask 020 → {fv.verdict} (기대: 취약)"
+
+    def test_pg_022_is_good(self):
+        """pg: umask 022 → 양호."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        fv = judge("DBM-026", self._raw("pg_native", "022"), "pg_native", {})
+        assert fv.verdict == "양호", f"pg umask 022 → {fv.verdict} (기대: 양호)"
+
+    def test_pg_empty_result_is_hold(self):
+        """pg: RESULT 빈배열 → 판단보류."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-026": {"RESULT": []}})
+        fv = judge("DBM-026", raw, "pg_native", {})
+        assert fv.verdict == "판단보류", f"pg 빈배열 → {fv.verdict} (기대: 판단보류)"
+
+    def test_mariadb_empty_result_is_hold(self):
+        """mariadb: RESULT 빈배열 → 판단보류."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-026": {"RESULT": []}})
+        fv = judge("DBM-026", raw, "mariadb_native", {})
+        assert fv.verdict == "판단보류", f"mariadb 빈배열 → {fv.verdict} (기대: 판단보류)"
+
+    def test_oracle_empty_result_is_hold(self):
+        """oracle: RESULT 빈배열 → 판단보류."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-026": {"RESULT": []}})
+        fv = judge("DBM-026", raw, "oracle_native", {})
+        assert fv.verdict == "판단보류", f"oracle 빈배열 → {fv.verdict} (기대: 판단보류)"
