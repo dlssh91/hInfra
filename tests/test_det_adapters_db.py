@@ -4055,3 +4055,28 @@ class TestDBM026FalsePositiveBugFix:
         raw = _make_raw_ev({"DBM-026": {"RESULT": []}})
         fv = judge("DBM-026", raw, "oracle_native", {})
         assert fv.verdict == "판단보류", f"oracle 빈배열 → {fv.verdict} (기대: 판단보류)"
+
+
+class TestDBM029ResourceLimit:
+    """DBM-029 (oracle RESOURCE_LIMIT 자원 사용 제한) — polarity + 빈RESULT 가드."""
+
+    def test_oracle_resource_limit_true_is_good(self):
+        """RESOURCE_LIMIT=TRUE → 양호."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-029": {"RESULT": [{"value": "TRUE"}]}})
+        fv = judge("DBM-029", raw, "oracle_native", {})
+        assert fv.verdict == "양호", f"RESOURCE_LIMIT=TRUE → {fv.verdict}"
+
+    def test_oracle_resource_limit_false_is_vuln(self):
+        """RESOURCE_LIMIT=FALSE → 취약 (자원제한 비활성)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-029": {"RESULT": [{"value": "FALSE"}]}})
+        fv = judge("DBM-029", raw, "oracle_native", {})
+        assert fv.verdict == "취약", f"RESOURCE_LIMIT=FALSE → {fv.verdict}"
+
+    def test_oracle_empty_result_is_hold(self):
+        """RESULT 빈배열(RESOURCE_LIMIT 미수집) → 판단보류 (거짓양호 가드, 모드D)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-029": {"RESULT": []}})
+        fv = judge("DBM-029", raw, "oracle_native", {})
+        assert fv.verdict == "판단보류", f"DBM-029 빈배열 → {fv.verdict} (기대: 판단보류)"

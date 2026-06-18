@@ -296,7 +296,9 @@ _DETECT_THEN_HOLD: frozenset = frozenset({"DBM-004"})
 # 판단: RESULT가 완전 비어있음(0행) → 판단보류(증거 미수집).
 #       RESULT에 행은 있지만 기대 변수가 하나도 없음 → 판단보류(변수 미수집).
 #       기대 변수가 존재하고 위반 없음 → 양호(현행 유지).
-_EMPTY_RESULT_HOLD: frozenset = frozenset({"DBM-019"})
+# DBM-029(oracle RESOURCE_LIMIT): RESOURCE_LIMIT는 Oracle에 항상 존재 → RESULT 0행 =
+#   수집 실패 → 양호 자동판정 금지(판단보류). value 키 부재는 R3가 별도 차단.
+_EMPTY_RESULT_HOLD: frozenset = frozenset({"DBM-019", "DBM-029"})
 
 # 엔진별 "기대 변수 존재 여부" 검사 함수.
 # 각 함수는 RESULT 행(list) 전체를 받아, 기대 변수가 **하나라도** 존재하면 True 반환.
