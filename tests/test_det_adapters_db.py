@@ -4080,3 +4080,35 @@ class TestDBM029ResourceLimit:
         raw = _make_raw_ev({"DBM-029": {"RESULT": []}})
         fv = judge("DBM-029", raw, "oracle_native", {})
         assert fv.verdict == "판단보류", f"DBM-029 빈배열 → {fv.verdict} (기대: 판단보류)"
+
+
+class TestDBM031SaAccount:
+    """DBM-031 (mssql SA 계정 보안설정) — polarity + 빈RESULT 가드."""
+
+    def test_sa_disabled_is_good(self):
+        """sa 비활성(is_disabled=1) → 양호."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-031": {"RESULT": [{"is_disabled": "1", "is_policy_checked": "0"}]}})
+        fv = judge("DBM-031", raw, "mssql_native", {})
+        assert fv.verdict == "양호", f"sa 비활성 → {fv.verdict}"
+
+    def test_sa_enabled_policy_checked_is_good(self):
+        """sa 활성 + 정책 적용(is_policy_checked=1) → 양호."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-031": {"RESULT": [{"is_disabled": "0", "is_policy_checked": "1"}]}})
+        fv = judge("DBM-031", raw, "mssql_native", {})
+        assert fv.verdict == "양호", f"sa 활성+정책적용 → {fv.verdict}"
+
+    def test_sa_enabled_no_policy_is_vuln(self):
+        """sa 활성 + 정책 미적용(둘다 0) → 취약."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-031": {"RESULT": [{"is_disabled": "0", "is_policy_checked": "0"}]}})
+        fv = judge("DBM-031", raw, "mssql_native", {})
+        assert fv.verdict == "취약", f"sa 활성+정책미적용 → {fv.verdict}"
+
+    def test_empty_result_is_hold(self):
+        """RESULT 빈배열(sa 미수집) → 판단보류 (거짓양호 가드, 모드D)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-031": {"RESULT": []}})
+        fv = judge("DBM-031", raw, "mssql_native", {})
+        assert fv.verdict == "판단보류", f"DBM-031 빈배열 → {fv.verdict} (기대: 판단보류)"
