@@ -33,15 +33,17 @@ def test_mysql_supported_version_good():
 
 def test_mysql_eol_passed_defers_not_vulnerable():
     """커뮤니티 EOL 경과(MySQL 8.0, 2026-04-30)는 '취약' 단정이 아니라
-    'EOL 후보' 판단보류 — 관리형 서비스는 Extended Support 등 별도
-    lifecycle이 있고, 판단기준도 '사후 관리 절차 없이'를 조건으로 둠."""
+    판단보류 — 단, 사후관리 절차 미확인 시 취약 기본 처분을 문구로 명시(xlsx 정합).
+    관리형 서비스는 Extended Support 등 별도 lifecycle이 있어 verdict는 보류 유지."""
     items = _items("DBM-016",
                    '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.0.32"}')
     r = judge_eol("db_mysql", items, today=TODAY)
     assert r is not None
     assert r["verdict"] == "판단보류"
-    assert "EOL 후보" in r["rationale"]
+    assert "서비스 지원 종료(EoS) 확인" in r["rationale"]
     assert "경과" in r["rationale"]
+    # 문구: 사후관리 절차 미확인 시 취약 기본 처분 명시 (xlsx 정합)
+    assert "확인되지 않으면 취약" in r["rationale"]
 
 
 def test_stale_table_warning_attached():
@@ -289,7 +291,7 @@ def test_staleness_demotion_eol_passed_unaffected(monkeypatch):
     r = judge_eol("db_mysql", items, today=today)
     assert r is not None
     assert r["verdict"] == "판단보류"
-    assert "EOL 후보" in r["rationale"]  # EOL 경과 분기 메시지
+    assert "서비스 지원 종료(EoS) 확인" in r["rationale"]  # EOL 경과 분기 메시지
 
 
 def test_staleness_demotion_as_of_none_yields_defer(monkeypatch):

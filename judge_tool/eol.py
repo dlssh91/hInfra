@@ -145,8 +145,10 @@ def judge_eol(profile_key: str, items: Dict,
                            "여부를 담당자에게 확인 필요")
         return {"verdict": "판단보류", "confidence": 0.5,
                 "rationale": f"[EOL 자동판정] {product} {version} (시리즈 "
-                             f"{series})의 커뮤니티 지원 종료일 {eol_date}이 "
-                             f"경과함 — EOL 후보. {confirm_msg}.{suffix}",
+                             f"{series})의 지원 종료일 {eol_date}이 경과함 — "
+                             f"서비스 지원 종료(EoS) 확인. {confirm_msg}. "
+                             f"사후관리 절차(교체계획 수립·보고/위험수용 관리)가 "
+                             f"확인되지 않으면 취약.{suffix}",
                 "cited_evidence": [f"version={version}"]}
     if isinstance(as_of, datetime.date) and (today - as_of).days > _STALE_DAYS:
         n = (today - as_of).days

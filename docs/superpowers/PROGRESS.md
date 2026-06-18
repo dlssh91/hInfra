@@ -22,7 +22,7 @@
 
   **✅ DBM-024 불필요 WITH GRANT OPTION — 변경 불필요 (2026-06-18, 빠른 triage)**: "운영상 불필요" 맥락항목. 이미 전 엔진 **label B**(det_common 후보수집 IS_GRANTABLE=YES + LLM 계정별 집계요약 + 판단보류). fail-safe. 손댈 것 없음.
 
-  **✅ DBM-025 EoS/EOL — judge_eol 신선도 강등(옵션C) SHIP (2026-06-18, 1381 passed)**: 이미 전 엔진 label D + eol_check + eol.yaml(as_of 2026-06-17, 5 DB엔진). patch-eol-baseline-policy 적용 상태. **정책 불일치 수정**: judge_eol 지원중 분기가 자동 양호였는데 → `(today-as_of).days > _STALE_DAYS(180)` 또는 as_of None이면 **양호→판단보류 강등**(stale 거짓양호 차단, 경고와 verdict 일치). 신선(≤180일)이면 양호 유지. EOL경과→판단보류 불변. eol.py·test_eol.py(+5). 실데이터(1일 경과)→양호 불변. ⚠️ 이 변경은 judge_eol 전 호출자(타 도메인 EOL 포함)에 적용 — EOL 신선도 안전망 일관 강화. [[patch-eol-baseline-policy]]
+  **✅ DBM-025 EoS/EOL — judge_eol 신선도 강등(옵션C) SHIP (2026-06-18, 1381 passed)**: 이미 전 엔진 label D + eol_check + eol.yaml(as_of 2026-06-17, 5 DB엔진). patch-eol-baseline-policy 적용 상태. **정책 불일치 수정**: judge_eol 지원중 분기가 자동 양호였는데 → `(today-as_of).days > _STALE_DAYS(180)` 또는 as_of None이면 **양호→판단보류 강등**(stale 거짓양호 차단, 경고와 verdict 일치). 신선(≤180일)이면 양호 유지. EOL경과→판단보류 불변. eol.py·test_eol.py(+5). 실데이터(1일 경과)→양호 불변. ⚠️ 이 변경은 judge_eol 전 호출자(타 도메인 EOL 포함)에 적용 — EOL 신선도 안전망 일관 강화. **+ 문구 보강(사용자 재논의)**: EOL경과 분기 rationale = verdict 판단보류 유지하되 "서비스 지원 종료(EoS) 확인. 사후관리 절차(교체계획 수립·보고/위험수용 관리)가 확인되지 않으면 취약." 명시(xlsx "EoS+사후관리없음=취약" 정합, stale 거짓취약은 회피). [[patch-eol-baseline-policy]]
   - DBM-022 CRITICAL 버그픽스 완료(2026-06-18): 파일접근권한 거짓양호(전 엔진) 수정. DET 유지(수집판단 정확). 판단보류(모드E) 추가로 파일미수집 케이스도 가드.
 
   **✅ DBM-022 파일접근권한 CRITICAL 버그픽스 SHIP (2026-06-18, 1367 passed, 거짓양호 0건)**:
