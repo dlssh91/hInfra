@@ -1,6 +1,6 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-19 (**상태저장. SRV 최종검증 완료 — linux 변형 DET 양극성 cov 픽스처(tests/srv_cov_contract.py) + 계약 테스트(tests/test_srv_cov_fixtures.py) 생성·전통과. 1847 passed. ★다음 착수=다음 도메인(네트워크/방화벽/가상화 등) 또는 서버 LLM 품질 검토.**). **"다음에 진행해줘"/"개발진행해" → 아래 ★다음 착수부터.**
+> 마지막 업데이트: 2026-06-19 (**상태저장. ★다음 착수=방화벽(FW) 결정론 검증·갭메우기 — A(ref/FW 실정책 P02~P34 실검증)→B(그룹객체 확장 등 갭). fw_policy.py(ISS-030~041) 이미 구현·실데이터 정확작동 확인.**). **"다음에 진행해줘"/"개발진행해" → 아래 ★다음 착수(방화벽)부터.**
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. 이 파일이 단일 진실원천.
 >  재개 트리거: "개발진행해"/"개발해줘"/"이어서 진행"/"다음 작업"/**"다음에 진행해"** → 아래 TL;DR ★다음 착수부터.)
 
@@ -17,7 +17,29 @@
 5. **향후 도메인(네트워크/방화벽/가상화)**: 기존분류 따라가기 + 픽스처/듀얼런으로 틀린방향 잡힐 때만 수정.
 > ⚠️ **보류한 deep-audit 백로그**: 아래 "deep-audit 백로그(보류)" 섹션 참조. 필요시 나중에 항목별 정밀감사 적용 가능하도록 상태 보존.
 
-- **★다음 착수 = 다음 도메인(네트워크/방화벽/가상화) 또는 별도 작업** — 서버·웹-WAS·DBM 3도메인 모두 DET 양극성 cov 완료. 서버 재확인=DET 36항목 양극성 깨짐 0(거짓양호/거짓취약 발견 0, 깨끗). 웹-WAS=버그4건 수정, DBM=Docker실증.
+- **★다음 착수 = 방화벽(FW) 결정론 검증·갭메우기**
+
+  ### 🔥 방화벽 즉시 시작점 (다음 세션 여기부터)
+  **현황**: `judge_tool/fw_policy.py`에 **ISS-030~041 방화벽 이상정책 결정론 탐지 이미 구현**(2026-06-12, 486 tests). LLM 없이 ipaddress(stdlib)+집합연산으로 전수 탐지(=결정론, 정당성=사람, needs_review=True). 프로파일 `iss`(FW, fw_policy_xlsx 파서)/`iss_device`(비-FW iss_xml).
+  - **실데이터 위치**: `ref/FW/`(untracked·아카이브 미포함·로컬만) — `22년...방화벽 정책...xlsx` + `보안장비 결과/P02~P34_정책.xlsx`(실 정책 export). **P02 실행 확인됨**: 37/37 판정, ISS-030/032/033/034/036 취약·031/035/041 양호 등 정확.
+  - **실행법**: `python3 -m judge_tool.main --report "ref/FW/보안장비 결과/P02_정책.xlsx" --criteria <기준.xlsx> --profile iss --out-dir /tmp/fwX --skip-preflight` (out-dir는 ref/FW 밖으로).
+  - **항목 라우팅**: ISS-030~037·041 = `fw_policy`(결정론, **LLM 역할 0**). ISS-038/039(--aux 자산목록·토폴로지 필요)·040(비정책 계정·로깅) = label C 판단보류. ISS-043 = label A(LLM, 보통 증거미수집→보류).
+  - **포맷 capability**: SECUI(030~036,041) / ID70·PaloAlto(030~037,041, hit-count 보유). unknown→판단보류.
+
+  **★ A 먼저 (실검증)**: ref/FW의 P02~P34 전 정책파일 일괄 판정 → 포맷별(SECUI/ID70/PaloAlto) 동작·이상 확인(DB/서버 실검증 패턴, Docker 불필요).
+  **★ B 갭메우기 (검증 후)**:
+  - **그룹객체 확장(최우선 갭)**: `detect_shadow_policies`/`_policy_covers`가 **주소/서비스 그룹 named object 미확장→스킵**(보수처리). 실 정책은 그룹 다용 → ISS-034(그림자)·032·036·041 **미탐(거짓양호 아님, 미탐방향)**. A에서 스킵 빈도 정량화 후 그룹 확장 구현.
+  - ISS-034 한계: 완전포함+action상이만 탐지(부분겹침 correlation 미탐, 동일action redundancy 의도적 제외).
+  - ISS-038/039: `--aux` 자산목록/토폴로지 연계 신규 구현.
+  - ISS-037: SECUI hit-count 부재 → 대체판정 설계(우선순위 낮음).
+  - ※ 방화벽 판정은 **순수 결정론**(qwen3·Claude 런타임 무관여) — 감사가능·환각0·거짓양호0.
+
+  **(완료 도메인) 서버·웹-WAS·DBM 3도메인 DET 양극성 cov 완료** — 서버 깨짐0, 웹-WAS 버그4건수정, DBM Docker실증. label A qwen3 실검증: 서버10/10·DB DBM-005 5엔진 양극성 정확.
+
+  ### 📌 필드 스크립트 버그 (assessment_scripts gitignore — 별도 보존 필요)
+  - **mysql.sql 2건 수정**(로컬+`judge_tool_runtime_deps_20260619.tar.gz` 아카이브에 반영): (1)726줄 세미콜론 누락(`SELECT '], '`→cloud 분기 구문에러로 전체중단), (2)`CALL detect_and_set_environment()` 누락(@db_environment_state NULL→전항목 스킵). → 필드 스크립트 저장소에 반영 필요.
+  - **아카이브**: `/Users/fsat/Documents/saptweb/judge_tool_runtime_deps_20260619.tar.gz`(131M) = assessment_scripts+scripts/check_scripts+read_xlsx(flus-main·results 제외). 다른환경=repo pull + 이 아카이브.
+  - **⚠️ collected/(13샘플)은 추적·푸시됨** — db샘플에 계정해시 등 실데이터 → 민감하면 별도보관+gitignore 고려.
 
   **✅ SRV 최종검증 — linux 변형 DET 양극성 cov 픽스처 + 계약 테스트 SHIP (2026-06-19, 1847 passed)**:
   - `tests/srv_cov_contract.py` 신규: linux variant × DET/DET-PARTIAL 항목 양극성 픽스처 단일 진실원천.
