@@ -46,10 +46,8 @@ _APACHE_SVC_PREFIX = (
 # ──────────────────────────────────────────────────────────────────────────────
 _APACHE = {
     # WST-031: Directory Indexes — Options에 Indexes/all 있으면 취약
-    # check_WST_031: <Directory>…Options.*([^-]Indexes|all)…</Directory> → Y
-    # !! BUG FOUND (good→취약 거짓취약): [^-]Indexes 패턴이 '-Indexes' 앞의 공백(' Indexes')에도 매치됨 →
-    #    Options -Indexes MultiViews 입력 시 good→취약 거짓취약 발생.
-    #    판정 로직 변경 금지(검증 전용) — good 극성 xfail로 문서화.
+    # check_WST_031: <Directory>…Options.*(?<!-)\bIndexes\b|all…</Directory> → Y
+    # 수정(BUG-WST031-apache): 음수 룩비하인드로 '-Indexes'(비활성) 제외.
     "WST-031": {
         "good": (
             "<Directory /var/www/html>\n"
@@ -66,8 +64,6 @@ _APACHE = {
         "good_verdict": "양호",
         "vuln_verdict": "취약",
         "note": "Options Indexes → 취약, -Indexes → 양호",
-        "known_bug_polarity": "good",
-        "known_bug": "BUG-WST031-apache: [^-]Indexes 패턴이 Options -Indexes(공백+Indexes)도 매치 → 거짓취약(good→취약)",
     },
 
     # WST-033: Apache 버전 — 2.1 미만 취약
@@ -369,18 +365,14 @@ _IIS = {
 # ──────────────────────────────────────────────────────────────────────────────
 _WEBTOB = {
     # WST-031: Options INDEX — INDEX 있으면 취약
-    # check_WST_031(webtob): Options.*INDEX → Y (대소문자 무시)
-    # !! BUG FOUND (good→취약 거짓취약): `Options.*?INDEX` 패턴이 'NOINDEX'의 INDEX 서브스트링도 매치 →
-    #    Options NOINDEX 입력 시 good→취약 거짓취약 발생.
-    #    판정 로직 변경 금지(검증 전용) — good 극성 xfail로 문서화.
+    # check_WST_031(webtob): Options.*(?<!NO)\bINDEX\b → Y (대소문자 무시)
+    # 수정(BUG-WST031-webtob): 음수 룩비하인드로 'NOINDEX'(양호) 서브스트링 매치 제외.
     "WST-031": {
         "good": "Options = NOINDEX NOLIST\n",
         "vuln": "Options = INDEX LIST\n",
         "good_verdict": "양호",
         "vuln_verdict": "취약",
         "note": "Options INDEX → 취약. NOINDEX → 양호",
-        "known_bug_polarity": "good",
-        "known_bug": "BUG-WST031-webtob: Options.*INDEX 패턴이 NOINDEX 서브스트링 매치 → 거짓취약(good→취약)",
     },
 
     # WST-035: LimitRequestBody — webtob는 = 구분자 사용
@@ -423,15 +415,12 @@ _WEBTOB = {
         ),
     },
 
-    # WST-102: ServerTokens — webtob는 ServerTokens="min" 등 형식
-    # check_WST_102(webtob): ServerTokens\s*=\s*"(.*)" — "min" not in val AND val not in ["os","full","prod"] → 취약
-    # 의도: "min" = 양호, "os"/"full"/"prod" = ???
-    # !! BUG FOUND: 코드 조건 `"min" not in tokens_val and tokens_val not in ["os","full","prod"]` →
-    #    "full"이 ["os","full","prod"]에 포함되므로 두 번째 조건 False → 취약 미탐지 → 거짓양호 발생.
-    #    실제 의미: "full"은 버전 노출이므로 취약이어야 하는데 양호로 판정됨.
-    #    판정 로직 변경 금지(검증 전용) — xfail로 문서화.
+    # WST-102: ServerTokens — webtob는 ServerTokens="prod" 등 형식
+    # check_WST_102(webtob): ServerTokens\s*=\s*"(.*)" — Prod만 양호, os/full/min/minimal/minor 전부 취약
+    # 수정(BUG-WST102-webtob): full을 취약으로(거짓양호 봉쇄). + Opus 재리뷰: Min/Minimal/Minor도
+    #   전체버전(Apache/2.4.x) 노출이므로 취약(Apache WST-102와 동일, prod만 양호로 통일).
     # 양호 픽스처: ServerTokens 없음(기본값 Off → 양호)
-    # 취약 픽스처: "full" → 버그로 인해 현재 양호 오판 → xfail
+    # 취약 픽스처: "full" → 버전 노출 → 취약
     "WST-102": {
         "good": "# webtob 설정 (ServerTokens 없음 = Default Off = 양호)\nDocroot = \"/usr/local/webtob/www\"\n",
         "vuln": 'ServerTokens = "full"\n',
@@ -439,13 +428,7 @@ _WEBTOB = {
         "vuln_verdict": "취약",
         "note": (
             "webtob: ServerTokens 없으면 기본값 Off → 양호. "
-            "ServerTokens='full'(버전 노출) → 취약 의도."
-        ),
-        "known_bug_polarity": "vuln",
-        "known_bug": (
-            "BUG-WST102-webtob: check_WST_102 조건 `'min' not in val and val not in ['os','full','prod']`에서 "
-            "'full'이 리스트에 포함 → 조건 False → 취약 미탐지 → 거짓양호(vuln→양호). "
-            "'full'/'os'/'prod'가 취약이어야 하는데 양호로 판정됨."
+            "ServerTokens='full'(버전 노출) → 취약."
         ),
     },
 }

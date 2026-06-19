@@ -42,7 +42,10 @@ def check_WST_031(configData):
     allData = str(configData)  # Equivalent to String.valueOf(configData) in Java
 
     # Compile regex pattern to find Options directives containing 'INDEX' (case-insensitive)
-    vuln_pattern = re.compile(r"(.*)?Options.*?INDEX.*", re.IGNORECASE)
+    # VENDOR-EDIT(bug): BUG-WST031-webtob — Options.*?INDEX가 'NOINDEX'의 INDEX 서브스트링도
+    # 매치하여 Options=NOINDEX(양호)를 거짓취약 판정. 음수 룩비하인드로 'NO' 접두 제외.
+    # 취약 조건: INDEX 또는 LIST (단, NOINDEX/NOLIST 제외)
+    vuln_pattern = re.compile(r"(.*)?Options.*?(?<!NO)\bINDEX\b.*", re.IGNORECASE)
 
     # Find all vulnerable Options directives
     for m in vuln_pattern.finditer(configData2):
@@ -277,8 +280,11 @@ def check_WST_102(configData):
         reason_str = "설정 파일에 ServerTokens 구문 없음(Default 값이 Off로 양호)\n"
     else:
         tokens_val = m.group(1).strip().lower()
-        if "min" not in tokens_val and tokens_val not in ["os", "full", "prod"]:
-            # ServerTokens value is not one of the secure options
+        # VENDOR-EDIT(bug): BUG-WST102-webtob — 구 조건 `"min" not in val and val not in ["os","full","prod"]`에서
+        # "full"이 리스트에 포함되어 False → 취약 미탐지(거짓양호). 수정: 버전/OS 노출값(os,full)→취약,
+        # 최소 노출값(prod,min 포함)→양호. prod=product name only(버전 미포함)→양호.
+        if tokens_val in ("os", "full"):
+            # ServerTokens value exposes version/OS info — vulnerable
             vulnerabilityConditionOutput = m.group().strip()
             vulnerability_condition_result = {
                 "vulnerabilityConditionOutput": vulnerabilityConditionOutput,
@@ -286,9 +292,19 @@ def check_WST_102(configData):
             }
             vulnerability_condition_result_model_list.append(vulnerability_condition_result)
             reason_str += f"{vulnerabilityConditionOutput}\n"
-        else:
-            # ServerTokens value is secure; log the configuration
+        elif tokens_val == "prod":
+            # ServerTokens 안전값은 Prod(ProductOnly)뿐. Min/Minimal/Minor는
+            # 전체 버전(Apache/2.4.x)을 노출하므로 취약(Apache WST-102와 동일, 함수 메시지와 정합).
             reason_str += f"{m.group().strip()}\n"
+        else:
+            # Unknown value — treat as vulnerable (버전 정보 노출 여부 불명확)
+            vulnerabilityConditionOutput = m.group().strip()
+            vulnerability_condition_result = {
+                "vulnerabilityConditionOutput": vulnerabilityConditionOutput,
+                "vulnerabilityConditionReasonCode": "WST-102"
+            }
+            vulnerability_condition_result_model_list.append(vulnerability_condition_result)
+            reason_str += f"{vulnerabilityConditionOutput}\n"
 
     if not vulnerability_condition_result_model_list:
         # No vulnerabilities found

@@ -90,8 +90,12 @@ def check_WST_031(configData):
     configData = get_remove_line(configData, "#")
 
     # Compile the regex pattern to find <Directory> blocks with problematic Options
+    # VENDOR-EDIT(bug): BUG-WST031-apache — [^-]Indexes가 '-Indexes' 앞의 공백(' Indexes')도 매치하여
+    # Options -Indexes(양호)를 거짓취약 판정. 음수 룩비하인드로 '-' 직전 Indexes를 제외하고,
+    # '+Indexes' 또는 단독 'Indexes'(비활성 제외)만 매치하도록 수정.
+    # 취약 조건: Indexes 또는 +Indexes 또는 all (단, -Indexes는 제외)
     vuln_pattern = re.compile(
-        r"<Directory((?!<\/Directory>)[\s\S])*?Options.*([^-]Indexes|all).*?<\/Directory>",
+        r"<Directory((?!<\/Directory>)[\s\S])*?Options[^\n]*(?:(?<!\-)\bIndexes\b|\ball\b)[^\n]*.*?<\/Directory>",
         re.DOTALL | re.IGNORECASE
     )
 

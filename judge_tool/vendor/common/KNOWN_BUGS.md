@@ -670,3 +670,116 @@ lambda datum: any(sub in str(int(datum['output'])%100) for sub in ["3", "4", "5"
 - R-035: 신규 xp_cmdshell — sys.configurations value_in_use==1→취약/0→양호. 모드I 가드(행없음→판단보류).
 - R-036: 신규 registry proc — xp_reg*+EXECUTE+비관리자 grantee→취약(public 항상취약). 모드I2 가드.
 - R-036d: DENY(public 명시차단=안전)를 취약 오판(거짓취약, Opus docker 재현) → state_desc==DENY 스킵. GRANT만 위반.
+
+---
+
+## BUG-WST102-webtob — ServerTokens "full" 거짓양호 (2026-06-19, VENDOR-EDIT(bug) 완료)
+
+**id**: `BUG-WST102-webtob`
+**위치**: `judge_tool/vendor/common/webwas/WST_WebtoB_parse.py` 함수 `check_WST_102`
+**분류**: 거짓양호 (vuln→양호) — 최우선
+
+### 증상
+기존 조건 `"min" not in tokens_val and tokens_val not in ["os","full","prod"]`에서
+`"full"`이 `["os","full","prod"]` 리스트에 포함되어 두 번째 조건이 False → 취약 미탐지 → 거짓양호.
+
+```python
+# 버그 코드 (수정 전)
+if "min" not in tokens_val and tokens_val not in ["os", "full", "prod"]:
+    # → tokens_val="full" → "full" in list → False → 취약 미탐지 (거짓양호!)
+```
+
+`ServerTokens="full"`(버전 전체 노출)이 양호로 판정됨.
+
+### Corrected 동작 (VENDOR-EDIT(bug))
+판단기준: `os`/`full` → 버전/OS 노출 → **취약**, `prod`/`min` → 최소 노출 → **양호**.
+
+```python
+# 수정 후 (VENDOR-EDIT(bug): BUG-WST102-webtob)
+if tokens_val in ("os", "full"):
+    # 취약 (버전/OS 노출)
+elif "min" in tokens_val or tokens_val == "prod":
+    # 양호 (prod/min)
+else:
+    # 알 수 없는 값 → 보수적 취약 처리
+```
+
+### 회귀 핀
+- `ServerTokens="full"` → **취약** (핵심: 수정 전 거짓양호 케이스)
+- `ServerTokens="os"` → **취약**
+- `ServerTokens="prod"` → **양호**
+- `ServerTokens="min"` → **양호**
+- ServerTokens 없음(기본값 Off) → **양호**
+- 테스트: `tests/test_web_cov_fixtures.py::test_web_det_polarity[webtob-WST-102-vuln]` PASS (구 xfail→pass)
+
+---
+
+## BUG-WST031-apache — `-Indexes` 거짓취약 (2026-06-19, VENDOR-EDIT(bug) 완료)
+
+**id**: `BUG-WST031-apache`
+**위치**: `judge_tool/vendor/common/webwas/WST_Apache_parse.py` 함수 `check_WST_031`
+**분류**: 거짓취약 (good→취약)
+
+### 증상
+기존 정규식 `Options.*([^-]Indexes|all)`: `[^-]Indexes`는 `-` 이외의 단일 문자 뒤의 `Indexes`에 매치하는데, `Options -Indexes`에서 공백(` `) + `Indexes`가 `[^-]Indexes`에 매치된다. 즉 `-Indexes`(비활성=양호)를 취약으로 오판.
+
+```python
+# 버그 코드 (수정 전)
+r"<Directory((?!<\/Directory>)[\s\S])*?Options.*([^-]Indexes|all).*?<\/Directory>"
+# → "Options -Indexes MultiViews" → ' Indexes' 부분에 [^-]Indexes 매치 → 거짓취약!
+```
+
+### Corrected 동작 (VENDOR-EDIT(bug))
+음수 룩비하인드로 `-` 직전 Indexes를 제외. `+Indexes` 또는 단독 `Indexes`(비활성 제외)만 취약으로 매치.
+
+```python
+# 수정 후 (VENDOR-EDIT(bug): BUG-WST031-apache)
+r"<Directory((?!<\/Directory>)[\s\S])*?Options[^\n]*(?:(?<!\-)\bIndexes\b|\ball\b)[^\n]*.*?<\/Directory>"
+```
+
+### 회귀 핀
+- `Options -Indexes MultiViews` → **양호** (핵심: 수정 전 거짓취약 케이스)
+- `Options Indexes MultiViews` → **취약**
+- `Options +Indexes MultiViews` → **취약**
+- `Options all` → **취약**
+- `Options MultiViews` → **양호**
+- 테스트: `tests/test_web_cov_fixtures.py::test_web_det_polarity[apache-WST-031-good]` PASS (구 xfail→pass)
+
+---
+
+## BUG-WST031-webtob — `NOINDEX` 서브스트링 거짓취약 (2026-06-19, VENDOR-EDIT(bug) 완료)
+
+**id**: `BUG-WST031-webtob`
+**위치**: `judge_tool/vendor/common/webwas/WST_WebtoB_parse.py` 함수 `check_WST_031`
+**분류**: 거짓취약 (good→취약)
+
+### 증상
+기존 정규식 `Options.*?INDEX`(IGNORECASE)가 `NOINDEX`의 `INDEX` 서브스트링에도 매치된다.
+`Options = NOINDEX NOLIST`(양호 설정)가 취약으로 오판됨.
+
+```python
+# 버그 코드 (수정 전)
+vuln_pattern = re.compile(r"(.*)?Options.*?INDEX.*", re.IGNORECASE)
+# → "Options = NOINDEX" → 'NOINDEX'의 'INDEX' 서브스트링 매치 → 거짓취약!
+```
+
+### Corrected 동작 (VENDOR-EDIT(bug))
+음수 룩비하인드(`(?<!NO)`)와 단어경계(`\b`)로 `NO` 접두 제외.
+
+```python
+# 수정 후 (VENDOR-EDIT(bug): BUG-WST031-webtob)
+vuln_pattern = re.compile(r"(.*)?Options.*?(?<!NO)\bINDEX\b.*", re.IGNORECASE)
+```
+
+### 회귀 핀
+- `Options = NOINDEX NOLIST` → **양호** (핵심: 수정 전 거짓취약 케이스)
+- `Options = INDEX LIST` → **취약**
+- `Options = INDEX` → **취약**
+- `Options = NOINDEX` → **양호** (NOINDEX 단독도 양호)
+- 테스트: `tests/test_web_cov_fixtures.py::test_web_det_polarity[webtob-WST-031-good]` PASS (구 xfail→pass)
+
+
+## WST-102-webtob-min (Opus 재리뷰 추가 정정, 2026-06-19)
+- 1차 수정이 `"min" in tokens_val → 양호`로 두어 Min/Minimal/Minor(전체버전 Apache/2.4.x 노출)를 거짓양호로 신규 유입.
+- 정정: ServerTokens 안전값은 **Prod(ProductOnly)뿐** → `tokens_val == "prod"`만 양호, os/full/min/minimal/minor/major 전부 취약(Apache WST-102 및 함수 자기 메시지와 정합).
+- 회귀핀: test_wst102_webtob_min_is_vuln.

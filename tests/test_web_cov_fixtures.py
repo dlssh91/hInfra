@@ -358,3 +358,14 @@ class TestWST102IISPolarityRegression:
         fv = judge("WST-102", config, "iis", {})
         assert fv.handled is True
         assert fv.verdict == "취약"
+
+
+def test_wst102_webtob_min_is_vuln():
+    """WST-102 webtob: Min/Minimal/Minor도 전체버전 노출 → 취약 (Opus 재리뷰 거짓양호 봉쇄). Prod만 양호."""
+    from judge_tool.vendor.common.webwas.WST_WebtoB_parse import check_WST_102
+    for val in ("min", "minimal", "minor", "os", "full", "major"):
+        r = check_WST_102(f'ServerTokens = "{val}"')
+        res = r[0] if isinstance(r, tuple) else r
+        assert res == "Y", f"ServerTokens={val} → {res} (기대 Y/취약)"
+    r = check_WST_102('ServerTokens = "prod"')
+    assert (r[0] if isinstance(r, tuple) else r) == "N", "Prod → 양호여야"
