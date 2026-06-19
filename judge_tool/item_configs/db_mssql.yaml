@@ -131,6 +131,14 @@ DBM-031:
   needs_review: true
   label: A
 DBM-035:
+  # xp_cmdshell 비활성 여부 — 이진 판정, 결정론 자동판정.
+  # value_in_use=0 → 양호, =1 → 취약. 모드I 가드: xp_cmdshell 행 미수집 → 판단보류.
+  judgment_method: det_common
+  needs_review: true
   label: A
 DBM-036:
+  # Registry 확장프로시저 접근권한 — public EXECUTE 보유 여부 결정론.
+  # xp_reg*/EXECUTE/public → 취약, 관리자만 → 양호. 모드I 가드: RESULT 빈배열 → 판단보류.
+  judgment_method: det_common
+  needs_review: true
   label: A

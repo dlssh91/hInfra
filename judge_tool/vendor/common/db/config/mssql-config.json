@@ -79,6 +79,11 @@
     "DBM-031": {
     },
     "DBM-032": {
+    },
+    "DBM-035": {
+    },
+    "DBM-036": {
+      "grantee": ["sysadmin", "dbo", "db_owner", "db_securityadmin"]
     }
   },
   "rules": {
@@ -175,6 +180,10 @@
     "DBM-031": {
     },
     "DBM-032": {
+    },
+    "DBM-035": {
+    },
+    "DBM-036": {
     }
   }
 }

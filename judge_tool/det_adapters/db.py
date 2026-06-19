@@ -302,6 +302,16 @@ _DETECT_THEN_HOLD: frozenset = frozenset({"DBM-004"})
 #   is_disabled/is_policy_checked 키 부재는 R3가 별도 차단.
 _EMPTY_RESULT_HOLD: frozenset = frozenset({"DBM-019", "DBM-029", "DBM-031"})
 
+# ── 모드 I: xp_cmdshell 미수집 거짓양호 가드 (DBM-035) ─────────────────────────
+# DBM-035: sys.configurations에서 xp_cmdshell 행이 반드시 있어야 양호 가능.
+# RESULT 빈배열 → xp_cmdshell 수집 실패 → 판단보류(양호 단정 금지).
+# RESULT에 행은 있지만 xp_cmdshell 행이 없음 → 미수집/다른 항목만 수집 → 판단보류.
+# ── 모드 I2: xp_reg 미수집 거짓양호 가드 (DBM-036) ─────────────────────────────
+# DBM-036: RESULT 빈배열 = xp_reg* 프로시저가 없거나 쿼리 미실행 → 판단보류.
+# SQL Server 2022 Express에서도 xp_reg* 확장프로시저는 존재하므로, 0행 = 수집 실패.
+_XCMDSHELL_GUARD: frozenset = frozenset({"DBM-035"})
+_XREG_GUARD: frozenset = frozenset({"DBM-036"})
+
 # 엔진별 "기대 변수 존재 여부" 검사 함수.
 # 각 함수는 RESULT 행(list) 전체를 받아, 기대 변수가 **하나라도** 존재하면 True 반환.
 # 매핑 없는 엔진은 기존 0행-only 가드만 동작(None 처리).
@@ -1036,6 +1046,85 @@ def judge(
                     f"RESULT에 {len(raw_result_rows)}행이 있으나 "
                     f"DB 데몬 프로세스 라인({engine})이 포함되지 않음 — "
                     f"ps 수집 실패 또는 데몬 미기동, 자동 양호 판정 불가 "
+                    f"(engine={engine}, item={base})"
+                ),
+                citations=[],
+                ev_status="review",
+                handled=True,
+            )
+
+    # ── 모드 I: DBM-035 xp_cmdshell 미수집 거짓양호 가드 ──────────────────────────
+    # 위반0인 경우:
+    #   (1) RESULT 0행 → xp_cmdshell 수집 실패 → 판단보류
+    #   (2) RESULT에 행은 있지만 xp_cmdshell 행이 없음 → 미수집 → 판단보류
+    # xp_cmdshell은 SQL Server에 항상 존재하는 설정이므로 0행 or 행 없음 = 수집 실패.
+    if base in _XCMDSHELL_GUARD and not violations:
+        raw_result_rows = data.get(base, {}).get("RESULT", [])
+        if not raw_result_rows:
+            log.warning(
+                "모드I 가드: base=%s engine=%s RESULT 0행(빈배열) → 판단보류(xp_cmdshell 미수집)",
+                base, engine,
+            )
+            return ForcedVerdict(
+                verdict="판단보류",
+                confidence=0.0,
+                rationale=(
+                    f"[xp_cmdshell 설정 미수집 → 판단보류] "
+                    f"RESULT가 빈 배열(0행) — "
+                    f"xp_cmdshell 설정 수집 자체가 이루어지지 않아 자동 양호 판정 불가 "
+                    f"(engine={engine}, item={base})"
+                ),
+                citations=[],
+                ev_status="review",
+                handled=True,
+            )
+        has_xcmdshell_row = any(
+            isinstance(r, dict) and r.get("name") == "xp_cmdshell"
+            for r in raw_result_rows
+        )
+        if not has_xcmdshell_row:
+            log.warning(
+                "모드I 가드: base=%s engine=%s RESULT %d행 존재하나 xp_cmdshell 행 없음 → 판단보류",
+                base, engine, len(raw_result_rows),
+            )
+            return ForcedVerdict(
+                verdict="판단보류",
+                confidence=0.0,
+                rationale=(
+                    f"[xp_cmdshell 설정 미수집 → 판단보류] "
+                    f"RESULT에 {len(raw_result_rows)}행이 있으나 "
+                    f"xp_cmdshell 항목이 포함되지 않음 — "
+                    f"수집 실패 또는 쿼리 포맷 오류, 자동 양호 판정 불가 "
+                    f"(engine={engine}, item={base})"
+                ),
+                citations=[],
+                ev_status="review",
+                handled=True,
+            )
+
+    # ── 모드 I2: DBM-036 xp_reg 미수집 거짓양호 가드 ──────────────────────────────
+    # 위반0인 경우:
+    #   RESULT 0행 → xp_reg* 프로시저 권한 수집 실패 → 판단보류.
+    # 주의: 권한 미부여(실제 양호)도 RESULT 0행이 될 수 있으나,
+    # "빈배열"을 쿼리 미실행과 구분할 방법 없음 → 판단보류(보수 원칙).
+    # 단, RESULT 키가 존재하고 배열이 비어있는 경우(권한 없음 = 쿼리 실행됨)도
+    # 거짓양호 위험보다 미수집 혼용 위험이 크므로 판단보류 유지.
+    if base in _XREG_GUARD and not violations:
+        raw_result_rows = data.get(base, {}).get("RESULT", [])
+        if raw_result_rows is None:
+            raw_result_rows = []
+        if not raw_result_rows:
+            log.warning(
+                "모드I2 가드: base=%s engine=%s RESULT 0행(빈배열) → 판단보류(xp_reg 미수집)",
+                base, engine,
+            )
+            return ForcedVerdict(
+                verdict="판단보류",
+                confidence=0.0,
+                rationale=(
+                    f"[xp_reg 권한 미수집 → 판단보류] "
+                    f"RESULT가 빈 배열(0행) — "
+                    f"xp_reg* 확장프로시저 권한 수집이 이루어지지 않아 자동 양호 판정 불가 "
                     f"(engine={engine}, item={base})"
                 ),
                 citations=[],

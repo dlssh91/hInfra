@@ -664,3 +664,9 @@ lambda datum: any(sub in str(int(datum['output'])%100) for sub in ["3", "4", "5"
 - R-034: 신규 — ps output에서 DB 데몬(mysqld/mariadbd/postgres/ora_/tnslsnr) 소유자==root → 취약. 수집(unix_*.sh ps -ef) + 벤더 dbm_034 + DET_SOURCE native DET/cloud ABSENT + 모드H 가드(데몬라인0→판단보류).
 - R-034u: ps가 소유자를 숫자 UID 0으로 출력(이름 미해석)하면 root 미탐 거짓양호 → owner in (root,0) 비교(4벤더). docker 포맷 검증.
 - 백로그(Low): 모드H _DAEMON_KEYWORDS oracle 'oracle'가 경로문자열 과매칭 가능(안전방향, oracle ps 실데이터 확보 시 narrowing).
+
+
+## R-035 / R-036 / R-036d — DBM-035/036 mssql 결정론 (2026-06-19)
+- R-035: 신규 xp_cmdshell — sys.configurations value_in_use==1→취약/0→양호. 모드I 가드(행없음→판단보류).
+- R-036: 신규 registry proc — xp_reg*+EXECUTE+비관리자 grantee→취약(public 항상취약). 모드I2 가드.
+- R-036d: DENY(public 명시차단=안전)를 취약 오판(거짓취약, Opus docker 재현) → state_desc==DENY 스킵. GRANT만 위반.

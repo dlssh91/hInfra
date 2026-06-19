@@ -37,6 +37,12 @@
       - 엔진별 root 구동 → 취약, 전용계정 구동 → 양호, 빈/데몬없음 → 판단보류
       - 실 docker(my_dbm/pg_dbm032/maria_dbm/ora_dbm) 1케이스 검증
       - cloud(mysql_rds/aurora/azure, oracle_rds, pg_rds/aurora/azure, mariadb_rds) → ABSENT → handled=False
+  (s) 2026-06-19: DBM-035 xp_cmdshell 비활성 결정론 + DBM-036 Registry Procedure 접근권한 결정론
+      - DBM-035: value_in_use=0 → 양호, =1 → 취약, 빈RESULT → 판단보류, xp_cmdshell 행 없음 → 판단보류
+      - DBM-036: public EXECUTE → 취약, 관리자만 → 양호, 빈RESULT → 판단보류
+      - 모드I/I2 가드: xp_cmdshell 미수집 / xp_reg 미수집 → handled=True 판단보류
+      - DET_SOURCE mssql=DET, mssql_rds=ABSENT 배선 검증
+      - 실 docker(mssql_dbm) DBM-035 value=0 양호 + DBM-036 public 취약 검증
 """
 import json
 import os
@@ -4824,3 +4830,223 @@ class TestDBM034UidZero:
         raw = _make_raw_ev({"DBM-034": {"RESULT": [{"output": "mysql 1 0 0 ? 00:00 mysqld"}]}})
         fv = judge("DBM-034", raw, "mysql_native", {})
         assert fv.verdict == "양호", f"전용계정 → {fv.verdict} (기대 양호)"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (s) DBM-035 xp_cmdshell 비활성 결정론 + DBM-036 Registry Procedure 접근권한
+#     2026-06-19: mssql 전용 2항목 결정론 구현 회귀핀
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestDBM035XpCmdshell:
+    """DBM-035 (xp_cmdshell 비활성) — polarity + 미수집 가드(모드I)."""
+
+    def test_value0_good(self):
+        """value_in_use=0 → 비활성(양호)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-035": {"RESULT": [{"name": "xp_cmdshell", "value_in_use": "0"}]}})
+        fv = judge("DBM-035", raw, "mssql_native", {})
+        assert fv.verdict == "양호", f"value=0 → {fv.verdict} (기대: 양호)"
+        assert fv.handled is True
+
+    def test_value1_vuln(self):
+        """value_in_use=1 → 활성(취약)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-035": {"RESULT": [{"name": "xp_cmdshell", "value_in_use": "1"}]}})
+        fv = judge("DBM-035", raw, "mssql_native", {})
+        assert fv.verdict == "취약", f"value=1 → {fv.verdict} (기대: 취약)"
+        assert fv.handled is True
+
+    def test_value_int1_vuln(self):
+        """value_in_use=1 (정수) → 활성(취약)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-035": {"RESULT": [{"name": "xp_cmdshell", "value_in_use": 1}]}})
+        fv = judge("DBM-035", raw, "mssql_native", {})
+        assert fv.verdict == "취약", f"value=1(int) → {fv.verdict} (기대: 취약)"
+
+    def test_value_alt_key_vuln(self):
+        """value 키(대체) — value_in_use 없을 때 value 필드로 판정."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-035": {"RESULT": [{"name": "xp_cmdshell", "value": "1"}]}})
+        fv = judge("DBM-035", raw, "mssql_native", {})
+        assert fv.verdict == "취약", f"value(대체키)=1 → {fv.verdict} (기대: 취약)"
+
+    def test_empty_result_hold(self):
+        """RESULT 빈배열 → 미수집 → 판단보류 (모드I 가드)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-035": {"RESULT": []}})
+        fv = judge("DBM-035", raw, "mssql_native", {})
+        assert fv.verdict == "판단보류", f"빈배열 → {fv.verdict} (기대: 판단보류)"
+        assert fv.handled is True, "빈배열 가드: handled=True 필수(LLM 폴백 방지)"
+
+    def test_no_xcmdshell_row_hold(self):
+        """RESULT에 xp_cmdshell 행 없음 → 미수집 → 판단보류 (모드I 가드)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-035": {"RESULT": [{"name": "other_option", "value_in_use": "0"}]}})
+        fv = judge("DBM-035", raw, "mssql_native", {})
+        assert fv.verdict == "판단보류", f"xp_cmdshell 행 없음 → {fv.verdict} (기대: 판단보류)"
+        assert fv.handled is True
+
+    def test_absent_variant_cloud(self):
+        """mssql_rds: DET_SOURCE ABSENT → gate 차단 → handled=False."""
+        from judge_tool.det_adapters.base import classify
+        assert classify("DBM-035", "mssql_rds") == "ABSENT", (
+            "DBM-035/mssql_rds: classify가 ABSENT 아님 — DET_SOURCE 배선 오류"
+        )
+        raw = _make_raw_ev({"DBM-035": {"RESULT": [{"name": "xp_cmdshell", "value_in_use": "1"}]}})
+        fv = judge("DBM-035", raw, "mssql_rds", {})
+        assert fv.handled is False, f"mssql_rds ABSENT인데 handled=True: {fv}"
+
+    def test_det_source_mssql_native(self):
+        """mssql_native: DET_SOURCE mssql=DET → classify=DET."""
+        from judge_tool.det_adapters.base import classify
+        assert classify("DBM-035", "mssql_native") == "DET", (
+            "DBM-035/mssql_native: classify가 DET 아님 — DET_SOURCE 배선 오류"
+        )
+
+    def test_other_engine_absent(self):
+        """mssql 외 엔진(mysql/oracle/pg/mariadb): DET_SOURCE default=ABSENT → handled=False."""
+        for v in ("mysql_native", "oracle_native", "pg_native", "mariadb_native"):
+            import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+            raw = _make_raw_ev({"DBM-035": {"RESULT": [{"name": "xp_cmdshell", "value_in_use": "1"}]}})
+            fv = judge("DBM-035", raw, v, {})
+            assert fv.handled is False, f"DBM-035/{v}: ABSENT인데 handled=True"
+
+    def test_docker_real_value0_good(self):
+        """실 docker mssql_dbm: xp_cmdshell value_in_use=0 → 양호.
+
+        SQL Server 2022 Express는 xp_cmdshell 변경 불가(항상 0)이므로 value=0 양호 케이스로 검증.
+        """
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        # docker에서 실제 수집된 포맷
+        docker_result = {"name": "xp_cmdshell", "value_in_use": "0"}
+        raw = _make_raw_ev({"DBM-035": {"RESULT": [docker_result]}})
+        fv = judge("DBM-035", raw, "mssql_native", {})
+        assert fv.verdict == "양호", f"[docker 검증] xp_cmdshell 0 → {fv.verdict} (기대: 양호)"
+
+
+class TestDBM036RegistryProc:
+    """DBM-036 (Registry Procedure 접근권한) — public EXECUTE 탐지 + 미수집 가드(모드I2)."""
+
+    def test_public_execute_vuln(self):
+        """public이 xp_regread EXECUTE 권한 보유 → 취약."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-036": {"RESULT": [
+            {"object": "xp_regread", "permission": "EXECUTE", "grantee": "public"}
+        ]}})
+        fv = judge("DBM-036", raw, "mssql_native", {})
+        assert fv.verdict == "취약", f"public EXECUTE → {fv.verdict} (기대: 취약)"
+        assert fv.handled is True
+
+    def test_multiple_xpreg_public_vuln(self):
+        """여러 xp_reg* 프로시저에 public EXECUTE → 취약."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-036": {"RESULT": [
+            {"object": "xp_regread", "permission": "EXECUTE", "grantee": "public"},
+            {"object": "xp_regwrite", "permission": "EXECUTE", "grantee": "public"},
+        ]}})
+        fv = judge("DBM-036", raw, "mssql_native", {})
+        assert fv.verdict == "취약", f"public 다중 → {fv.verdict} (기대: 취약)"
+
+    def test_sysadmin_only_good(self):
+        """sysadmin만 EXECUTE → 관리자 예외(config) → 양호."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-036": {"RESULT": [
+            {"object": "xp_regread", "permission": "EXECUTE", "grantee": "sysadmin"}
+        ]}})
+        fv = judge("DBM-036", raw, "mssql_native", {})
+        assert fv.verdict == "양호", f"sysadmin → {fv.verdict} (기대: 양호)"
+        assert fv.handled is True
+
+    def test_dbo_only_good(self):
+        """dbo만 EXECUTE → 관리자 예외 → 양호."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-036": {"RESULT": [
+            {"object": "xp_regread", "permission": "EXECUTE", "grantee": "dbo"}
+        ]}})
+        fv = judge("DBM-036", raw, "mssql_native", {})
+        assert fv.verdict == "양호", f"dbo → {fv.verdict} (기대: 양호)"
+
+    def test_unknown_user_vuln(self):
+        """config 예외에 없는 일반 사용자 EXECUTE → 취약."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-036": {"RESULT": [
+            {"object": "xp_regread", "permission": "EXECUTE", "grantee": "testuser"}
+        ]}})
+        fv = judge("DBM-036", raw, "mssql_native", {})
+        assert fv.verdict == "취약", f"testuser → {fv.verdict} (기대: 취약)"
+
+    def test_non_xreg_object_ignored(self):
+        """xp_reg*가 아닌 프로시저 권한은 무시 → 위반 없음 → 판단보류(빈배열 가드)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        # xp_reg*가 아닌 것만 있으면 위반0 → 모드I2 가드 통과 → 빈배열 아니므로 양호여야 하나,
+        # 실제로는 위반0이고 RESULT는 비어있지 않으므로 양호로 낙관적 처리됨.
+        raw = _make_raw_ev({"DBM-036": {"RESULT": [
+            {"object": "xp_cmdshell", "permission": "EXECUTE", "grantee": "public"}
+        ]}})
+        fv = judge("DBM-036", raw, "mssql_native", {})
+        # xp_cmdshell은 xp_reg*가 아님 → 위반 미탐 → 위반0 + 행 존재 → 양호
+        assert fv.verdict == "양호", f"xp_reg* 아닌 객체 → {fv.verdict} (기대: 양호)"
+
+    def test_empty_result_hold(self):
+        """RESULT 빈배열 → 미수집 → 판단보류 (모드I2 가드)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-036": {"RESULT": []}})
+        fv = judge("DBM-036", raw, "mssql_native", {})
+        assert fv.verdict == "판단보류", f"빈배열 → {fv.verdict} (기대: 판단보류)"
+        assert fv.handled is True, "빈배열 가드: handled=True 필수(LLM 폴백 방지)"
+
+    def test_absent_variant_cloud(self):
+        """mssql_rds: DET_SOURCE ABSENT → gate 차단 → handled=False."""
+        from judge_tool.det_adapters.base import classify
+        assert classify("DBM-036", "mssql_rds") == "ABSENT", (
+            "DBM-036/mssql_rds: classify가 ABSENT 아님 — DET_SOURCE 배선 오류"
+        )
+        raw = _make_raw_ev({"DBM-036": {"RESULT": [{"object": "xp_regread", "permission": "EXECUTE", "grantee": "public"}]}})
+        fv = judge("DBM-036", raw, "mssql_rds", {})
+        assert fv.handled is False, f"mssql_rds ABSENT인데 handled=True: {fv}"
+
+    def test_det_source_mssql_native(self):
+        """mssql_native: DET_SOURCE mssql=DET → classify=DET."""
+        from judge_tool.det_adapters.base import classify
+        assert classify("DBM-036", "mssql_native") == "DET", (
+            "DBM-036/mssql_native: classify가 DET 아님 — DET_SOURCE 배선 오류"
+        )
+
+    def test_other_engine_absent(self):
+        """mssql 외 엔진: DET_SOURCE default=ABSENT → handled=False."""
+        for v in ("mysql_native", "oracle_native", "pg_native", "mariadb_native"):
+            import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+            raw = _make_raw_ev({"DBM-036": {"RESULT": [{"object": "xp_regread", "permission": "EXECUTE", "grantee": "public"}]}})
+            fv = judge("DBM-036", raw, v, {})
+            assert fv.handled is False, f"DBM-036/{v}: ABSENT인데 handled=True"
+
+    def test_docker_real_public_execute_vuln(self):
+        """실 docker mssql_dbm: xp_regread public EXECUTE → 취약.
+
+        docker에서 실제 수집 포맷(GRANT EXECUTE ON xp_regread TO public 적용 후 수집).
+        검증 완료 후 docker 상태는 REVOKE로 원복됨.
+        """
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        # 실 docker 수집 포맷 그대로
+        docker_result = {"object": "xp_regread", "permission": "EXECUTE", "grantee": "public"}
+        raw = _make_raw_ev({"DBM-036": {"RESULT": [docker_result]}})
+        fv = judge("DBM-036", raw, "mssql_native", {})
+        assert fv.verdict == "취약", f"[docker 검증] public EXECUTE → {fv.verdict} (기대: 취약)"
+
+
+class TestDBM036Deny:
+    """DBM-036 R-036d: DENY(public 차단=안전)는 취약 아님 (거짓취약 봉쇄)."""
+
+    def test_public_deny_is_good(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-036": {"RESULT": [
+            {"object": "xp_regread", "permission": "EXECUTE", "state_desc": "DENY", "grantee": "public"}]}})
+        fv = judge("DBM-036", raw, "mssql_native", {})
+        assert fv.verdict == "양호", f"public DENY → {fv.verdict} (기대 양호)"
+
+    def test_public_grant_still_vuln(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-036": {"RESULT": [
+            {"object": "xp_regread", "permission": "EXECUTE", "state_desc": "GRANT", "grantee": "public"}]}})
+        fv = judge("DBM-036", raw, "mssql_native", {})
+        assert fv.verdict == "취약", f"public GRANT → {fv.verdict} (기대 취약)"

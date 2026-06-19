@@ -26,17 +26,19 @@ class MssqlAnalysis:
         self.dbm_009()
         self.dbm_011()
         self.dbm_013()  # 자동점검 불가 (윈도우 방화벽 확인 필요)
-        self.dbm_015()  
-        self.dbm_016()  
+        self.dbm_015()
+        self.dbm_016()
         self.dbm_017()  # 자동점검 불가 (인터뷰 필요)
         self.dbm_019()
-        self.dbm_020()  
+        self.dbm_020()
         self.dbm_021()  # ODBC 드라이버 등은 쿼리로 확인 불가 (관리콘솔 등에서 확인 필요)
         self.dbm_022()
-        self.dbm_024()  
-        self.dbm_025()  
-        self.dbm_028()  
+        self.dbm_024()
+        self.dbm_025()
+        self.dbm_028()
         self.dbm_031()
+        self.dbm_035()
+        self.dbm_036()
         
         return self.dbm_result
         
@@ -296,8 +298,74 @@ class MssqlAnalysis:
         
     def dbm_031(self, result_key='DBM-031'):
         self.dbm_result[result_key] = []
-        
+
         self.dbm_process_data(result_key, 'DBM-031', [
             lambda datum: datum['is_disabled'] == '0',
             lambda datum: datum['is_policy_checked'] == "0",
         ])
+
+    def dbm_035(self, result_key='DBM-035'):
+        # VENDOR-EDIT: DBM-035 xp_cmdshell 비활성 여부 결정론
+        #   수집 포맷: {"name":"xp_cmdshell","value_in_use":"0"} (비활성=양호) 또는 "1" (활성=취약).
+        #   판정: value_in_use(또는 value 필드) == '1' 또는 1 → 활성(취약). 0 → 위반없음(양호).
+        #   가드: RESULT 빈배열 또는 xp_cmdshell 행 없음 → 위반없음(0) → 어댑터 모드I 가드가 판단보류 처리.
+        self.dbm_result[result_key] = []
+        try:
+            if 'DBM-035' not in self.data:
+                return
+            for datum in self.data['DBM-035'].get('RESULT', []):
+                if not isinstance(datum, dict):
+                    continue
+                name_val = datum.get('name', '')
+                if name_val != 'xp_cmdshell':
+                    continue
+                # value_in_use 우선, value 대체
+                raw_val = datum.get('value_in_use', datum.get('value', None))
+                if raw_val is None:
+                    continue
+                if str(raw_val).strip() in ('1', '1.0') or raw_val == 1:
+                    self.dbm_result[result_key].append(datum)
+        except Exception as e:
+            print("[!] Exception Occurred Mssql DBM-035: " + str(e))
+
+    def dbm_036(self, result_key='DBM-036'):
+        # VENDOR-EDIT: DBM-036 Registry 확장프로시저 접근권한 결정론
+        #   수집 포맷: {"object":"xp_regread","permission":"EXECUTE","grantee":"public"}
+        #   판정: object가 xp_reg* AND permission==EXECUTE AND grantee가 비관리자
+        #         (관리자 예외: config exception['DBM-036']['grantee'] 목록 + 하드코딩 최솟값)
+        #   거짓양호 회피: 예외 목록 비어있어도 'public'은 항상 취약으로 잡는다.
+        self.dbm_result[result_key] = []
+        try:
+            if 'DBM-036' not in self.data:
+                return
+            # config 예외 목록 (관리자 계정 — 이 grantee는 위반 아님)
+            admin_exception = set(
+                g.lower() for g in self.exception.get(result_key, {}).get('grantee', [])
+            )
+            # 하드코딩 최솟값: 'public'은 항상 취약(예외 목록 비어있어도 보호 안 함)
+            # sysadmin/dbo/db_owner 등은 예외 목록에서 제어
+            NON_EXEMPT_PUBLIC = {'public'}  # public은 예외 허용 안 함(거짓양호 회피 핵심)
+
+            for datum in self.data['DBM-036'].get('RESULT', []):
+                if not isinstance(datum, dict):
+                    continue
+                obj_name = datum.get('object', '')
+                if not obj_name.lower().startswith('xp_reg'):
+                    continue
+                perm = datum.get('permission', '')
+                if perm.upper() != 'EXECUTE':
+                    continue
+                # R-036d: DENY(public 명시 차단=가장 안전)는 취약 아님 — GRANT만 위반.
+                if str(datum.get('state_desc', 'GRANT')).upper() == 'DENY':
+                    continue
+                grantee = datum.get('grantee', '')
+                grantee_lower = grantee.lower()
+                # public은 예외 목록 무시하고 항상 위반
+                if grantee_lower in NON_EXEMPT_PUBLIC:
+                    self.dbm_result[result_key].append(datum)
+                    continue
+                # 그 외: 관리자 예외 목록에 없으면 위반
+                if grantee_lower not in admin_exception:
+                    self.dbm_result[result_key].append(datum)
+        except Exception as e:
+            print("[!] Exception Occurred Mssql DBM-036: " + str(e))

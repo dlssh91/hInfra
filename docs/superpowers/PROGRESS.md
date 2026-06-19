@@ -1,6 +1,6 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-19 (**상태저장. DBM-034 SHIP — DBMS 서비스 구동 권한 결정론 구현 완료. 1506 passed. ★다음 착수=DBM-035.**). **"다음에 진행해줘"/"개발진행해" → 아래 ★다음 착수(DBM-035)부터.**
+> 마지막 업데이트: 2026-06-19 (**상태저장. DBM-035/036 SHIP — xp_cmdshell 비활성/Registry Procedure 접근권한 결정론 구현 완료. 1529 passed. ★다음 착수=DBM 완료, 다음 도메인 착수.**). **"다음에 진행해줘"/"개발진행해" → 아래 ★다음 착수부터.**
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. 이 파일이 단일 진실원천.
 >  재개 트리거: "개발진행해"/"개발해줘"/"이어서 진행"/"다음 작업"/**"다음에 진행해"** → 아래 TL;DR ★다음 착수부터.)
 
@@ -17,12 +17,28 @@
 5. **향후 도메인(네트워크/방화벽/가상화)**: 기존분류 따라가기 + 픽스처/듀얼런으로 틀린방향 잡힐 때만 수정.
 > ⚠️ **보류한 deep-audit 백로그**: 아래 "deep-audit 백로그(보류)" 섹션 참조. 필요시 나중에 항목별 정밀감사 적용 가능하도록 상태 보존.
 
-- **★다음 착수 = DBM-035** (001~009·011·013·015·016·017·019·020·021·022·024·025·026·028·029·030·031·032·033·034 완료. 027 결번. 이후 036)
+- **★다음 착수 = DB 도메인 DBM 전항목 완료 → 최종 검증(모두양호/모두취약 픽스처) 또는 다음 도메인** (001~036 완료, 002/010/012/018/023/027 결번/ABSENT. DBM triage 종료.)
+
+  **✅ DBM-035/036 mssql 결정론 SHIP (2026-06-19, 1531 passed, Opus SHIP)**: 둘 다 mssql 전용·실 docker(mssql_dbm) 검증.
+  - DBM-035(xp_cmdshell): `sys.configurations value_in_use==1→취약/0→양호`. DET. 모드I 가드(xp_cmdshell 행 없음→판단보류).
+  - DBM-036(registry proc): `xp_reg* + EXECUTE + 비관리자 grantee→취약`(public 항상취약). **R-036d**: DENY(public 명시차단=안전)는 취약 아님(Opus 발견 거짓취약→state_desc=DENY 스킵). DET. 모드I2 가드.
+  - DET_SOURCE DBM-035/036 mssql=DET, mssql_rds=ABSENT. db_mssql.yaml det_common.
+
+  **⚠️ 백로그(034/035/036 수집 — assessment_scripts gitignore)**: judge_tool det 로직은 커밋됐으나 **수집 스크립트는 gitignore라 미커밋**. 필드 수집기에 추가 필요한 계약:
+  - DBM-034: `ps -ef` → `{"output":"<ps>"}`. DBM-035: `SELECT name,value_in_use FROM sys.configurations WHERE name='xp_cmdshell'` → `{"name","value_in_use"}`. DBM-036: xp_reg* 권한 → `{"object","permission","state_desc","grantee"}`(컬럼 별칭: object_name→object, permission_name→permission). state_desc 포함 필수.
+  - (Low) DBM-036 CONTROL 등 EXECUTE-내포 권한 미탐(public CONTROL 비현실적). DBM-026 다중토큰, DBM-033 FILE-repo, DBM-030 DET승격, 모드H oracle키워드 과매칭 — 기존 백로그 유지.
 
   **🚨 중대정정 — DBM-020/024/028/030 자동판정 버그 → interview 전환 SHIP (2026-06-19, 전체파이프라인 ground-truth)**:
   - **발견**: criteria_loader.py:98이 yaml `judgment_method: det_common`을 label B보다 우선 → 이 4항목이 label B(인터뷰) 의도인데 **det adapter로 자동판정**(DBM-020 계정있으면 자동취약=거짓취약, DBM-030 AUD$ 빈예외 자동취약). label B·summary_instruction이 죽은코드였음. (앞서 "이미 label B 정답"이라던 내 결론이 틀렸음 — 파이프라인 실행으로 확인.)
   - **수정**: db_{5엔진}.yaml DBM-020/024/028/030에서 `judgment_method: det_common` 제거(14건) → classify_method(B)=interview → _summarize_one → 판단보류. DBM-015/017과 동일 패턴. e2e 검증: DBM-020/024/028 = 판단보류+interview 확인.
   - **교훈**: label B(인터뷰) 항목은 yaml에 det_common 두면 안 됨(자동판정으로 우회됨). 향후 항목도 동일 주의.
+
+  **✅ DBM-035/036 xp_cmdshell 비활성 + Registry Procedure 접근권한 — DET 결정론 SHIP (2026-06-19, 1529 passed)**:
+  mssql 전용 2항목. DBM-027 결번, DBM-002/010/012/018/023/027 ABSENT. **DB 도메인 전 항목 완료.**
+  - **DBM-035 xp_cmdshell 비활성**: `sys.configurations` xp_cmdshell value_in_use 이진판정. value=0→양호/1→취약. **모드I 가드**: RESULT 빈배열 또는 xp_cmdshell 행 없음 → 판단보류(SQL Server Express는 값 변경 불가이므로 항상 0 = docker 실증). 구현: mssql/analysis.py `dbm_035()` 신규(value_in_use/value 키 지원, int/str 모두 처리). DET_SOURCE mssql=DET, mssql_rds=ABSENT. db_mssql.yaml det_common+needs_review. 어댑터 `_XCMDSHELL_GUARD` + 모드I 가드 블록.
+  - **DBM-036 Registry Procedure 접근권한**: `xp_reg*/EXECUTE/public(비관리자)` 탐지. public은 항상 취약(config 예외 무시), config 예외 목록(sysadmin/dbo/db_owner/db_securityadmin)은 양호. **모드I2 가드**: RESULT 빈배열 → 판단보류(거짓양호 최악 원칙). 구현: mssql/analysis.py `dbm_036()` 신규(config exception 읽기, public 하드코딩 예외불가). DET_SOURCE mssql=DET, mssql_rds=ABSENT. db_mssql.yaml det_common+needs_review. 어댑터 `_XREG_GUARD` + 모드I2 가드 블록. mssql-config.json DBM-035/036 exception/rules 추가.
+  - **실 docker 검증**: DBM-035 value=0→양호(Express 고정값), DBM-036 public EXECUTE 부여→취약/REVOKE→원복. 수집 포맷 확인.
+  - **테스트**: +21 (TestDBM035 10 + TestDBM036 11케이스. polarity/미수집/cloud ABSENT/다른엔진 ABSENT/docker 1케이스 포함).
 
   **✅ DBM-034 DBMS 서비스 구동 권한 적절성 — DET 결정론 SHIP (2026-06-19, 1506 passed)**:
   판단기준: DBMS 데몬이 root 계정으로 구동되면 취약, 전용계정(mysql/postgres/oracle 등)이면 양호.

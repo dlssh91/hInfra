@@ -755,7 +755,18 @@ items:
     default: ABSENT
 
   # DBM-002/010/012/018/023/027: 전 엔진 run() 미호출 → ABSENT(미기재=ABSENT 자동)
-  # DBM-035/036: 전 엔진 ABSENT/로직없음.
+
+  DBM-035:                          # xp_cmdshell 비활성 — mssql 전용
+    variants:
+      mssql: DET              # native: value_in_use=1 → 취약, 0 → 양호. 모드I 가드 적용.
+      mssql_rds: ABSENT       # cloud mssql: run()에 dbm_035 없음 → ABSENT
+    default: ABSENT
+
+  DBM-036:                          # Registry Procedure 접근권한 — mssql 전용
+    variants:
+      mssql: DET              # native: xp_reg*/EXECUTE/public → 취약. 모드I 가드 적용.
+      mssql_rds: ABSENT       # cloud mssql: run()에 dbm_036 없음 → ABSENT
+    default: ABSENT
 
   DBM-034:                          # DBMS 서비스 구동 권한 적절성
     variants:
