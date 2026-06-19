@@ -17,7 +17,8 @@
 5. **향후 도메인(네트워크/방화벽/가상화)**: 기존분류 따라가기 + 픽스처/듀얼런으로 틀린방향 잡힐 때만 수정.
 > ⚠️ **보류한 deep-audit 백로그**: 아래 "deep-audit 백로그(보류)" 섹션 참조. 필요시 나중에 항목별 정밀감사 적용 가능하도록 상태 보존.
 
-- **★다음 착수 = DBM-033 (빠른 라우팅 triage)** (001~009·011·013·015·016·017·019·020·021·022·024·025·026·028·029·030·031·032 완료. 027 결번. 이후 034/035/036)
+- **★다음 착수 = DBM-034 (빠른 라우팅 triage)** (001~009·011·013·015·016·017·019·020·021·022·024·025·026·028·029·030·031·032·033 완료. 027 결번. 이후 035/036)
+  **✅ DBM-033 이중화 평문비번(mysql) — DET 유지 확인 (2026-06-19)**: mysql.slave_master_info `User_password != "" → 취약`, polarity 정확. 빈배열(replication 미구성)→양호 정당. **SCOPE 명시**(코드 주석): TABLE repository 전제(8.0+ 기본, 8.0.23+ FILE 제거). 구버전 FILE-repo(master.info 파일)는 미수집이라 범위 밖(현실 영향 미미). oracle DBM-022/026도 docker 실증 완료(파일카테고리 로직 정확). ※ 앞서 보고한 'oracle dbm_022 중복블록'은 sed 겹침 착시 — 실제 없음(정정).
   **🐳 Docker 실데이터 재검토 트랙(진행 중)**: 데이터 없던 OS셸 항목을 실 컨테이너로 검증. 완료: pg/mysql/mariadb의 DBM-022(파일권한)·026(umask)·032(pg_hba) 실데이터 검증 — 내 수정들이 실포맷에서 정확 동작(거짓양호 0) 확인 + 신규 거짓취약 2건 잡아 수정(R-022L 심링크, R-032b 인라인주석). 남음: **oracle 실데이터(022/026 검증)** + **DBM-033(mysql 이중화 평문비번) 검토**. docker 컨테이너 기동 중: pg_dbm032/my_dbm/maria_dbm/ora_dbm.
 
   **✅ DBM-032 pg_hba 평문비번 → ① 결정론 파서 SHIP (2026-06-19, 1465 passed, Opus SHIP)**: 사용자가 label B 대신 **결정론 파서(auto-verdict)** 선택(도커 실데이터로 검증가능해짐). pg dbm_032 빈STUB→파서: `host/hostnossl + method=password → 취약`, hostssl/local/md5/scram/주석 제외. **R-032b**: 인라인주석(`# legacy`) 선제거(Opus가 거짓양호 발견→수정). DET_SOURCE pg DBM-032 STUB→DET, cloud(rds/aurora/azure)는 label C(pg_hba 직접점검 불가→rds.force_ssl 안내). 모드G 가드(빈/미수집→판단보류). docker pg_dbm032 실증.

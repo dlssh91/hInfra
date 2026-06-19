@@ -387,7 +387,11 @@ class MySQLAnalysis:
         ])
         
     def dbm_033(self, result_key='DBM-033'):
-        # DB 이중화 구성 시 비밀번호 평문 노출
+        # DB 이중화 구성 시 비밀번호 평문 노출 — mysql.slave_master_info(TABLE repository) 점검.
+        # SCOPE: master_info_repository=TABLE 전제(MySQL 8.0+ 기본, 8.0.23+ FILE 제거).
+        #   구버전 FILE repository(master.info 파일)는 master.info 미수집이라 점검 범위 밖 →
+        #   테이블 비면 양호. FILE-repo 환경은 master.info 별도 수동확인 필요(현실 영향 미미).
+        #   replication 미구성(테이블 0행)=노출없음=양호(정당).
         self.dbm_result[result_key] = []
         self.dbm_process_data(result_key, 'DBM-033', [
             lambda datum: datum['PASSWORD'] != "",
