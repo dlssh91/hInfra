@@ -1,6 +1,6 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-19 (**상태저장. DBM 최종검증 완료 — 엔진별 양극성 cov 픽스처(tests/db_cov_contract.py) + 계약 테스트(tests/test_db_cov_fixtures.py) 생성·전통과. 1682 passed. ★다음 착수=다음 도메인(네트워크/방화벽/가상화 등) 또는 서버 LLM 품질 검토.**). **"다음에 진행해줘"/"개발진행해" → 아래 ★다음 착수부터.**
+> 마지막 업데이트: 2026-06-19 (**상태저장. SRV 최종검증 완료 — linux 변형 DET 양극성 cov 픽스처(tests/srv_cov_contract.py) + 계약 테스트(tests/test_srv_cov_fixtures.py) 생성·전통과. 1847 passed. ★다음 착수=다음 도메인(네트워크/방화벽/가상화 등) 또는 서버 LLM 품질 검토.**). **"다음에 진행해줘"/"개발진행해" → 아래 ★다음 착수부터.**
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. 이 파일이 단일 진실원천.
 >  재개 트리거: "개발진행해"/"개발해줘"/"이어서 진행"/"다음 작업"/**"다음에 진행해"** → 아래 TL;DR ★다음 착수부터.)
 
@@ -17,7 +17,24 @@
 5. **향후 도메인(네트워크/방화벽/가상화)**: 기존분류 따라가기 + 픽스처/듀얼런으로 틀린방향 잡힐 때만 수정.
 > ⚠️ **보류한 deep-audit 백로그**: 아래 "deep-audit 백로그(보류)" 섹션 참조. 필요시 나중에 항목별 정밀감사 적용 가능하도록 상태 보존.
 
-- **★다음 착수 = (선택) 서버 cov 재확인 또는 다음 도메인** — DBM·웹-WAS 양극성 cov 완료. 웹-WAS cov가 벤더버그 4건 발견·수정(WST-102-webtob 거짓양호 2단계, WST-031 apache/webtob 거짓취약).
+- **★다음 착수 = 다음 도메인(네트워크/방화벽/가상화) 또는 별도 작업** — 서버·웹-WAS·DBM 3도메인 모두 DET 양극성 cov 완료. 서버 재확인=DET 36항목 양극성 깨짐 0(거짓양호/거짓취약 발견 0, 깨끗). 웹-WAS=버그4건 수정, DBM=Docker실증.
+
+  **✅ SRV 최종검증 — linux 변형 DET 양극성 cov 픽스처 + 계약 테스트 SHIP (2026-06-19, 1847 passed)**:
+  - `tests/srv_cov_contract.py` 신규: linux variant × DET/DET-PARTIAL 항목 양극성 픽스처 단일 진실원천.
+    - 순수 DET 36항목(SRV_auto_parse): 전수 양극성 커버.
+    - DET-PARTIAL linux-override 5항목(SRV_Linux_parse — SRV-026/069/127/131 양극성, SRV-074 vuln=날짜의존 uncovered).
+    - DET-PARTIAL 서비스inactive 8항목(SRV-005/006/007/013/014/021/064/073): good→양호, vuln=수동경로 uncovered.
+    - 총 49항목 정의, 양극성 커버 41항목, uncovered 13극성(사유 명시).
+  - `tests/test_srv_cov_fixtures.py` 신규: parametrized 계약 테스트 119케이스 (109 passed, 12 skipped-uncovered).
+    - `test_srv_det_polarity[item_id-polarity]`: good→good_verdict, vuln→vuln_verdict 전수 확인.
+    - `test_srv_manual_items_no_false_positive`: MANUAL/DET-PARTIAL-active 19항목 handled=False 확인.
+    - 완전성 테스트(최소항목수/미커버 사유 문서화/양극성 데이터 완전성) 포함.
+  - **픽스처 디버깅 중 발견·수정된 설계 이슈**:
+    - SRV-081 good: `/etc/crontab -rw-r--r--`(others read=644) → SRV-081은 others r|w 탐지 → 거짓취약. 정정: 640(-rw-r-----).
+    - SRV-121/122 good: result='N'이라도 '(*) 다른 프로파일 수동 확인 필요' 부기 → Low-1 가드 → handled=False. good 경로는 uncovered(항상 (*)), vuln 단방향만.
+    - SRV-028 good: split_output(4) 요구(4섹션) — good fixture에 3섹션 → 분리 실패 → handled=False. 정정: 4섹션 구조.
+    - SRV-021/073: DET-PARTIAL(inactive→양호 DET 경로 존재) — MANUAL_HOLD_ITEMS에서 제거 후 SRV_COV에 추가.
+  - 전체 1847 passed, 95 skipped, 0 failed (이전 1738 + 신규 109). 기존 회귀 없음.
 
   **✅ DBM 최종검증 — 엔진별 양극성 cov 픽스처 + 계약 테스트 SHIP (2026-06-19, 1682 passed)**:
   - `tests/db_cov_contract.py` 신규: 5엔진(mysql/mariadb/oracle/mssql/pg) × DET 항목 양극성 픽스처 단일 진실원천.
