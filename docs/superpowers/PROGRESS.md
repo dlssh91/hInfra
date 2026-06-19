@@ -1,6 +1,6 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-19 (**상태저장. DBM-035/036 SHIP — xp_cmdshell 비활성/Registry Procedure 접근권한 결정론 구현 완료. 1529 passed. ★다음 착수=DBM 완료, 다음 도메인 착수.**). **"다음에 진행해줘"/"개발진행해" → 아래 ★다음 착수부터.**
+> 마지막 업데이트: 2026-06-19 (**상태저장. DBM 최종검증 완료 — 엔진별 양극성 cov 픽스처(tests/db_cov_contract.py) + 계약 테스트(tests/test_db_cov_fixtures.py) 생성·전통과. 1682 passed. ★다음 착수=다음 도메인(네트워크/방화벽/가상화 등) 또는 서버 LLM 품질 검토.**). **"다음에 진행해줘"/"개발진행해" → 아래 ★다음 착수부터.**
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. 이 파일이 단일 진실원천.
 >  재개 트리거: "개발진행해"/"개발해줘"/"이어서 진행"/"다음 작업"/**"다음에 진행해"** → 아래 TL;DR ★다음 착수부터.)
 
@@ -17,7 +17,26 @@
 5. **향후 도메인(네트워크/방화벽/가상화)**: 기존분류 따라가기 + 픽스처/듀얼런으로 틀린방향 잡힐 때만 수정.
 > ⚠️ **보류한 deep-audit 백로그**: 아래 "deep-audit 백로그(보류)" 섹션 참조. 필요시 나중에 항목별 정밀감사 적용 가능하도록 상태 보존.
 
-- **★다음 착수 = DB 도메인 DBM 전항목 완료 → 최종 검증(모두양호/모두취약 픽스처) 또는 다음 도메인** (001~036 완료, 002/010/012/018/023/027 결번/ABSENT. DBM triage 종료.)
+- **★다음 착수 = 웹-WAS 양극성 cov 검증** (DBM 최종검증 완료 — 5엔진 전 DET 항목 good→양호/vuln→취약 전수통과, 양극성 깨짐 0). 서버는 cov 트랙 기완료.
+
+  **✅ DBM 최종검증 — 엔진별 양극성 cov 픽스처 + 계약 테스트 SHIP (2026-06-19, 1682 passed)**:
+  - `tests/db_cov_contract.py` 신규: 5엔진(mysql/mariadb/oracle/mssql/pg) × DET 항목 양극성 픽스처 단일 진실원천.
+    - mysql: 13항목 커버(DBM-003/004/006/007/008/009/011/013/019/022/026/033/034), 2항목 미커버(DBM-001 crack_judge 설계계약, DBM-025 EOL).
+    - mariadb: 13항목 커버(DBM-003/004/006/008/009/011/013/019/022/026/034), 2항목 미커버, DBM-005 STUB.
+    - oracle: 11항목 커버(DBM-003/004/006/007/008/009/011/013/019/022/026), 2항목 미커버(DBM-001/025).
+    - mssql: 10항목 커버(DBM-006/007/008/009/011/013/019/022/031/033/034/035/036 중 DET만), 미커버 명시.
+    - pg: 9항목 커버(DBM-008/009/011/013/019/022/026/032/035/036 중 DET만), DBM-006/007 모드B(구조적취약) 포함.
+  - `tests/test_db_cov_fixtures.py` 신규: parametrized 계약 테스트 183케이스 + 모드별 가드 테스트.
+    - `test_db_det_polarity[engine-item_id-polarity]`: good→good_verdict, vuln→vuln_verdict 전수 확인.
+    - 모드B(pg 구조적취약), 모드D(빈RESULT), 모드E(perm가드), 모드F(umask가드), 모드G(pg_hba가드), 모드H(데몬가드), 모드I/I2(xcmdshell/xreg가드) 별도 검증.
+    - label B/C/D gate 차단, 미커버 항목 명시 계약 테스트 포함.
+  - **발견·수정된 픽스처 불일치**:
+    - mysql DBM-009: 소문자 `wait_timeout`(mysql) vs 대문자 `WAIT_TIMEOUT`(mariadb) 대소문자 차이.
+    - mariadb DBM-006: `USER_ATTRIBUTES`(MySQL) → `MAX_PASSWORD_ERRORS VARIABLE_NAME/VALUE`(mariadb config).
+    - mariadb DBM-008: `PASSWORD_LAST_CHANGED`(MySQL) → `DEFAULT_PASSWORD_LIFETIME VARIABLE_NAME/VALUE`(mariadb).
+    - oracle DBM-003: `last_login`은 `rules['last_login']=['']` 매칭(빈 문자열) 조건.
+    - oracle DBM-008: `relativedelta(months=6)` 6개월 임계값 — good 날짜를 1개월 이내로 조정.
+  - 전체 1682 passed, 63 skipped, 0 failed (기존 1531 + 신규 151).
 
   **✅ DBM-035/036 mssql 결정론 SHIP (2026-06-19, 1531 passed, Opus SHIP)**: 둘 다 mssql 전용·실 docker(mssql_dbm) 검증.
   - DBM-035(xp_cmdshell): `sys.configurations value_in_use==1→취약/0→양호`. DET. 모드I 가드(xp_cmdshell 행 없음→판단보류).
