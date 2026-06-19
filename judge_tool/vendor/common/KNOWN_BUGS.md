@@ -658,3 +658,9 @@ lambda datum: any(sub in str(int(datum['output'])%100) for sub in ["3", "4", "5"
 ## R-032 / R-032b — DBM-032 pg_hba 평문비번 결정론 파서 (2026-06-19)
 - R-032: pg dbm_032 빈 STUB → pg_hba.conf 파서 구현. host/hostnossl + method=password → 취약. hostssl/local/md5/scram 제외. cloud(rds/aurora/azure)는 label C(파라미터 기반, 직접점검 불가).
 - R-032b: 인라인 주석(`host ... password # legacy`) 미제거 시 마지막토큰이 주석어가 되어 평문 라인 누락(거짓양호) → `line.split('#',1)[0]` 으로 인라인 주석 선제거. docker pg_dbm032 pg_hba_file_rules 뷰로 ground-truth 검증.
+
+
+## R-034 / R-034u — DBM-034 DBMS 구동권한(root) 결정론 (2026-06-19)
+- R-034: 신규 — ps output에서 DB 데몬(mysqld/mariadbd/postgres/ora_/tnslsnr) 소유자==root → 취약. 수집(unix_*.sh ps -ef) + 벤더 dbm_034 + DET_SOURCE native DET/cloud ABSENT + 모드H 가드(데몬라인0→판단보류).
+- R-034u: ps가 소유자를 숫자 UID 0으로 출력(이름 미해석)하면 root 미탐 거짓양호 → owner in (root,0) 비교(4벤더). docker 포맷 검증.
+- 백로그(Low): 모드H _DAEMON_KEYWORDS oracle 'oracle'가 경로문자열 과매칭 가능(안전방향, oracle ps 실데이터 확보 시 narrowing).

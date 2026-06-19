@@ -430,6 +430,56 @@ def _dbm032_has_pghba_line(result_rows: list) -> bool:
     return False
 
 
+# ── 모드 H: DBM-034 구동 프로세스 미탐지 거짓양호 가드 ─────────────────────────
+# DBM-034 결정론: ps 출력에서 DB 데몬 프로세스 소유자가 root이면 취약.
+# RESULT가 빈배열 → ps 미수집 → 판단보류(양호 단정 금지).
+# RESULT에 행은 있지만 DB 데몬 라인이 하나도 탐지되지 않음 → 프로세스 미수집/미탐지 → 판단보류.
+# 거짓양호 최악: 미수집 상태를 "root 없음=양호"로 단정하면 root 구동을 놓침.
+# VENDOR-EDIT(c): R-034 (2026-06-19)
+_DAEMON_GUARD: frozenset = frozenset({"DBM-034"})
+
+# 엔진별 데몬 키워드 (소문자 in 검사). RESULT의 output 라인에서 첫 필드(UID) 제거 후
+# 나머지 부분에서 키워드 탐색 → username만 일치하는 경우(oracle 사용자 bash 등) 오탐 방지.
+_DAEMON_KEYWORDS: dict = {
+    "mysql":      ["mysqld"],
+    "mariadb":    ["mariadbd", "mysqld"],
+    "postgresql": ["postgres"],
+    # oracle: 첫 필드(username=oracle) 제외 후 탐색 — oracle 사용자가 bash 실행해도 오탐 안 함
+    "oracle":     ["ora_", "tnslsnr", "oracle"],
+}
+
+
+def _dbm034_has_daemon_line(result_rows: list, engine: str) -> bool:
+    """DBM-034 RESULT에서 DB 데몬 프로세스 라인이 1개 이상 있는지 확인 (모드H 가드).
+
+    result_rows는 data['DBM-034']['RESULT'] — 원본 수집 행들(dict, output 키 포함).
+    각 행의 'output' 값에서 엔진별 데몬 키워드를 탐색한다.
+    ps -ef / ps -eo 첫 필드는 username이므로 username 부분(첫 토큰)을 건너뛰고 나머지
+    command 부분에서 키워드를 탐색 — username과 동일한 키워드(oracle 등)의 오탐 방지.
+    """
+    keywords = _DAEMON_KEYWORDS.get(engine, [])
+    if not keywords:
+        return False
+    for row in result_rows:
+        if not isinstance(row, dict):
+            continue
+        output = row.get("output", "")
+        if not isinstance(output, str):
+            continue
+        for line in output.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            fields = stripped.split()
+            if len(fields) < 2:
+                continue
+            # 첫 필드(username)를 건너뛰고 나머지(cmd 부분)에서 키워드 탐색
+            cmd_part = " ".join(fields[1:]).lower()
+            if any(kw in cmd_part for kw in keywords):
+                return True
+    return False
+
+
 # ── 모드 B: 구조적 취약 (DBM 분류 검토 Batch1) ─────────────────────────────
 # PostgreSQL 코어에 네이티브 기능(실패잠금/복잡도강제)이 없어 데이터 없이도 구조적 취약.
 # (base, variant) 키. pg_native만 — 클라우드(rds/aurora/azure)는 관리형 별도 처리(제외).
@@ -938,6 +988,54 @@ def judge(
                     f"RESULT에 {len(raw_result_rows)}행이 있으나 "
                     f"pg_hba.conf connection type 라인(local/host/hostssl 등)이 포함되지 않음 — "
                     f"pg_hba.conf 수집 실패 또는 포맷 오류, 자동 양호 판정 불가 "
+                    f"(engine={engine}, item={base})"
+                ),
+                citations=[],
+                ev_status="review",
+                handled=True,
+            )
+
+    # ── 모드 H: DBM-034 구동 프로세스 미탐지 거짓양호 가드 ──────────────────────
+    # 위반0인 경우 두 가지 케이스를 판단보류로 처리:
+    #   (1) RESULT 0행(빈 배열) → ps 미수집
+    #   (2) RESULT 행 있으나 DB 데몬 키워드 라인 0건 → 프로세스 미탐지/미수집
+    # 보수 원칙: 데몬 라인 미탐지를 "root 없음=양호"로 단정하면 거짓양호 → 판단보류.
+    # VENDOR-EDIT(c): R-034 (2026-06-19)
+    if base in _DAEMON_GUARD and not violations:
+        raw_result_rows = data.get(base, {}).get("RESULT", [])
+        # (1) RESULT 빈배열 → ps 미수집
+        if not raw_result_rows:
+            log.warning(
+                "모드H 가드: base=%s engine=%s RESULT 0행(빈배열) → 판단보류(ps 미수집)",
+                base, engine,
+            )
+            return ForcedVerdict(
+                verdict="판단보류",
+                confidence=0.0,
+                rationale=(
+                    f"[구동 프로세스 미수집 → 판단보류] "
+                    f"RESULT가 빈 배열(0행) — "
+                    f"ps 출력 수집 자체가 이루어지지 않아 자동 양호 판정 불가 "
+                    f"(engine={engine}, item={base})"
+                ),
+                citations=[],
+                ev_status="review",
+                handled=True,
+            )
+        # (2) RESULT 행 있으나 DB 데몬 키워드 라인 0건 → 데몬 미탐지
+        if not _dbm034_has_daemon_line(raw_result_rows, engine):
+            log.warning(
+                "모드H 가드: base=%s engine=%s RESULT %d행 존재하나 데몬 라인 0건 → 판단보류(구동 프로세스 미탐지)",
+                base, engine, len(raw_result_rows),
+            )
+            return ForcedVerdict(
+                verdict="판단보류",
+                confidence=0.0,
+                rationale=(
+                    f"[구동 프로세스 미탐지 → 판단보류] "
+                    f"RESULT에 {len(raw_result_rows)}행이 있으나 "
+                    f"DB 데몬 프로세스 라인({engine})이 포함되지 않음 — "
+                    f"ps 수집 실패 또는 데몬 미기동, 자동 양호 판정 불가 "
                     f"(engine={engine}, item={base})"
                 ),
                 citations=[],

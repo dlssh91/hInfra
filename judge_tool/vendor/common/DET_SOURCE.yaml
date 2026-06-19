@@ -755,7 +755,24 @@ items:
     default: ABSENT
 
   # DBM-002/010/012/018/023/027: 전 엔진 run() 미호출 → ABSENT(미기재=ABSENT 자동)
-  # DBM-034/035/036: 전 엔진 ABSENT/로직없음.
+  # DBM-035/036: 전 엔진 ABSENT/로직없음.
+
+  DBM-034:                          # DBMS 서비스 구동 권한 적절성
+    variants:
+      mysql: DET              # native: mysqld 구동 계정 root → 취약
+      mariadb: DET            # native: mariadbd 구동 계정 root → 취약
+      pg: DET                 # native: postgres 구동 계정 root → 취약
+      oracle: DET             # native: ora_/tnslsnr 구동 계정 root → 취약
+      # cloud: 관리형 OS 접근 불가 → N/A
+      mysql_rds: ABSENT       # cloud: OS 접근 불가
+      mysql_aurora: ABSENT    # cloud: OS 접근 불가
+      mysql_azure: ABSENT     # cloud: OS 접근 불가
+      oracle_rds: ABSENT      # cloud: OS 접근 불가
+      mariadb_rds: ABSENT     # cloud: OS 접근 불가
+      pg_rds: ABSENT          # cloud: OS 접근 불가
+      pg_aurora: ABSENT       # cloud: OS 접근 불가
+      pg_azure: ABSENT        # cloud: OS 접근 불가
+    default: ABSENT
 
   # ─── 웹서버-WAS (WST) 웹 특화 항목 — Phase 3 전수 분류 ──────────────────────
   # meta.notes: "Phase3=웹특화 WST만; OS-동형 WST는 서버프로파일 담당, 데이터 SRV-NNN"

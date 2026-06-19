@@ -66,7 +66,8 @@ class OracleAnalysis:
         self.dbm_028()
         self.dbm_029()
         self.dbm_030()
-        
+        self.dbm_034()  # 서비스 구동 권한 적절성
+
         return self.dbm_result
         
     def dbm_process_data(self, result_key, data_key, conditions):
@@ -446,3 +447,39 @@ class OracleAnalysis:
         self.dbm_process_data(result_key, 'DBM-030_2', [
             lambda datum: datum['owner'] not in self.exception['DBM-030']['owner']
         ])
+
+    def dbm_034(self, result_key='DBM-034'):
+        # VENDOR-EDIT(c): R-034 Oracle 서비스 구동 권한 적절성 (2026-06-19)
+        # 판단기준: DBMS 데몬(ora_pmon/tnslsnr/oracle 프로세스)이 root 계정으로 구동되면 취약.
+        # 수집: ps -ef 또는 ps -eo user,comm 출력에서 Oracle 데몬 포함 라인 파싱.
+        # 구동 계정(첫 필드) == root → 위반 → 취약.
+        # 데몬 라인 미탐지(0건)는 위반 0이지만 양호 단정 금지 → 어댑터 모드H 가드가 판단보류 처리.
+        # Oracle 데몬 키워드: ora_ 접두사 프로세스(ora_pmon/ora_dbw/ora_lgwr 등), tnslsnr, oracle
+        self.dbm_result[result_key] = []
+        try:
+            if 'DBM-034' in self.data:
+                for datum in self.data['DBM-034'].get('RESULT', []):
+                    output = datum.get('output', '')
+                    if not isinstance(output, str):
+                        continue
+                    for line in output.splitlines():
+                        stripped = line.strip()
+                        if not stripped:
+                            continue
+                        # Oracle 데몬 라인 식별
+                        lower = stripped.lower()
+                        is_oracle_daemon = (
+                            'ora_' in lower or
+                            'tnslsnr' in lower or
+                            'oracle' in lower
+                        )
+                        if not is_oracle_daemon:
+                            continue
+                        fields = stripped.split()
+                        if not fields:
+                            continue
+                        owner = fields[0].lower()
+                        if owner in ('root', '0'):  # R-034u: UID 숫자 0도 root (ps가 이름 미해석 시 거짓양호 방지)
+                            self.dbm_result[result_key].append(stripped)
+        except Exception as e:
+            print("[!] Exception Occurred Oracle DBM-034: " + str(e))

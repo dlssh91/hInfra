@@ -55,6 +55,7 @@ class MariaDBAnalysis:
         self.dbm_025()  # sql version
         self.dbm_026()  # umask
         self.dbm_028()
+        self.dbm_034()  # 서비스 구동 권한 적절성
         
         return self.dbm_result
     
@@ -323,7 +324,7 @@ class MariaDBAnalysis:
     
     def dbm_028(self, result_key='DBM-028'):
         self.dbm_result[result_key] = []
-        
+
         self.dbm_process_data(result_key, 'DBM-028_1', [
             lambda datum: datum['GRANTEE'] not in self.exception[result_key]['GRANTEE'],
             lambda datum: datum['PRIVILEGE_TYPE'] not in self.exception[result_key]['PRIVILEGE_TYPE']
@@ -340,3 +341,33 @@ class MariaDBAnalysis:
             lambda datum: datum['GRANTEE'] not in self.exception[result_key]['GRANTEE'],
             lambda datum: datum['PRIVILEGE_TYPE'] not in self.exception[result_key]['PRIVILEGE_TYPE']
         ])
+
+    def dbm_034(self, result_key='DBM-034'):
+        # VENDOR-EDIT(c): R-034 MariaDB 서비스 구동 권한 적절성 (2026-06-19)
+        # 판단기준: DBMS 데몬(mariadbd)이 root 계정으로 구동되면 취약.
+        # 수집: ps -ef 또는 ps -eo user,comm 출력에서 mariadbd 포함 라인 파싱.
+        # 구동 계정(첫 필드) == root → 위반 → 취약.
+        # 데몬 라인 미탐지(0건)는 위반 0이지만 양호 단정 금지 → 어댑터 모드H 가드가 판단보류 처리.
+        # MariaDB 10.4+ 데몬명: mariadbd. 구버전(mysqld 이름 사용) 호환을 위해 mysqld도 검사.
+        self.dbm_result[result_key] = []
+        try:
+            if 'DBM-034' in self.data:
+                for datum in self.data['DBM-034'].get('RESULT', []):
+                    output = datum.get('output', '')
+                    if not isinstance(output, str):
+                        continue
+                    for line in output.splitlines():
+                        stripped = line.strip()
+                        if not stripped:
+                            continue
+                        # mariadbd 또는 mysqld(구버전 호환) 데몬 라인 식별
+                        if 'mariadbd' not in stripped and 'mysqld' not in stripped:
+                            continue
+                        fields = stripped.split()
+                        if not fields:
+                            continue
+                        owner = fields[0].lower()
+                        if owner in ('root', '0'):  # R-034u: UID 숫자 0도 root (ps가 이름 미해석 시 거짓양호 방지)
+                            self.dbm_result[result_key].append(stripped)
+        except Exception as e:
+            print("[!] Exception Occurred MariaDB DBM-034: " + str(e))

@@ -57,6 +57,7 @@ class PostgreSQLAnalysis:
         self.dbm_026()
         self.dbm_028()
         self.dbm_032()
+        self.dbm_034()  # 서비스 구동 권한 적절성
         
         return self.dbm_result
     
@@ -390,6 +391,38 @@ class PostgreSQLAnalysis:
             lambda datum: True,
         ])
         
+    def dbm_034(self, result_key='DBM-034'):
+        # VENDOR-EDIT(c): R-034 PostgreSQL 서비스 구동 권한 적절성 (2026-06-19)
+        # 판단기준: DBMS 데몬(postgres)이 root 계정으로 구동되면 취약.
+        # 수집: ps -ef 또는 ps -eo user,comm 출력에서 postgres 포함 라인 파싱.
+        # 구동 계정(첫 필드) == root → 위반 → 취약.
+        # 데몬 라인 미탐지(0건)는 위반 0이지만 양호 단정 금지 → 어댑터 모드H 가드가 판단보류 처리.
+        self.dbm_result[result_key] = []
+        try:
+            if 'DBM-034' in self.data:
+                for datum in self.data['DBM-034'].get('RESULT', []):
+                    output = datum.get('output', '')
+                    if not isinstance(output, str):
+                        continue
+                    for line in output.splitlines():
+                        stripped = line.strip()
+                        if not stripped:
+                            continue
+                        # postgres 데몬 라인 식별 (postgres 프로세스 이름)
+                        fields = stripped.split()
+                        if not fields:
+                            continue
+                        # ps -eo user,comm: 첫 필드=user, 둘째=comm
+                        # ps -ef: 첫 필드=user, 8번째=cmd
+                        # 공통: 라인에 'postgres' 포함 여부로 데몬 라인 식별
+                        if 'postgres' not in stripped:
+                            continue
+                        owner = fields[0].lower()
+                        if owner in ('root', '0'):  # R-034u: UID 숫자 0도 root (ps가 이름 미해석 시 거짓양호 방지)
+                            self.dbm_result[result_key].append(stripped)
+        except Exception as e:
+            print("[!] Exception Occurred PostgreSQL DBM-034: " + str(e))
+
     def dbm_032(self, result_key='DBM-032'):
         # VENDOR-EDIT(c): R-032 pg_hba.conf 평문비번 결정론 파서 (2026-06-19)
         # 평가기준: host/hostnossl + method=password → 평문 비번 전송 → 취약.

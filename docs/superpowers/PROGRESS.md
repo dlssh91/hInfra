@@ -1,6 +1,6 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-18 (**상태저장. DBM 빠른 triage 진행 중 — 024~031 완료(022/026 CRITICAL 거짓양호 픽스, 025 EOL 신선도, 029/031 빈RESULT가드, 030 label B). 1432 passed. ★다음 착수=DBM-032.**). **"다음에 진행해줘"/"개발진행해" → 아래 ★다음 착수(DBM-032)부터.**
+> 마지막 업데이트: 2026-06-19 (**상태저장. DBM-034 SHIP — DBMS 서비스 구동 권한 결정론 구현 완료. 1506 passed. ★다음 착수=DBM-035.**). **"다음에 진행해줘"/"개발진행해" → 아래 ★다음 착수(DBM-035)부터.**
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. 이 파일이 단일 진실원천.
 >  재개 트리거: "개발진행해"/"개발해줘"/"이어서 진행"/"다음 작업"/**"다음에 진행해"** → 아래 TL;DR ★다음 착수부터.)
 
@@ -17,7 +17,18 @@
 5. **향후 도메인(네트워크/방화벽/가상화)**: 기존분류 따라가기 + 픽스처/듀얼런으로 틀린방향 잡힐 때만 수정.
 > ⚠️ **보류한 deep-audit 백로그**: 아래 "deep-audit 백로그(보류)" 섹션 참조. 필요시 나중에 항목별 정밀감사 적용 가능하도록 상태 보존.
 
-- **★다음 착수 = DBM-034 (빠른 라우팅 triage)** (001~009·011·013·015·016·017·019·020·021·022·024·025·026·028·029·030·031·032·033 완료. 027 결번. 이후 035/036)
+- **★다음 착수 = DBM-035** (001~009·011·013·015·016·017·019·020·021·022·024·025·026·028·029·030·031·032·033·034 완료. 027 결번. 이후 036)
+
+  **🚨 중대정정 — DBM-020/024/028/030 자동판정 버그 → interview 전환 SHIP (2026-06-19, 전체파이프라인 ground-truth)**:
+  - **발견**: criteria_loader.py:98이 yaml `judgment_method: det_common`을 label B보다 우선 → 이 4항목이 label B(인터뷰) 의도인데 **det adapter로 자동판정**(DBM-020 계정있으면 자동취약=거짓취약, DBM-030 AUD$ 빈예외 자동취약). label B·summary_instruction이 죽은코드였음. (앞서 "이미 label B 정답"이라던 내 결론이 틀렸음 — 파이프라인 실행으로 확인.)
+  - **수정**: db_{5엔진}.yaml DBM-020/024/028/030에서 `judgment_method: det_common` 제거(14건) → classify_method(B)=interview → _summarize_one → 판단보류. DBM-015/017과 동일 패턴. e2e 검증: DBM-020/024/028 = 판단보류+interview 확인.
+  - **교훈**: label B(인터뷰) 항목은 yaml에 det_common 두면 안 됨(자동판정으로 우회됨). 향후 항목도 동일 주의.
+
+  **✅ DBM-034 DBMS 서비스 구동 권한 적절성 — DET 결정론 SHIP (2026-06-19, 1506 passed)**:
+  판단기준: DBMS 데몬이 root 계정으로 구동되면 취약, 전용계정(mysql/postgres/oracle 등)이면 양호.
+  평가대상: mysql/oracle/pg/mariadb(native). mssql은 평가대상 아님. cloud(rds/aurora/azure) = OS접근불가 → ABSENT.
+  구현: 4개 엔진 `dbm_034` 메서드 신규(각각 mysqld/mariadbd-mysqld/postgres/ora_-tnslsnr-oracle 키워드로 데몬 라인 식별, 첫필드==root → 위반). DET_SOURCE.yaml DBM-034(native DET, cloud ABSENT, default ABSENT). item_configs 4개 yaml DBM-034(det_common, needs_review, label B). 수집스크립트(MySQL/PostgreSQL/Oracle DBM-034 블록 추가, MariaDB unix_mariadb.sh 신규 생성). 모드H 가드(DAEMON_GUARD): RESULT 빈배열 또는 데몬 키워드 라인 0건 → 판단보류(거짓양호 봉쇄). **가드 설계 포인트**: oracle 데몬 키워드 탐색 시 첫 필드(username) 제외 후 cmd 부분에서만 탐색(username=oracle인 bash 프로세스 오탐 방지). 실 docker 검증: my_dbm→mysql/pg_dbm032→postgres/maria_dbm→mysql/ora_dbm→oracle (전부 양호). root시뮬(합성) 취약 확인. 빈RESULT/데몬없음 판단보류 확인. 테스트 +41(1465→1506).
+
   **✅ DBM-033 이중화 평문비번(mysql) — DET 유지 확인 (2026-06-19)**: mysql.slave_master_info `User_password != "" → 취약`, polarity 정확. 빈배열(replication 미구성)→양호 정당. **SCOPE 명시**(코드 주석): TABLE repository 전제(8.0+ 기본, 8.0.23+ FILE 제거). 구버전 FILE-repo(master.info 파일)는 미수집이라 범위 밖(현실 영향 미미). oracle DBM-022/026도 docker 실증 완료(파일카테고리 로직 정확). ※ 앞서 보고한 'oracle dbm_022 중복블록'은 sed 겹침 착시 — 실제 없음(정정).
   **🐳 Docker 실데이터 재검토 트랙(진행 중)**: 데이터 없던 OS셸 항목을 실 컨테이너로 검증. 완료: pg/mysql/mariadb의 DBM-022(파일권한)·026(umask)·032(pg_hba) 실데이터 검증 — 내 수정들이 실포맷에서 정확 동작(거짓양호 0) 확인 + 신규 거짓취약 2건 잡아 수정(R-022L 심링크, R-032b 인라인주석). 남음: **oracle 실데이터(022/026 검증)** + **DBM-033(mysql 이중화 평문비번) 검토**. docker 컨테이너 기동 중: pg_dbm032/my_dbm/maria_dbm/ora_dbm.
 

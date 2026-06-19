@@ -125,7 +125,6 @@ DBM-022:
   needs_review: true
   label: A
 DBM-024:
-  judgment_method: det_common
   needs_review: true
   label: B
   summary_instruction: IS_GRANTABLE=YES 권한을 계정별로 집계하여 요약. 각 계정과 GRANT OPTION 보유 권한
@@ -147,3 +146,7 @@ DBM-032:
   judgment_method: det_common
   label: C
   canned_message: "관리형 PostgreSQL(RDS/Aurora/Azure)은 pg_hba.conf 직접 점검 불가 → rds.force_ssl/ssl/require_secure_transport 파라미터로 통신 암호화 강제 여부 확인 필요(판단보류)."
+DBM-034:
+  judgment_method: det_common
+  needs_review: true
+  label: A
