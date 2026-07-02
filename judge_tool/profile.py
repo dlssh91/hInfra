@@ -1,7 +1,8 @@
 import os
 import re
+import unicodedata
 from dataclasses import dataclass
-from typing import Dict, FrozenSet, Optional, Tuple
+from typing import Dict, FrozenSet, Optional, Set, Tuple
 
 # 네이티브 제네릭 마커 모호성 가드용 클라우드 토큰. 알파벳 경계로 검사해
 # 'passwords'·'standards'의 'rds'처럼 단어 내부 우연 매치를 배제한다.
@@ -35,6 +36,11 @@ class Profile:
     flag_vulnerable_for_review: bool = False        # True면 verdict=취약도 needs_review
     empty_means_good: FrozenSet[str] = frozenset()  # 빈 RESULT=양호신호인 base id
     excluded: bool = False                          # True면 구조만 정의·판정 배제(Tibero)
+    # 파일명 플랫폼 별칭(§1 _PLATFORM_ALIASES)에서 유추 가능한 변형 폴백.
+    # (환경토큰, variant명) 쌍. detect_variant가 없는 파서 프로파일(cloud/db_*)만
+    # 부여한다 — 내용식별 도메인(server 등)은 파일명 힌트가 약해 오추정 위험이 큼
+    # (SERVER.variant_from_filename("linux.xml") is None 계약 유지).
+    alias_variant_tokens: Tuple[Tuple[str, str], ...] = ()
 
     def normalize_id(self, raw: str) -> str:
         """'pism_037_1' -> 'PISM-037'. 접두어+첫 숫자만 사용, 하위 인덱스 제거.
@@ -65,7 +71,11 @@ class Profile:
         파일명에 클라우드 토큰(rds/aurora/azure)이 독립 단어로 포함돼 있으면
         None을 반환한다. 호출부에서 --variant 유도 오류로 처리된다. 토큰은
         단어경계로 검사하므로 'passwords'·'standards'의 'rds'처럼 다른 단어에
-        우연히 묻힌 경우는 오발동하지 않는다."""
+        우연히 묻힌 경우는 오발동하지 않는다.
+
+        구체마커가 전혀 매칭되지 않으면 alias_variant_tokens(플랫폼 별칭표에서
+        유추 가능한 환경토큰 → variant명)로 폴백한다. 정확히 하나의 variant만
+        가리키면 그 variant, 2개 이상이면 모호로 간주해 None(오추정 방지)."""
         low = os.path.basename(filename).lower()
         best_name: Optional[str] = None
         best_len = -1
@@ -77,7 +87,10 @@ class Profile:
         if (best_name is not None and best_name.endswith("_native")
                 and _CLOUD_TOKEN_RE.search(low)):
             return None
-        return best_name
+        if best_name is not None:
+            return best_name
+        found = {v for tok, v in self.alias_variant_tokens if _alias_hit(tok, low)}
+        return next(iter(found)) if len(found) == 1 else None
 
 
 CLOUD = Profile(
@@ -89,6 +102,8 @@ CLOUD = Profile(
     name_col=6,
     risk_col=7,
     parser="cloud_xml",
+    # detect_variant 없는 파서(cloud_xml) → 플랫폼 별칭 variant 폴백 부여.
+    alias_variant_tokens=(("aws", "AWS"), ("azure", "Azure")),
     variants={
         "AWS": VariantSpec("AWS", eval_type_col=11, standard_col=17,
                            method_col=13, filename_markers=("aws_report",)),
@@ -119,6 +134,9 @@ DB_MYSQL = Profile(
     # 계정 제외 한 줄뿐이므로 empty_means_good 의미가 같다(per-variant 불필요).
     empty_means_good=frozenset(
         {"DBM-005", "DBM-017", "DBM-019", "DBM-024", "DBM-028"}),
+    # detect_variant 없는 파서(db_json) → 플랫폼 별칭 variant 폴백 부여.
+    alias_variant_tokens=(
+        ("rds", "mysql_rds"), ("aurora", "mysql_aurora"), ("azure", "mysql_azure")),
     variants={
         "mysql_native": VariantSpec(
             "mysql_native", standard_col=35, method_col=36,
@@ -150,6 +168,7 @@ DB_ORACLE = Profile(
     status_available=False,
     flag_vulnerable_for_review=True,
     empty_means_good=frozenset({"DBM-005", "DBM-015", "DBM-017", "DBM-024"}),
+    alias_variant_tokens=(("rds", "oracle_rds"),),
     variants={
         "oracle_native": VariantSpec(
             "oracle_native", standard_col=27, method_col=28,
@@ -175,6 +194,7 @@ DB_MSSQL = Profile(
     status_available=False,
     flag_vulnerable_for_review=True,
     empty_means_good=frozenset({"DBM-005", "DBM-015", "DBM-024"}),
+    alias_variant_tokens=(("rds", "mssql_rds"),),
     variants={
         "mssql_native": VariantSpec(
             "mssql_native", standard_col=31, method_col=32,
@@ -201,6 +221,7 @@ DB_MARIADB = Profile(
     status_available=False,
     flag_vulnerable_for_review=True,
     empty_means_good=frozenset({"DBM-005", "DBM-024"}),
+    alias_variant_tokens=(("rds", "mariadb_rds"),),
     variants={
         "mariadb_native": VariantSpec(
             "mariadb_native", standard_col=43, method_col=44,
@@ -227,6 +248,8 @@ DB_POSTGRESQL = Profile(
     status_available=False,
     flag_vulnerable_for_review=True,
     empty_means_good=frozenset({"DBM-005", "DBM-015", "DBM-017", "DBM-024"}),
+    alias_variant_tokens=(
+        ("rds", "pg_rds"), ("aurora", "pg_aurora"), ("azure", "pg_azure")),
     variants={
         "pg_native": VariantSpec(
             "pg_native", standard_col=47, method_col=48,
@@ -561,3 +584,191 @@ def get_profile(key: str) -> Profile:
                  for k, p in _PROFILES.items()]
         raise KeyError(f"알 수 없는 프로파일: {key} (사용 가능: {avail})")
     return _PROFILES[key]
+
+
+def list_profile_keys() -> Tuple[str, ...]:
+    """판정 가능(배제 아님) 프로파일 키 목록. --profile 자동추정 실패 안내용."""
+    return tuple(k for k, p in _PROFILES.items() if not p.excluded)
+
+
+def _marker_profile_index() -> Dict[str, str]:
+    """filename_markers(variant 식별용) → profile_key 역인덱스.
+
+    variant 식별에 이미 쓰이는 마커 정보를 재사용해 --profile 자동추정으로
+    확장한다(새 마커 목록을 따로 유지하지 않음). 배제(excluded) 프로파일은
+    자동추정 후보에서 제외한다.
+    """
+    index: Dict[str, str] = {}
+    for profile in _PROFILES.values():
+        if profile.excluded:
+            continue
+        for vspec in profile.variants.values():
+            for marker in vspec.filename_markers:
+                index[marker] = profile.key
+    return index
+
+
+# 확장자만으로 유일하게 결정되는 프로파일(마커 매칭 실패 시 폴백).
+# iss(방화벽 정책) 프로파일만 xlsx 결과파일을 받는 유일한 프로파일이다.
+_EXT_UNIQUE_PROFILE: Dict[str, str] = {".xlsx": "iss"}
+
+# 확장자로 후보군만 좁혀지는(그러나 유일하지 않은) 그룹. 파일명 마커가 없는
+# 도메인(server/network/iss_device/osvirt/webwas)은 XML 확장자 하나를 공유해
+# 확장자만으로는 유일 식별이 불가하다 — 후보 나열 후 --profile 명시 유도.
+_EXT_CANDIDATE_GROUPS: Dict[str, Tuple[str, ...]] = {
+    ".json": ("db_mysql", "db_oracle", "db_mssql", "db_mariadb",
+             "db_postgresql"),  # db_tibero는 배제(excluded) → 후보 제외
+    ".xml": ("cloud", "container", "server", "network", "iss_device",
+             "osvirt", "webwas"),
+}
+
+# ---------------------------------------------------------------------------
+# 플랫폼 별칭 표 (파일명 → 프로파일 인지, Stage B). 설계서
+# docs/superpowers/specs/2026-07-03-filename-recognition-design.md §1 계약.
+#
+# 매칭규약: ASCII 토큰 = 알파벳 경계 정규식 `(?<![a-z])tok(?![a-z])`(숫자 인접은
+# 허용 — win2019는 매치, winter/darwin은 경계에서 차단). 한글 토큰(2자 이상) =
+# NFC 정규화 후 단순 substring. 전부 소문자로만 등록한다.
+#
+# 금지 토큰(오탐/충돌 위험으로 등록하지 않음): server/서버, sql, db/dbms/web/net/host,
+# pg/my/ora/maria(엔진 접두 단독), ids/ips(user_ids/server_ips 오탐), checkpoint,
+# 가상화, hyperv/kvm/tibero(미지원 도메인).
+#
+# 위험 토큰(등록은 하되 경계검사로 방어): "was"(webwas) — 영어 단어 "was"와
+# 겹치는 최고위험 토큰이다. 오탐이 실측된다면 아래 tuple에서 "was" 한 줄만
+# 삭제하면 즉시 비활성화된다.
+_PLATFORM_ALIASES: Dict[str, Tuple[str, ...]] = {
+    "cloud": ("aws", "azure", "cloud", "클라우드"),
+    "db_mysql": ("mysql",),
+    "db_oracle": ("oracle", "오라클"),
+    "db_mssql": ("mssql", "ms-sql", "ms_sql", "sqlserver", "sql-server", "sql_server"),
+    "db_mariadb": ("mariadb",),
+    "db_postgresql": ("postgresql", "postgres", "pgsql"),
+    "server": (
+        "linux", "unix", "aix", "hpux", "hp-ux", "hp_ux", "solaris", "sunos",
+        "redhat", "rhel", "centos", "rocky", "ubuntu", "debian", "suse",
+        "windows", "win", "리눅스", "유닉스", "솔라리스", "윈도우",
+    ),
+    "webwas": (
+        "apache", "nginx", "tomcat", "webtob", "jeus", "iis", "weblogic",
+        "was",  # ⚠️ 최고위험 토큰(주석 참조) — 오탐 시 이 줄만 삭제.
+        "웹서버", "톰캣", "아파치",
+    ),
+    "container": (
+        "docker", "kubernetes", "k8s", "openshift", "container",
+        "eks", "aks", "ocp", "쿠버네티스", "도커", "컨테이너",
+    ),
+    "network": ("cisco", "juniper", "switch", "router", "네트워크", "스위치", "라우터"),
+    "iss": (
+        "firewall", "fw", "방화벽", "secui", "paloalto", "palo-alto",
+        "palo_alto", "fortigate", "fortinet",
+    ),
+    "iss_device": ("vpn", "ddos", "waf"),
+    "osvirt": ("vmware", "esxi", "vcenter", "xen"),
+}
+
+# ASCII 별칭 토큰의 경계 정규식을 모듈 로드 시 1회 프리컴파일해 재사용한다.
+# _alias_hit()는 Stage B(_PLATFORM_ALIASES, 프로파일 단위)와
+# Profile.variant_from_filename의 alias_variant_tokens 폴백(variant 단위) 양쪽에서
+# 재사용되므로, 두 출처의 ASCII 토큰을 모두 모아 캐시를 채운다(KeyError 방지).
+_ALIAS_TOKEN_RE: Dict[str, "re.Pattern[str]"] = {
+    tok: re.compile(r"(?<![a-z])" + re.escape(tok) + r"(?![a-z])")
+    for tok in {
+        *(tok for _tokens in _PLATFORM_ALIASES.values() for tok in _tokens),
+        *(tok for _profile in _PROFILES.values()
+          for tok, _variant in _profile.alias_variant_tokens),
+    }
+    if tok.isascii()
+}
+
+
+def _alias_hit(token: str, low: str) -> bool:
+    """별칭 토큰 하나가 (이미 소문자·NFC 정규화된) 파일명에 매칭되는지 검사.
+
+    ASCII 토큰은 프리컴파일된 알파벳 경계 정규식으로, 한글 토큰(2자 이상)은
+    단순 substring으로 검사한다."""
+    if token.isascii():
+        return _ALIAS_TOKEN_RE[token].search(low) is not None
+    return token in low
+
+
+def _match_platform_aliases(low: str) -> Dict[str, Set[str]]:
+    """플랫폼 별칭표 전체를 스캔해 {profile_key: {매칭된 토큰...}}을 반환한다."""
+    hits: Dict[str, Set[str]] = {}
+    for profile_key, tokens in _PLATFORM_ALIASES.items():
+        matched = {tok for tok in tokens if _alias_hit(tok, low)}
+        if matched:
+            hits[profile_key] = matched
+    return hits
+
+
+def _refine_alias_hits(hits: Dict[str, Set[str]]) -> Dict[str, Set[str]]:
+    """DB-클라우드 정제(설계서 §2/§4): DB 엔진 별칭 1개 + cloud 별칭이 동시에
+    매칭되고 cloud쪽 매칭 토큰이 aws/azure(환경 힌트)만으로 구성되면 cloud를
+    제거해 DB 프로파일 단일 확정으로 정리한다.
+
+    예: 'mysql_azure점검.txt' → {db_mysql:{mysql}, cloud:{azure}} → cloud 토큰이
+    {aws,azure} 부분집합이므로 cloud 제거 → db_mysql 확정(variant는
+    Profile.variant_from_filename의 alias_variant_tokens 폴백이 별도 처리).
+    진짜 클라우드 보고서(aws_report/azure_report)는 구체마커라 Stage A에서
+    이미 확정되므로 이 단계에 도달하지 않는다. cloud 매칭이 aws/azure 외
+    토큰(cloud/클라우드 등)을 포함하면 정제하지 않는다(진짜 클라우드 보고서일
+    가능성을 보존)."""
+    db_keys = [key for key in hits if key.startswith("db_")]
+    if len(db_keys) == 1 and set(hits) == {db_keys[0], "cloud"}:
+        if hits["cloud"] <= {"aws", "azure"}:
+            refined = dict(hits)
+            del refined["cloud"]
+            return refined
+    return hits
+
+
+def guess_profile(report_path: str) -> Tuple[Optional[str], Tuple[str, ...]]:
+    """보고서 파일명에서 --profile 을 추정한다.
+
+    3단계로 추정한다(Stage A → Stage B → Stage C, 앞 단계가 0매칭일 때만 다음
+    단계로 넘어간다):
+      Stage A: 구체 filename_markers(variant 식별용 마커) 역인덱스 substring.
+      Stage B: 플랫폼 별칭표(_PLATFORM_ALIASES) 스캔. Stage A가 0매칭일 때만
+        수행한다 — 마커는 수집기가 생성한 정밀한 이름이라 항상 우선한다.
+        DB 엔진 별칭 + aws/azure 별칭이 동시 매칭되면 DB-클라우드 정제
+        (_refine_alias_hits)로 cloud 쪽을 제거해 단일 확정을 시도한다.
+      Stage C: 확장자 폴백(.xlsx→iss 유일, .json/.xml→후보군).
+
+    반환: (guessed_key 또는 None, candidates)
+      - 마커/별칭으로 유일 식별                    → (key, (key,))
+      - 마커·별칭 모두 미매칭 + 확장자로 유일 식별 → (key, (key,))
+      - 마커 여럿·별칭 여럿·확장자 후보군(복수)    → (None, candidates)  # 모호
+      - 전혀 추정 불가                              → (None, ())
+    호출부(main.py)는 guessed가 None이면 candidates 유무로 "모호" vs
+    "추정 불가"를 구분해 안내한다(오판정보다 명시 요구가 안전 — 별칭 2개
+    이상이 동시 매칭돼도 거짓 라우팅하지 않고 모호로 fail-safe한다).
+
+    macOS 드래그앤드롭 등으로 들어온 한글 파일명은 NFD(자모 분해형)일 수 있어
+    소스 코드의 NFC 한글 별칭 토큰과 substring 매칭이 실패한다 — 반드시
+    unicodedata.normalize("NFC", ...)로 정규화한 뒤 비교한다.
+    """
+    low = unicodedata.normalize("NFC", os.path.basename(report_path)).lower()
+    ext = os.path.splitext(low)[1]
+    index = _marker_profile_index()
+    matched = {key for marker, key in index.items() if marker in low}
+    if len(matched) == 1:
+        key = next(iter(matched))
+        return key, (key,)
+    if len(matched) > 1:
+        return None, tuple(sorted(matched))
+    # Stage B: 구체마커 0매칭일 때만 플랫폼 별칭 스캔(오라클_result.xlsx 같은
+    # 자연 파일명 인지 — 확장자 폴백보다 먼저 시도해 별칭이 우선한다).
+    alias_hits = _refine_alias_hits(_match_platform_aliases(low))
+    if len(alias_hits) == 1:
+        key = next(iter(alias_hits))
+        return key, (key,)
+    if len(alias_hits) > 1:
+        return None, tuple(sorted(alias_hits))
+    # Stage C: 마커·별칭 모두 미매칭 → 확장자 폴백
+    if ext in _EXT_UNIQUE_PROFILE:
+        key = _EXT_UNIQUE_PROFILE[ext]
+        return key, (key,)
+    if ext in _EXT_CANDIDATE_GROUPS:
+        return None, _EXT_CANDIDATE_GROUPS[ext]
+    return None, ()

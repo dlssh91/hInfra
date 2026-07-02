@@ -1,0 +1,1174 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>judge_tool — 프로젝트 워크스페이스</title>
+<style>
+  :root {
+    --bg: #eef1f4;
+    --panel: #ffffff;
+    --panel-2: #f6f8fa;
+    --border: #d8dee4;
+    --text: #1a2230;
+    --muted: #5b6472;
+    --accent: #2451c4;
+    --accent-weak: #e4ebfc;
+    --accent-strong: #17357f;
+    --good: #2e7d32;
+    --good-weak: #e7f3e8;
+    --bad: #c62828;
+    --bad-weak: #fbe9e9;
+    --hold: #b8790a;
+    --hold-weak: #fdf1dc;
+    --review-bg: #fff2cc;
+    --radius: 7px;
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic",
+      "Apple SD Gothic Neo", Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+      "Liberation Mono", monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: var(--font-ui);
+    color: var(--text);
+    background: var(--bg);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+  button {
+    font-family: inherit;
+    font-size: inherit;
+    cursor: pointer;
+  }
+  button:focus-visible,
+  select:focus-visible,
+  input:focus-visible,
+  a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  table { border-collapse: collapse; width: 100%; }
+  .num { font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+
+  #app {
+    display: grid;
+    grid-template-columns: 272px 1fr;
+    height: 100vh;
+  }
+
+  /* ── 사이드바 ─────────────────────────────────────────── */
+  #sidebar {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .sidebar-head {
+    padding: 18px 16px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .brand .sub {
+    display: block;
+    margin-top: 2px;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+  }
+  #new-project-row {
+    display: flex;
+    gap: 6px;
+    padding: 12px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  #new-project-name {
+    flex: 1;
+    min-width: 0;
+    padding: 7px 9px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 13px;
+    background: var(--panel-2);
+    color: var(--text);
+  }
+  .btn {
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    border-radius: var(--radius);
+    padding: 7px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: background-color .12s ease, border-color .12s ease;
+  }
+  .btn:hover { background: var(--panel-2); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-accent {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .btn-accent:hover { background: var(--accent-strong); }
+  .btn-danger {
+    color: var(--bad);
+    border-color: #eccaca;
+  }
+  .btn-danger:hover { background: var(--bad-weak); }
+  .btn-sm { padding: 4px 9px; font-size: 12px; }
+
+  #project-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .project-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 9px 10px;
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+    background: transparent;
+    text-align: left;
+    width: 100%;
+  }
+  .project-item:hover { background: var(--panel-2); }
+  .project-item.active {
+    background: var(--accent-weak);
+    border-color: #c4d3f6;
+  }
+  .project-item .pi-main { min-width: 0; }
+  .project-item .pi-name {
+    font-weight: 600;
+    font-size: 13.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .project-item .pi-meta {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 1px;
+  }
+  .pi-count {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .pi-delete {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 4px;
+  }
+  .pi-delete:hover { background: var(--bad-weak); color: var(--bad); }
+  .sidebar-empty {
+    padding: 24px 14px;
+    color: var(--muted);
+    font-size: 12.5px;
+    text-align: center;
+  }
+  .sidebar-foot {
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* ── 메인 ─────────────────────────────────────────────── */
+  #main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+  }
+  #topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  #topbar h1 {
+    font-size: 16px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #topbar .topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .health {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    color: var(--muted);
+    padding: 5px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--panel-2);
+  }
+  .health-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+  }
+  .health-dot.ok { background: var(--good); }
+  .health-dot.warn { background: var(--hold); }
+
+  #content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 22px 24px 60px;
+  }
+  .empty-state {
+    max-width: 420px;
+    margin: 60px auto 0;
+    text-align: center;
+    color: var(--muted);
+  }
+  .empty-state h2 { font-size: 17px; color: var(--text); margin-bottom: 8px; }
+
+  /* ── 드롭존 ───────────────────────────────────────────── */
+  #dropzone {
+    border: 1.5px dashed var(--border);
+    border-radius: 10px;
+    background: var(--panel);
+    padding: 26px 20px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color .12s ease, background-color .12s ease;
+  }
+  #dropzone.drag-active {
+    border-color: var(--accent);
+    background: var(--accent-weak);
+    color: var(--accent-strong);
+  }
+  #dropzone strong { color: var(--text); font-weight: 700; }
+  #dropzone .dz-sub { margin-top: 4px; font-size: 11.5px; }
+
+  section.panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-top: 18px;
+  }
+  .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-head h2 { font-size: 13.5px; font-weight: 700; }
+  .panel-head .hint { font-size: 11.5px; color: var(--muted); }
+  .panel-body { padding: 4px 0; }
+
+  /* ── 자산 테이블 ──────────────────────────────────────── */
+  #assets-table th, #assets-table td {
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  #assets-table th {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--muted);
+    font-weight: 700;
+    background: var(--panel-2);
+  }
+  #assets-table tbody tr:last-child td { border-bottom: none; }
+  #assets-table tbody tr:hover { background: var(--panel-2); }
+  .asset-name { font-weight: 600; }
+  .asset-meta {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .table-wrap { overflow-x: auto; }
+
+  select.field {
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--text);
+    font-size: 12.5px;
+    max-width: 150px;
+  }
+  select.field.field-missing {
+    border-color: var(--bad);
+    background: var(--bad-weak);
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .badge-pending { background: #eceff2; color: var(--muted); }
+  .badge-judging { background: var(--accent-weak); color: var(--accent-strong); }
+  .badge-judged { background: var(--good-weak); color: var(--good); }
+  .badge-failed { background: var(--bad-weak); color: var(--bad); cursor: help; }
+  .badge-good { background: var(--good-weak); color: var(--good); }
+  .badge-bad { background: var(--bad-weak); color: var(--bad); }
+  .badge-hold { background: var(--hold-weak); color: var(--hold); }
+
+  .spinner {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid rgba(36,81,196,.25);
+    border-top-color: var(--accent-strong);
+    animation: spin .7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    .spinner { animation: none; }
+  }
+
+  .summary-cell { font-size: 12px; }
+  .summary-cell .sv-good { color: var(--good); font-weight: 700; }
+  .summary-cell .sv-bad { color: var(--bad); font-weight: 700; }
+  .summary-cell .sv-hold { color: var(--hold); font-weight: 700; }
+  .summary-cell .sv-review { color: var(--accent-strong); font-weight: 700; }
+  .summary-dash { color: var(--muted); }
+
+  .row-actions { display: flex; gap: 6px; }
+
+  /* ── 결과 패널 ────────────────────────────────────────── */
+  #result-panel-wrap { margin-top: 18px; }
+  .result-meta-bar {
+    font-size: 11.5px;
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    padding: 12px 18px;
+    border-top: 1px solid var(--border);
+    background: var(--panel-2);
+    border-radius: 0 0 10px 10px;
+  }
+  .result-meta-bar b { color: var(--text); font-weight: 600; }
+
+  .cards-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    padding: 16px 18px 8px;
+  }
+  .stat-card {
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 12px 14px;
+    background: var(--panel);
+    text-align: left;
+    transition: box-shadow .12s ease, border-color .12s ease;
+  }
+  .stat-card:hover { box-shadow: 0 1px 6px rgba(20,30,50,.08); }
+  .stat-card.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-weak); }
+  .stat-card .stat-label {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+  }
+  .stat-card .stat-value {
+    font-size: 24px;
+    font-weight: 800;
+    margin-top: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-card.stat-good .stat-value { color: var(--good); }
+  .stat-card.stat-bad .stat-value { color: var(--bad); }
+  .stat-card.stat-hold .stat-value { color: var(--hold); }
+  .stat-card.stat-review .stat-value { color: var(--accent-strong); }
+
+  #interview-panel {
+    margin: 4px 18px 14px;
+    background: var(--review-bg);
+    border: 1px solid #ecd98a;
+    border-radius: 9px;
+    padding: 14px 16px;
+  }
+  #interview-panel h3 {
+    font-size: 12.5px;
+    font-weight: 800;
+    color: #6b5100;
+    margin-bottom: 10px;
+  }
+  .interview-card {
+    background: rgba(255,255,255,.55);
+    border-radius: 7px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+  .interview-card:last-child { margin-bottom: 0; }
+  .interview-card .ic-id {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 12px;
+  }
+  .interview-card .ic-name { color: var(--muted); font-size: 12px; margin-left: 6px; }
+  .interview-card .ic-summary { margin-top: 5px; font-size: 12.5px; }
+
+  #items-table th, #items-table td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    font-size: 12.5px;
+  }
+  #items-table th {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--muted);
+    background: var(--panel-2);
+  }
+  #items-table .item-id { font-family: var(--font-mono); font-weight: 700; }
+  #items-table tr.needs-review { background: var(--review-bg); }
+  #items-table tr.needs-review:hover { background: #fbecb8; }
+  .rationale-cell {
+    max-width: 340px;
+    cursor: pointer;
+  }
+  .rationale-clamp {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .rationale-full { white-space: pre-wrap; }
+  .cited-list {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed var(--border);
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .review-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--hold);
+  }
+
+  .toast-stack {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 50;
+  }
+  .toast {
+    background: var(--text);
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.18);
+    max-width: 340px;
+  }
+  .toast.toast-error { background: var(--bad); }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px; height: 1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="sidebar-head">
+      <div class="brand">judge_tool<span class="sub">보안 취약점 판정 워크스페이스</span></div>
+    </div>
+    <div id="new-project-row">
+      <input id="new-project-name" type="text" placeholder="새 프로젝트 이름" maxlength="120" />
+      <button id="new-project-btn" class="btn btn-accent">추가</button>
+    </div>
+    <div id="project-list"><div class="sidebar-empty">불러오는 중…</div></div>
+    <div class="sidebar-foot" id="project-root-hint">저장 위치 확인 중…</div>
+  </aside>
+
+  <main id="main">
+    <div id="topbar">
+      <h1 id="topbar-title">프로젝트를 선택하세요</h1>
+      <div class="topbar-actions">
+        <span id="health" class="health"><span class="health-dot" id="health-dot"></span><span id="health-text">확인 중…</span></span>
+      </div>
+    </div>
+    <div id="content">
+      <div id="empty-state" class="empty-state">
+        <h2>왼쪽에서 프로젝트를 선택하거나 새로 만드세요</h2>
+        <p>프로젝트마다 점검 결과 파일(자산)을 올리고, 프로파일을 지정한 뒤 판정을 실행할 수 있습니다.</p>
+      </div>
+      <div id="project-view" style="display:none;">
+        <div id="dropzone">
+          <div><strong>여기로 파일을 끌어다 놓거나 클릭</strong>해서 점검 결과를 업로드하세요</div>
+          <div class="dz-sub">xml · json · xlsx · csv · txt — 여러 파일 동시 선택 가능</div>
+          <input id="file-input" type="file" multiple class="visually-hidden" />
+        </div>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>자산 목록</h2>
+            <div style="display:flex; gap:8px;">
+              <button id="judge-all-btn" class="btn btn-sm btn-accent">전체 판정 실행</button>
+            </div>
+          </div>
+          <div class="panel-body table-wrap">
+            <table id="assets-table">
+              <thead>
+                <tr>
+                  <th>파일</th>
+                  <th>프로파일</th>
+                  <th>변형</th>
+                  <th>상태</th>
+                  <th>요약</th>
+                  <th>동작</th>
+                </tr>
+              </thead>
+              <tbody id="assets-tbody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <div id="result-panel-wrap"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="toast-stack" id="toast-stack"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var qs = new URLSearchParams(location.search);
+  var TOKEN = qs.get("token") || "";
+
+  var state = {
+    projects: [],
+    profiles: [],
+    profileMap: {},
+    currentPid: null,
+    currentProject: null,
+    selectedAssetId: null,
+    currentResult: null,
+    resultFilter: null,
+    pollTimer: null,
+    judgeStarts: {},
+    expandedRationale: {}
+  };
+
+  var VERDICT_COLOR = { "양호": "good", "취약": "bad", "판단보류": "hold" };
+  var METHOD_LABEL = {
+    llm: "LLM", llm_det: "LLM+결정론", det: "결정론",
+    interview: "인터뷰(내용정리)", interview_holdonly: "인터뷰(내용정리X)",
+    fw_policy: "방화벽 결정론", det_common: "결정론(공통)"
+  };
+  var STATUS_LABEL = { pending: "대기", judging: "판정중", judged: "완료", failed: "실패" };
+
+  function escapeHtml(s) {
+    if (s === null || s === undefined) return "";
+    return String(s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  function fmtBytes(n) {
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+    return (n / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  function toast(msg, isError) {
+    var stack = document.getElementById("toast-stack");
+    var el = document.createElement("div");
+    el.className = "toast" + (isError ? " toast-error" : "");
+    el.textContent = msg;
+    stack.appendChild(el);
+    setTimeout(function () {
+      el.style.transition = "opacity .3s ease";
+      el.style.opacity = "0";
+      setTimeout(function () { stack.removeChild(el); }, 320);
+    }, 3600);
+  }
+
+  function apiFetch(path, options) {
+    options = options || {};
+    var headers = options.headers ? Object.assign({}, options.headers) : {};
+    if (TOKEN) headers["X-Auth-Token"] = TOKEN;
+    options.headers = headers;
+    return fetch(path, options).then(function (resp) {
+      var ct = resp.headers.get("Content-Type") || "";
+      if (ct.indexOf("application/json") !== -1) {
+        return resp.json().then(function (body) {
+          if (!resp.ok || body.ok === false) {
+            var err = new Error(body.error || ("요청 실패 (HTTP " + resp.status + ")"));
+            err.status = resp.status;
+            err.body = body;
+            throw err;
+          }
+          return body;
+        });
+      }
+      if (!resp.ok) {
+        var err2 = new Error("요청 실패 (HTTP " + resp.status + ")");
+        err2.status = resp.status;
+        throw err2;
+      }
+      return resp;
+    });
+  }
+
+  // ── 헬스체크 ───────────────────────────────────────────────────────────
+  function loadHealth() {
+    apiFetch("/api/health").then(function (body) {
+      var dot = document.getElementById("health-dot");
+      var text = document.getElementById("health-text");
+      var hint = document.getElementById("project-root-hint");
+      hint.textContent = "저장 위치: " + body.project_root;
+      if (body.ollama && body.ollama.ok) {
+        dot.className = "health-dot ok";
+        text.textContent = "Ollama 정상 (" + body.model + ")";
+      } else {
+        dot.className = "health-dot warn";
+        text.textContent = "Ollama 연결 안 됨 — 결정론 항목만 판정 가능";
+        dot.title = (body.ollama && body.ollama.error) || "";
+      }
+    }).catch(function () {
+      var dot = document.getElementById("health-dot");
+      dot.className = "health-dot warn";
+      document.getElementById("health-text").textContent = "상태 확인 실패";
+    });
+  }
+
+  // ── 프로파일 ───────────────────────────────────────────────────────────
+  function loadProfiles() {
+    return apiFetch("/api/profiles").then(function (body) {
+      state.profiles = body.profiles;
+      state.profileMap = {};
+      body.profiles.forEach(function (p) { state.profileMap[p.key] = p.variants; });
+    });
+  }
+
+  // ── 프로젝트 목록 ──────────────────────────────────────────────────────
+  function loadProjects() {
+    return apiFetch("/api/projects").then(function (body) {
+      state.projects = body.projects;
+      renderProjectList();
+    });
+  }
+
+  function renderProjectList() {
+    var list = document.getElementById("project-list");
+    if (!state.projects.length) {
+      list.innerHTML = '<div class="sidebar-empty">아직 프로젝트가 없습니다.<br>위에서 새로 만들어 보세요.</div>';
+      return;
+    }
+    list.innerHTML = state.projects.map(function (p) {
+      var counts = p.status_counts || {};
+      var badge = (counts.judging ? counts.judging + "건 진행중" : p.asset_count + "건");
+      var active = p.project_id === state.currentPid ? " active" : "";
+      return (
+        '<div class="project-item' + active + '" data-pid="' + p.project_id + '">' +
+          '<button class="pi-select" data-pid="' + p.project_id + '" style="all:unset; cursor:pointer; display:flex; align-items:center; gap:8px; flex:1; min-width:0;">' +
+            '<span class="pi-main">' +
+              '<span class="pi-name">' + escapeHtml(p.name) + '</span>' +
+              '<span class="pi-meta">' + escapeHtml(p.created_at) + '</span>' +
+            '</span>' +
+            '<span class="pi-count">' + escapeHtml(badge) + '</span>' +
+          '</button>' +
+          '<button class="pi-delete" data-pid="' + p.project_id + '" title="프로젝트 삭제" aria-label="프로젝트 삭제">&times;</button>' +
+        '</div>'
+      );
+    }).join("");
+    Array.prototype.forEach.call(list.querySelectorAll(".pi-select"), function (btn) {
+      btn.addEventListener("click", function () { selectProject(btn.getAttribute("data-pid")); });
+    });
+    Array.prototype.forEach.call(list.querySelectorAll(".pi-delete"), function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        deleteProject(btn.getAttribute("data-pid"));
+      });
+    });
+  }
+
+  function createProject() {
+    var input = document.getElementById("new-project-name");
+    var name = input.value.trim();
+    if (!name) { toast("프로젝트 이름을 입력하세요.", true); return; }
+    apiFetch("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name })
+    }).then(function (body) {
+      input.value = "";
+      return loadProjects().then(function () { selectProject(body.project.project_id); });
+    }).catch(function (e) { toast(e.message, true); });
+  }
+
+  function deleteProject(pid) {
+    var proj = state.projects.find(function (p) { return p.project_id === pid; });
+    var name = proj ? proj.name : pid;
+    if (!confirm('프로젝트 "' + name + '"와 그 안의 모든 자산·결과를 삭제합니다. 계속할까요?')) return;
+    apiFetch("/api/projects/" + pid + "/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+      .then(function () {
+        if (state.currentPid === pid) {
+          state.currentPid = null;
+          stopPolling();
+          document.getElementById("project-view").style.display = "none";
+          document.getElementById("empty-state").style.display = "block";
+          document.getElementById("topbar-title").textContent = "프로젝트를 선택하세요";
+        }
+        return loadProjects();
+      })
+      .catch(function (e) { toast(e.message, true); });
+  }
+
+  // ── 프로젝트 선택/상세 ─────────────────────────────────────────────────
+  function selectProject(pid) {
+    state.currentPid = pid;
+    state.selectedAssetId = null;
+    state.resultFilter = null;
+    document.getElementById("empty-state").style.display = "none";
+    document.getElementById("project-view").style.display = "block";
+    document.getElementById("result-panel-wrap").innerHTML = "";
+    renderProjectList();
+    refreshProject();
+  }
+
+  function refreshProject() {
+    if (!state.currentPid) return Promise.resolve();
+    return apiFetch("/api/projects/" + state.currentPid).then(function (body) {
+      state.currentProject = body.project;
+      document.getElementById("topbar-title").textContent = body.project.name;
+      renderAssetsTable();
+      manageBackgroundPolling();
+      // 사이드바 카운트 배지도 최신화
+      loadProjects();
+    }).catch(function (e) { toast(e.message, true); });
+  }
+
+  function manageBackgroundPolling() {
+    var anyJudging = (state.currentProject.assets || []).some(function (a) {
+      if (a.status === "judging" && !state.judgeStarts[a.asset_id]) {
+        state.judgeStarts[a.asset_id] = Date.now();
+      }
+      return a.status === "judging";
+    });
+    if (anyJudging && !state.pollTimer) {
+      state.pollTimer = setInterval(refreshProject, 2000);
+    } else if (!anyJudging) {
+      stopPolling();
+    }
+  }
+
+  function stopPolling() {
+    if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; }
+  }
+
+  function elapsedLabel(aid) {
+    var start = state.judgeStarts[aid];
+    if (!start) return "";
+    var sec = Math.floor((Date.now() - start) / 1000);
+    var mm = Math.floor(sec / 60);
+    var ss = sec % 60;
+    return (mm < 10 ? "0" : "") + mm + ":" + (ss < 10 ? "0" : "") + ss;
+  }
+
+  // ── 자산 테이블 ────────────────────────────────────────────────────────
+  function renderAssetsTable() {
+    var tbody = document.getElementById("assets-tbody");
+    var assets = (state.currentProject && state.currentProject.assets) || [];
+    if (!assets.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted); text-align:center; padding:26px;">업로드된 자산이 없습니다. 위 영역에 파일을 드롭하세요.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = assets.map(renderAssetRow).join("");
+
+    Array.prototype.forEach.call(tbody.querySelectorAll("select.profile-select"), function (sel) {
+      sel.addEventListener("change", function () {
+        var aid = sel.getAttribute("data-aid");
+        setAssetProfile(aid, sel.value, null);
+      });
+    });
+    Array.prototype.forEach.call(tbody.querySelectorAll("select.variant-select"), function (sel) {
+      sel.addEventListener("change", function () {
+        var aid = sel.getAttribute("data-aid");
+        var profile = sel.getAttribute("data-profile");
+        setAssetProfile(aid, profile, sel.value || null);
+      });
+    });
+    Array.prototype.forEach.call(tbody.querySelectorAll("[data-action]"), function (btn) {
+      btn.addEventListener("click", function () {
+        var aid = btn.getAttribute("data-aid");
+        var action = btn.getAttribute("data-action");
+        if (action === "judge") judgeAsset(aid);
+        else if (action === "delete") deleteAsset(aid);
+        else if (action === "result") showResult(aid);
+      });
+    });
+  }
+
+  function renderAssetRow(a) {
+    var profileOptions = ['<option value="">— 선택 —</option>'].concat(
+      state.profiles.map(function (p) {
+        var sel = p.key === a.profile ? " selected" : "";
+        return '<option value="' + p.key + '"' + sel + '>' + p.key + '</option>';
+      })
+    ).join("");
+    var profileMissing = !a.profile;
+    var variants = a.profile ? (state.profileMap[a.profile] || []) : [];
+    var variantOptions = ['<option value="">자동식별</option>'].concat(
+      variants.map(function (v) {
+        var sel = v === a.variant ? " selected" : "";
+        return '<option value="' + v + '"' + sel + '>' + v + '</option>';
+      })
+    ).join("");
+
+    var statusHtml = renderStatusBadge(a);
+    var summaryHtml = renderSummaryCell(a);
+    var judging = a.status === "judging";
+    var candidateHint = "";
+    if (profileMissing && a.profile_candidates && a.profile_candidates.length) {
+      candidateHint = '<div class="asset-meta">후보: ' + escapeHtml(a.profile_candidates.join(", ")) + '</div>';
+    }
+
+    return (
+      '<tr>' +
+        '<td>' +
+          '<div class="asset-name">' + escapeHtml(a.original_filename) + '</div>' +
+          '<div class="asset-meta">' + fmtBytes(a.size_bytes) + ' · ' + escapeHtml(a.uploaded_at) + '</div>' +
+          candidateHint +
+        '</td>' +
+        '<td><select class="field profile-select' + (profileMissing ? " field-missing" : "") + '" data-aid="' + a.asset_id + '"' + (judging ? " disabled" : "") + '>' + profileOptions + '</select></td>' +
+        '<td>' + (a.profile ? '<select class="field variant-select" data-aid="' + a.asset_id + '" data-profile="' + a.profile + '"' + (judging ? " disabled" : "") + '>' + variantOptions + '</select>' : '<span class="summary-dash">—</span>') + '</td>' +
+        '<td>' + statusHtml + '</td>' +
+        '<td>' + summaryHtml + '</td>' +
+        '<td><div class="row-actions">' +
+          '<button class="btn btn-sm btn-accent" data-action="judge" data-aid="' + a.asset_id + '"' + ((judging || !a.profile) ? " disabled" : "") + '>' + (a.status === "judged" ? "재판정" : "판정 실행") + '</button>' +
+          (a.status === "judged" ? '<button class="btn btn-sm" data-action="result" data-aid="' + a.asset_id + '">결과 보기</button>' : "") +
+          '<button class="btn btn-sm btn-danger" data-action="delete" data-aid="' + a.asset_id + '"' + (judging ? " disabled" : "") + '>삭제</button>' +
+        '</div></td>' +
+      '</tr>'
+    );
+  }
+
+  function renderStatusBadge(a) {
+    if (a.status === "judging") {
+      return '<span class="badge badge-judging"><span class="spinner"></span>판정중 ' + elapsedLabel(a.asset_id) + '</span>';
+    }
+    if (a.status === "failed") {
+      return '<span class="badge badge-failed" title="' + escapeHtml(a.error || "") + '">실패 ⓘ</span>';
+    }
+    if (a.status === "judged") {
+      return '<span class="badge badge-judged">완료</span>';
+    }
+    return '<span class="badge badge-pending">대기</span>';
+  }
+
+  function renderSummaryCell(a) {
+    if (!a.summary) return '<span class="summary-dash">—</span>';
+    var vc = a.summary.verdict_counts || {};
+    return (
+      '<span class="summary-cell">' +
+        '<span class="sv-good">양호 ' + (vc["양호"] || 0) + '</span> · ' +
+        '<span class="sv-bad">취약 ' + (vc["취약"] || 0) + '</span> · ' +
+        '<span class="sv-hold">판단보류 ' + (vc["판단보류"] || 0) + '</span> · ' +
+        '<span class="sv-review">재검토 ' + (a.summary.needs_review || 0) + '</span>' +
+      '</span>'
+    );
+  }
+
+  function setAssetProfile(aid, profile, variant) {
+    if (!profile) return;
+    apiFetch("/api/projects/" + state.currentPid + "/assets/" + aid + "/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile: profile, variant: variant })
+    }).then(function () { refreshProject(); })
+      .catch(function (e) { toast(e.message, true); refreshProject(); });
+  }
+
+  function judgeAsset(aid) {
+    apiFetch("/api/projects/" + state.currentPid + "/assets/" + aid + "/judge", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}"
+    }).then(function () {
+      state.judgeStarts[aid] = Date.now();
+      refreshProject();
+    }).catch(function (e) { toast(e.message, true); });
+  }
+
+  function judgeAllAssets() {
+    apiFetch("/api/projects/" + state.currentPid + "/judge_all", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}"
+    }).then(function (body) {
+      body.enqueued.forEach(function (aid) { state.judgeStarts[aid] = Date.now(); });
+      if (body.skipped && body.skipped.length) {
+        toast(body.enqueued.length + "건 실행, " + body.skipped.length + "건 건너뜀(프로파일 미지정 등).");
+      } else {
+        toast(body.enqueued.length + "건 판정을 시작했습니다.");
+      }
+      refreshProject();
+    }).catch(function (e) { toast(e.message, true); });
+  }
+
+  function deleteAsset(aid) {
+    if (!confirm("이 자산과 판정 결과를 삭제합니다. 계속할까요?")) return;
+    apiFetch("/api/projects/" + state.currentPid + "/assets/" + aid + "/delete", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}"
+    }).then(function () {
+      if (state.selectedAssetId === aid) {
+        state.selectedAssetId = null;
+        document.getElementById("result-panel-wrap").innerHTML = "";
+      }
+      refreshProject();
+    }).catch(function (e) { toast(e.message, true); });
+  }
+
+  // ── 업로드 ────────────────────────────────────────────────────────────
+  function handleFiles(fileList) {
+    if (!state.currentPid) { toast("먼저 프로젝트를 선택하세요.", true); return; }
+    var files = Array.prototype.slice.call(fileList);
+    if (!files.length) return;
+    var chain = Promise.resolve();
+    var okCount = 0, failCount = 0;
+    files.forEach(function (file) {
+      chain = chain.then(function () {
+        return apiFetch("/api/projects/" + state.currentPid + "/assets", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "X-Filename": encodeURIComponent(file.name)
+          },
+          body: file
+        }).then(function () { okCount++; })
+          .catch(function (e) { failCount++; toast(file.name + ": " + e.message, true); });
+      });
+    });
+    chain.then(function () {
+      if (okCount) toast(okCount + "개 파일 업로드 완료" + (failCount ? (", " + failCount + "개 실패") : "") + ".");
+      refreshProject();
+    });
+  }
+
+  // ── 결과 패널 ────────────────────────────────────────────────────────
+  function showResult(aid) {
+    state.selectedAssetId = aid;
+    state.resultFilter = null;
+    apiFetch("/api/projects/" + state.currentPid + "/assets/" + aid + "/result").then(function (body) {
+      state.currentResult = body.result;
+      renderResultPanel();
+      document.getElementById("result-panel-wrap").scrollIntoView({ behavior: "smooth", block: "start" });
+    }).catch(function (e) { toast(e.message, true); });
+  }
+
+  function renderResultPanel() {
+    var wrap = document.getElementById("result-panel-wrap");
+    var result = state.currentResult;
+    if (!result) { wrap.innerHTML = ""; return; }
+    var judgments = result.judgments || [];
+    var meta = result.metadata || {};
+    var cov = result.coverage || {};
+
+    var counts = { "양호": 0, "취약": 0, "판단보류": 0 };
+    var reviewCount = 0;
+    judgments.forEach(function (j) {
+      if (counts[j.verdict] !== undefined) counts[j.verdict]++;
+      if (j.needs_review) reviewCount++;
+    });
+
+    var interviewItems = judgments.filter(function (j) {
+      return j.label === "B" || (j.interview_summary && j.interview_summary.trim());
+    });
+
+    var filtered = judgments;
+    if (state.resultFilter === "양호" || state.resultFilter === "취약" || state.resultFilter === "판단보류") {
+      filtered = judgments.filter(function (j) { return j.verdict === state.resultFilter; });
+    } else if (state.resultFilter === "review") {
+      filtered = judgments.filter(function (j) { return j.needs_review; });
+    }
+
+    var html = '';
+    html += '<section class="panel">';
+    html += '<div class="panel-head"><h2>판정 결과 — ' + escapeHtml(meta.source_file || "") + '</h2>';
+    html += '<a class="btn btn-sm" href="/api/projects/' + state.currentPid + '/assets/' + state.selectedAssetId + '/result.xlsx' + (TOKEN ? ("?token=" + encodeURIComponent(TOKEN)) : "") + '">엑셀 다운로드</a></div>';
+
+    html += '<div class="cards-row">';
+    html += statCard("good", "양호", counts["양호"]);
+    html += statCard("bad", "취약", counts["취약"]);
+    html += statCard("hold", "판단보류", counts["판단보류"]);
+    html += statCard("review", "재검토 필요", reviewCount, "review");
+    html += '</div>';
+
+    if (interviewItems.length) {
+      html += '<div id="interview-panel"><h3>담당자 인터뷰 필요 항목 (' + interviewItems.length + '건)</h3>';
+      html += interviewItems.map(function (j) {
+        return (
+          '<div class="interview-card">' +
+            '<span class="ic-id">' + escapeHtml(j.item_id) + '</span>' +
+            '<span class="ic-name">' + escapeHtml(j.item_name) + '</span>' +
+            '<div class="ic-summary">' + escapeHtml(j.interview_summary || "(요약 없음 — 판단기준상 인터뷰만 필요)") + '</div>' +
+          '</div>'
+        );
+      }).join("");
+      html += '</div>';
+    }
+
+    html += '<div class="panel-body table-wrap">';
+    html += '<table id="items-table"><thead><tr>' +
+      '<th>ID</th><th>항목명</th><th>라벨</th><th>판단방식</th><th>판정</th><th>재검토</th><th>근거</th>' +
+      '</tr></thead><tbody>';
+    html += filtered.map(renderItemRow).join("") ||
+      '<tr><td colspan="7" style="text-align:center; color:var(--muted); padding:20px;">표시할 항목이 없습니다.</td></tr>';
+    html += '</tbody></table></div>';
+
+    html += '<div class="result-meta-bar">' +
+      '<span><b>도구</b> ' + escapeHtml(meta.tool_version || "") + '</span>' +
+      '<span><b>기준</b> ' + escapeHtml(meta.criteria_version || "") + '</span>' +
+      '<span><b>모델</b> ' + escapeHtml(meta.model || "") + '</span>' +
+      '<span><b>생성 시각</b> ' + escapeHtml(meta.generated_at || "") + '</span>' +
+      '<span><b>프로파일/변형</b> ' + escapeHtml(meta.profile || "") + ' / ' + escapeHtml(meta.variant || "") + '</span>' +
+      '<span><b>커버리지</b> ' + escapeHtml(cov.judged) + '/' + escapeHtml(cov.expected) + '</span>' +
+    '</div>';
+    html += '</section>';
+
+    wrap.innerHTML = html;
+
+    Array.prototype.forEach.call(wrap.querySelectorAll(".stat-card"), function (card) {
+      if (card.getAttribute("data-filter") === (state.resultFilter || "")) card.classList.add("active");
+      card.addEventListener("click", function () {
+        var f = card.getAttribute("data-filter");
+        state.resultFilter = (state.resultFilter === f) ? null : f;
+        renderResultPanel();
+      });
+    });
+    Array.prototype.forEach.call(wrap.querySelectorAll(".rationale-cell"), function (cell) {
+      cell.addEventListener("click", function () {
+        var id = cell.getAttribute("data-id");
+        state.expandedRationale[id] = !state.expandedRationale[id];
+        renderResultPanel();
+      });
+    });
+  }
+
+  function statCard(kind, label, value, filterKey) {
+    var active = state.resultFilter === (filterKey || label) ? " active" : "";
+    return (
+      '<button class="stat-card stat-' + kind + active + '" data-filter="' + (filterKey || label) + '">' +
+        '<div class="stat-label">' + escapeHtml(label) + '</div>' +
+        '<div class="stat-value num">' + value + '</div>' +
+      '</button>'
+    );
+  }
+
+  function renderItemRow(j) {
+    var vcls = VERDICT_COLOR[j.verdict] || "hold";
+    var expanded = !!state.expandedRationale[j.item_id];
+    var rationaleBody = expanded
+      ? '<div class="rationale-full">' + escapeHtml(j.rationale) + '</div>' +
+        (j.cited_evidence && j.cited_evidence.length
+          ? '<div class="cited-list">인용 증거: ' + escapeHtml(j.cited_evidence.join(" | ")) + '</div>'
+          : "")
+      : '<div class="rationale-clamp">' + escapeHtml(j.rationale) + '</div>';
+    return (
+      '<tr class="' + (j.needs_review ? "needs-review" : "") + '">' +
+        '<td class="item-id">' + escapeHtml(j.item_id) + '</td>' +
+        '<td>' + escapeHtml(j.item_name) + '</td>' +
+        '<td>' + escapeHtml(j.label) + '</td>' +
+        '<td>' + escapeHtml(METHOD_LABEL[j.judgment_method] || j.judgment_method) + '</td>' +
+        '<td><span class="badge badge-' + vcls + '">' + escapeHtml(j.verdict) + '</span></td>' +
+        '<td>' + (j.needs_review ? '<span class="review-dot" title="재검토 필요"></span>' : "") + '</td>' +
+        '<td class="rationale-cell" data-id="' + escapeHtml(j.item_id) + '">' + rationaleBody + '</td>' +
+      '</tr>'
+    );
+  }
+
+  // ── 초기화 ────────────────────────────────────────────────────────────
+  function initDropzone() {
+    var dz = document.getElementById("dropzone");
+    var input = document.getElementById("file-input");
+    dz.addEventListener("click", function () { input.click(); });
+    dz.addEventListener("dragover", function (e) { e.preventDefault(); dz.classList.add("drag-active"); });
+    dz.addEventListener("dragleave", function () { dz.classList.remove("drag-active"); });
+    dz.addEventListener("drop", function (e) {
+      e.preventDefault();
+      dz.classList.remove("drag-active");
+      handleFiles(e.dataTransfer.files);
+    });
+    input.addEventListener("change", function () {
+      handleFiles(input.files);
+      input.value = "";
+    });
+  }
+
+  function init() {
+    document.getElementById("new-project-btn").addEventListener("click", createProject);
+    document.getElementById("new-project-name").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") createProject();
+    });
+    document.getElementById("judge-all-btn").addEventListener("click", judgeAllAssets);
+    initDropzone();
+
+    loadHealth();
+    loadProfiles().then(loadProjects);
+    setInterval(loadHealth, 15000);
+  }
+
+  document.addEventListener("DOMContentLoaded", init);
+})();
+</script>
+</body>
+</html>

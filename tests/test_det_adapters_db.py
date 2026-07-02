@@ -322,11 +322,13 @@ class TestResultMapping:
         assert isinstance(fv, ForcedVerdict)
 
     def test_verdict_good_structure(self):
-        """양호 ForcedVerdict 구조."""
-        # DBM-003 mysql: 비어있는 RESULT → 양호
-        raw = _make_raw_ev({"DBM-003": {"RESULT": []}})
-        fv = judge("DBM-003", raw, "mysql_native", {})
-        # analysis가 조건 평가 후 빈 위반 → 양호
+        """양호 ForcedVerdict 구조.
+
+        DBM-003은 모드A2(classify-then-hold)로 항상 판단보류이므로 이 구조
+        테스트에는 부적합 — DBM-006(빈 RESULT → 양호)으로 교체.
+        """
+        raw = _make_raw_ev({"DBM-006": {"RESULT": []}})
+        fv = judge("DBM-006", raw, "mysql_native", {})
         if fv.handled:
             assert fv.verdict in ("양호", "취약"), f"알 수 없는 verdict: {fv.verdict}"
             assert fv.confidence == 0.9
@@ -464,13 +466,16 @@ class TestR3FalsePositiveBlock:
             )
 
     def test_normal_input_good_verdict_unchanged(self):
-        """정상 입력(예외 없음) → 빈 위반 → 양호 불변 (R3 무간섭)."""
+        """정상 입력(예외 없음) → 빈 위반 → 양호 불변 (R3 무간섭).
+
+        DBM-003은 모드A2로 항상 판단보류(빈 RESULT는 미수집 보류)이므로
+        이 R3 무간섭 검증에는 DBM-006(빈 RESULT → 양호 유지 항목)을 사용한다.
+        """
         import judge_tool.det_adapters.db as _db
         _db._RUN_CACHE.clear()
 
-        # DBM-003: RESULT 비어있음 → analysis 예외 없이 빈 위반 → 양호 기대
-        data = {"DBM-003": {"RESULT": []}}
-        fv = judge("DBM-003", json.dumps(data), "mysql_native", {})
+        data = {"DBM-006": {"RESULT": []}}
+        fv = judge("DBM-006", json.dumps(data), "mysql_native", {})
         # 예외 없으므로 exc_keys=frozenset() → R3 차단 미진입 → 양호
         if fv.handled:
             assert fv.verdict == "양호", (
@@ -718,12 +723,17 @@ class TestMysqlNativeE2E:
         )
 
     def test_det_dbm003_handled(self):
-        """DBM-003 mysql: DET → handled=True."""
+        """DBM-003 mysql: 모드A2(classify-then-hold) → handled=True, 항상 판단보류.
+
+        실제 계정 목록이 수집되면 결정론 계정분류 정리정보(citations +
+        interview_summary)를 동반한 판단보류로 귀결된다(양호/취약 자동판정 금지).
+        """
         raw_ev = self._get_raw_ev()
         fv = judge("DBM-003", raw_ev, "mysql_native", {})
         assert fv.handled is True
-        assert fv.verdict in ("양호", "취약")
-        assert fv.confidence == 0.9
+        assert fv.verdict == "판단보류"
+        assert fv.citations, "DBM-003 모드A2: citations(계정분류 정리정보) 비어있음"
+        assert fv.interview_summary, "DBM-003 모드A2: interview_summary 비어있음"
 
     def test_det_dbm017_gate_blocked(self):
         """DBM-017 mysql: label B 이관 → STUB → gate 차단 → handled=False.
@@ -1118,16 +1128,18 @@ class TestCloudDetDetermination:
         _db._RUN_CACHE.clear()
 
     def test_mysql_rds_dbm003_no_violation_is_good(self):
-        """DBM-003 mysql_rds DET: 위반 없음 → 양호."""
-        # mysql cloud dbm_003: ACCOUNT_LOCKED/PASSWORD_EXPIRED 조건 필요
-        # RESULT=[] → 위반 없음 → 양호
+        """DBM-003 mysql_rds: 모드A2(classify-then-hold) — RESULT=[] → 계정 미수집 판단보류.
+
+        DBM-003은 label B 의도로 항상 판단보류(양호 자동판정 금지). RESULT가
+        완전히 비어있으면 계정목록 자체가 수집되지 않은 것으로 간주해 보류한다.
+        """
         raw = _make_raw_ev({"DBM-003": {"RESULT": []}})
         fv = judge("DBM-003", raw, "mysql_rds", {})
         if fv.handled:
-            assert fv.verdict == "양호", (
-                f"DBM-003/mysql_rds: 위반없음인데 양호가 아님: {fv}"
+            assert fv.verdict == "판단보류", (
+                f"DBM-003/mysql_rds: 모드A2인데 판단보류가 아님: {fv}"
             )
-            assert fv.confidence == 0.9
+            assert fv.verdict != "양호"
 
     def test_mysql_rds_dbm004_violation_is_bad(self):
         """DBM-004 mysql_rds: Batch1 모드A(detect-then-hold) — 후보 탐지 → 판단보류+목록.
@@ -1151,25 +1163,27 @@ class TestCloudDetDetermination:
         assert len(fv.citations) >= 1  # 후보 목록
 
     def test_pg_rds_dbm003_det_handled(self):
-        """DBM-003 pg_rds DET: cloud pg는 native와 달리 DET → gate 통과 확인.
+        """DBM-003 pg_rds: cloud pg는 native와 달리 DET → gate 통과, 모드A2 판단보류.
 
-        cloud pg dbm_003: rolvaliduntil/rolname 직접 비교.
-        RESULT=[] → 빈 위반 → 양호(handled=True).
+        cloud pg dbm_003: rolvaliduntil/rolname 직접 비교(gate 통과 확인용).
+        RESULT=[] → 계정목록 미수집 → 판단보류(handled=True, 양호 자동판정 금지).
         """
         raw = _make_raw_ev({"DBM-003": {"RESULT": []}})
         fv = judge("DBM-003", raw, "pg_rds", {})
         # pg native는 STUB(handled=False), pg_rds는 DET(handled=True)
         if fv.handled:
-            assert fv.verdict in ("양호", "취약"), (
-                f"DBM-003/pg_rds: 예상치 못한 verdict: {fv.verdict}"
+            assert fv.verdict == "판단보류", (
+                f"DBM-003/pg_rds: 모드A2인데 판단보류가 아님: {fv.verdict}"
             )
         # 적어도 STUB이 아님(handled=False가 STUB gate 차단이 아닌 다른 이유면 OK)
         # pg_rds=DET이므로 gate는 통과해야 하고, 이후 evidence/run 결과에 따라 분기
 
     def test_mssql_rds_dbm003_det_violation(self):
-        """DBM-003 mssql_rds DET: 위반 유도 → 취약.
+        """DBM-003 mssql_rds: 모드A2 — 활성 계정 존재 → 판단보류 + 계정분류 정리정보.
 
-        mssql cloud dbm_003: is_disabled='0' AND modify_date 6개월 초과 → 위반.
+        mssql cloud dbm_003 벤더 조건(is_disabled='0' AND modify_date 6개월 초과)은
+        "취약 후보"였으나 모드A2는 자동 취약/양호 대신 항상 판단보류로 계정을
+        분류해 담당자 확인을 요구한다(거짓양호 방지).
         """
         raw = _make_raw_ev({
             "DBM-003_1": {
@@ -1180,9 +1194,11 @@ class TestCloudDetDetermination:
         })
         fv = judge("DBM-003", raw, "mssql_rds", {})
         if fv.handled:
-            assert fv.verdict == "취약", (
-                f"DBM-003/mssql_rds: 6개월 초과 계정 있는데 취약이 아님: {fv}"
+            assert fv.verdict == "판단보류", (
+                f"DBM-003/mssql_rds: 모드A2인데 판단보류가 아님: {fv}"
             )
+            assert fv.verdict != "양호"
+            assert fv.citations
 
     def test_pg_rds_dbm008_det_violation(self):
         """DBM-008 pg_rds DET: rolvaliduntil=None 계정 → 취약.
@@ -1325,11 +1341,32 @@ class TestBatch1Classification:
         assert len(fv.citations) >= 1
 
     def test_mode_a_dbm004_no_candidate_good(self):
-        """모드A: DBM-004 후보 없음 → 양호."""
-        raw = _make_raw_ev({"DBM-004": {"RESULT": []}})
+        """모드A: DBM-004 후보 없음(RESULT 존재, 무해행) → 양호.
+
+        RESULT가 비어있지 않은 상태에서 후보가 0건이어야 진짜 "권한 없음=양호"다.
+        (RESULT가 완전히 0행인 경우는 신규 수집실패 가드 대상 — 아래
+        test_mode_a_dbm004_empty_result_holds 참조.)
+        """
+        raw = _make_raw_ev({"DBM-004": {"RESULT": [
+            {"GRANTEE": "'app'@'%'", "PRIVILEGE_TYPE": "SELECT"}
+        ]}})
         fv = judge("DBM-004", raw, "mysql_native", {})
         assert fv.handled is True
         assert fv.verdict == "양호"
+
+    def test_mode_a_dbm004_empty_result_holds(self):
+        """모드A: DBM-004 RESULT 전체 0행(수집실패) → 판단보류(양호 자동판정 금지).
+
+        후보 0건이 "권한 없음(양호)"인지 "권한목록 자체를 수집 못함(미수집)"인지
+        구분하지 못하면 거짓양호가 될 수 있다 — RESULT 0행은 수집실패로 간주한다.
+        """
+        raw = _make_raw_ev({"DBM-004": {"RESULT": []}})
+        fv = judge("DBM-004", raw, "mysql_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "판단보류", (
+            f"DBM-004 RESULT 0행인데 판단보류가 아님: {fv.verdict}"
+        )
+        assert fv.verdict != "양호"
 
     def test_mode_b_pg_native_dbm006_structural_vuln(self):
         """모드B: pg_native DBM-006 → 취약(구조적, 코어 실패잠금 부재), 데이터 무관."""
@@ -5050,3 +5087,137 @@ class TestDBM036Deny:
             {"object": "xp_regread", "permission": "EXECUTE", "state_desc": "GRANT", "grantee": "public"}]}})
         fv = judge("DBM-036", raw, "mssql_native", {})
         assert fv.verdict == "취약", f"public GRANT → {fv.verdict} (기대 취약)"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 모드A2 classify-then-hold (DBM-003 — 업무상 불필요한 계정 존재) 회귀 고정
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestModeA2Dbm003ClassifyHold:
+    """모드A2(classify-then-hold, DBM-003) 회귀 고정 — 4엔진 x 혼합 계정목록 → 항상 판단보류.
+
+    DBM-003은 label B 의도(업무 필요성=사람 판단)이나 기존 det_common이 활성 의심계정을
+    벤더 후보 조건(잠김/만료)에 안 걸려 후보 0건으로 놓쳐 거짓양호가 발생했다.
+    모드A2는 항상 판단보류 + 결정론 계정분류 정리정보(활성/잠김만료/시스템내장/불명 +
+    의심 계정명)를 citations/interview_summary로 동반한다.
+    """
+
+    def setup_method(self):
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+
+    def test_mysql_mixed_accounts_hold(self):
+        raw = _make_raw_ev({"DBM-003": {"RESULT": [
+            {"USER": "root", "HOST": "localhost", "ACCOUNT_LOCKED": "N"},
+            {"USER": "mysql.sys", "HOST": "localhost", "ACCOUNT_LOCKED": "Y"},
+            {"USER": "app_svc", "HOST": "%", "ACCOUNT_LOCKED": "N"},
+        ]}})
+        fv = judge("DBM-003", raw, "mysql_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "판단보류"
+        assert fv.verdict != "양호"
+        assert any("[활성" in c for c in fv.citations)
+        assert any("[잠김/만료" in c for c in fv.citations)
+        assert any("[시스템내장" in c for c in fv.citations)
+        assert fv.interview_summary
+
+    def test_mysql_active_suspicious_name_marker_regression(self):
+        """회귀고정(핵심): mysql 활성 test_api 계정 → [의심계정명] 마커 필수.
+
+        원래 거짓양호(활성 계정은 벤더 후보 조건에 안 걸려 후보0→양호로 놓침) 버그의
+        재발 방지 핵심 회귀 핀 — 활성 상태의 의심 계정명이 반드시 citations에 남아야 한다.
+        """
+        raw = _make_raw_ev({"DBM-003": {"RESULT": [
+            {"USER": "test_api", "HOST": "%", "ACCOUNT_LOCKED": "N"},
+        ]}})
+        fv = judge("DBM-003", raw, "mysql_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "판단보류"
+        assert fv.verdict != "양호"
+        assert any("[의심계정명]" in c and "test_api" in c for c in fv.citations), (
+            f"활성 의심계정(test_api)이 citations에 없음(핵심 회귀): {fv.citations}"
+        )
+
+    def test_mariadb_mixed_accounts_hold(self):
+        raw = _make_raw_ev({"DBM-003": {"RESULT": [
+            {"USER": "root", "HOST": "localhost", "PASSWORD_EXPIRED": "N"},
+            {"USER": "backup_svc", "HOST": "%", "PASSWORD_EXPIRED": "N"},
+        ]}})
+        fv = judge("DBM-003", raw, "mariadb_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "판단보류"
+        assert fv.interview_summary
+        assert any("의심계정명" in c for c in fv.citations)
+
+    def test_oracle_mixed_accounts_hold(self):
+        raw = _make_raw_ev({"DBM-003": {"RESULT": [
+            {"username": "SYS", "account_status": "OPEN", "last_login": "", "expiry_date": ""},
+            {"username": "OLD_ACCT", "account_status": "OPEN", "last_login": "", "expiry_date": ""},
+            {"username": "LOCKED_ACCT", "account_status": "LOCKED", "last_login": "", "expiry_date": ""},
+        ]}})
+        fv = judge("DBM-003", raw, "oracle_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "판단보류"
+        assert any("[시스템내장" in c for c in fv.citations)
+        assert any("[잠김/만료" in c for c in fv.citations)
+        assert fv.interview_summary
+
+    def test_mssql_mixed_accounts_hold(self):
+        raw = _make_raw_ev({"DBM-003_1": {"RESULT": [
+            {"name": "sa", "is_disabled": "0", "modify_date": "Jun 15 2026  9:41AM"},
+            {"name": "temp_admin", "is_disabled": "0", "modify_date": "Jun 15 2026  9:41AM"},
+        ]}})
+        fv = judge("DBM-003", raw, "mssql_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "판단보류"
+        assert any("의심계정명" in c and "temp_admin" in c for c in fv.citations)
+        assert fv.interview_summary
+
+    def test_postgresql_cloud_mixed_accounts_hold(self):
+        """pg native는 STUB(handled=False)이므로 cloud(pg_rds)에서 모드A2를 검증한다."""
+        raw = _make_raw_ev({"DBM-003": {"RESULT": [
+            {"rolname": "postgres", "rolcanlogin": "t", "rolvaliduntil": None},
+            {"rolname": "old_reporting", "rolcanlogin": "t", "rolvaliduntil": None},
+        ]}})
+        fv = judge("DBM-003", raw, "pg_rds", {})
+        assert fv.handled is True
+        assert fv.verdict == "판단보류"
+        assert any("의심계정명" in c and "old_reporting" in c for c in fv.citations)
+
+    def test_empty_result_uncollected_hold(self):
+        """RESULT 0행 → [계정목록 미수집] 판단보류(양호 자동판정 금지)."""
+        raw = _make_raw_ev({"DBM-003": {"RESULT": []}})
+        fv = judge("DBM-003", raw, "mysql_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "판단보류"
+        assert "미수집" in fv.rationale
+
+    def test_unknown_rows_only_uncollected_hold(self):
+        """해석 불가 행만 있는 경우(필수 식별필드 부재) → 미수집 판단보류.
+
+        USER 필드가 없는 행은 _dbm003_classify_account가 None을 반환하므로
+        classified가 0건이 되어 "계정목록 미수집" 경로로 흡수된다.
+        """
+        raw = _make_raw_ev({"DBM-003": {"RESULT": [{"UNKNOWN_FIELD": "x"}]}})
+        fv = judge("DBM-003", raw, "mysql_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "판단보류"
+        assert "미수집" in fv.rationale
+
+    def test_never_good_attribute_guard(self):
+        """속성가드: 어떤 입력에서도 DBM-003 모드A2는 verdict != '양호'."""
+        cases = [
+            ("mysql_native", {"DBM-003": {"RESULT": []}}),
+            ("mariadb_native", {"DBM-003": {"RESULT": [
+                {"USER": "root", "HOST": "localhost", "PASSWORD_EXPIRED": "N"}]}}),
+            ("oracle_native", {"DBM-003": {"RESULT": [
+                {"username": "SYS", "account_status": "OPEN", "last_login": "", "expiry_date": ""}]}}),
+            ("mssql_native", {"DBM-003_1": {"RESULT": [
+                {"name": "sa", "is_disabled": "0", "modify_date": "Jun 15 2026  9:41AM"}]}}),
+        ]
+        for variant, data in cases:
+            import judge_tool.det_adapters.db as _db
+            _db._RUN_CACHE.clear()
+            raw = _make_raw_ev(data)
+            fv = judge("DBM-003", raw, variant, {})
+            assert fv.verdict != "양호", f"{variant}: DBM-003 모드A2인데 양호 판정! {fv}"

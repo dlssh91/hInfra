@@ -461,3 +461,43 @@ def test_dbm016_no_auto_verdict_from_det_path():
         assert j is not None, f"{engine} DBM-016 판정 None"
         assert j.verdict == "판단보류", (
             f"{engine} DBM-016: 자동 verdict 금지 — 판단보류여야 함, 실제: {j.verdict}")
+
+
+def test_dbm003_interview_summary_passthrough():
+    """모드A2(DBM-003) det가 생성한 interview_summary가 _det_common_handler를 거쳐
+    Judgment.interview_summary로 전파되는지 확인(writer.py "인터뷰요약" 컬럼 배선 전제조건).
+
+    ForcedVerdict.interview_summary(det_adapters/base.py trailing 필드) →
+    _det_common_handler(main.py, j.needs_review=True 직후 3줄) → Judgment.interview_summary.
+    """
+    from judge_tool.main import _det_common_handler
+
+    raw_evidence = json.dumps({"DBM-003": {"RESULT": [
+        {"USER": "root", "HOST": "localhost", "ACCOUNT_LOCKED": "N"},
+        {"USER": "test_svc", "HOST": "%", "ACCOUNT_LOCKED": "N"},
+    ]}}, ensure_ascii=False)
+    res = ResourceEvidence(resource_id="r3", status="info", detail="",
+                           evidence="(masked)", raw_evidence=raw_evidence)
+    item = EvidenceItem(item_id="DBM-003", variant="mysql_native", resources=[res])
+    items = {"DBM-003": item}
+    profile = get_profile("db_mysql")
+    ctx = JudgeContext(profile=profile, profile_key="db_mysql",
+                       client=StubVuln(), items=items, variant="mysql_native")
+    crit = Criterion(
+        item_id="DBM-003", item_name="업무상 불필요한 계정 존재", risk=5.0,
+        variant="mysql_native", eval_type="스크립트",
+        standard="* 양호 - ...\n* 취약 - ...", method="방법",
+        applicable=True, label="B",
+        judgment_method="det_common",
+        summary_instruction="계정 목록을 분류하여 요약. 판정하지 말 것.")
+
+    j = _det_common_handler(crit, item, ctx)
+
+    assert j is not None
+    assert j.verdict == "판단보류", f"DBM-003 모드A2: 판단보류 기대, 실제: {j.verdict}"
+    assert j.needs_review is True
+    assert j.interview_summary, (
+        "DBM-003 모드A2: interview_summary가 Judgment로 전파되지 않음 "
+        "(ForcedVerdict.interview_summary → _det_common_handler 배선 확인 필요)"
+    )
+    assert "test_svc" in j.interview_summary or "의심" in j.interview_summary

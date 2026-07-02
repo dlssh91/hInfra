@@ -209,3 +209,47 @@ def test_guard_word_boundary_no_false_positive():
         "mysql_result_standards.txt") == "mysql_native"
     assert DB_ORACLE.variant_from_filename(
         "oracle_result_records.txt") == "oracle_native"
+
+
+# ── 파일명 플랫폼 별칭 → variant 폴백 (alias_variant_tokens) ─────────────────
+# 설계서 docs/superpowers/specs/2026-07-03-filename-recognition-design.md §3-4,§6.6.
+
+def test_alias_variant_tokens_registered_with_real_keys():
+    """alias_variant_tokens의 variant명이 실제 variants 딕셔너리 키와
+    정확히 일치해야 한다(오타=런타임 KeyError 위험)."""
+    for profile in (DB_MYSQL, DB_ORACLE, DB_MSSQL, DB_MARIADB, DB_POSTGRESQL, CLOUD):
+        for _token, variant_name in profile.alias_variant_tokens:
+            assert variant_name in profile.variants, (
+                f"{profile.key}.alias_variant_tokens의 '{variant_name}'가 "
+                f"실제 variants 키에 없음: {list(profile.variants)}")
+
+
+def test_db_mysql_variant_alias_fallback():
+    # 구체마커 0매칭 + 환경토큰 정확히 1개 → 해당 클라우드 variant.
+    assert DB_MYSQL.variant_from_filename("mysql_rds_점검.txt") == "mysql_rds"
+    assert DB_MYSQL.variant_from_filename("mysql_aurora_점검.txt") == "mysql_aurora"
+    assert DB_MYSQL.variant_from_filename("mysql_azure_점검.txt") == "mysql_azure"
+    # 엔진 별칭만(환경토큰 없음) → variant 미특정(native 기본 금지) → None.
+    assert DB_MYSQL.variant_from_filename("MySQL점검.txt") is None
+    # 기존 가드 회귀 불변: rds_mysql_result.txt(구체마커 매칭) → None.
+    assert DB_MYSQL.variant_from_filename("rds_mysql_result.txt") is None
+
+
+def test_db_postgresql_variant_alias_fallback():
+    assert DB_POSTGRESQL.variant_from_filename("pg_rds_점검.txt") == "pg_rds"
+    assert DB_POSTGRESQL.variant_from_filename("pg_aurora_점검.txt") == "pg_aurora"
+    assert DB_POSTGRESQL.variant_from_filename("pg_azure_점검.txt") == "pg_azure"
+    assert DB_POSTGRESQL.variant_from_filename("postgres_점검.txt") is None
+
+
+def test_db_oracle_mssql_mariadb_variant_alias_fallback():
+    assert DB_ORACLE.variant_from_filename("oracle_rds_점검.txt") == "oracle_rds"
+    assert DB_MSSQL.variant_from_filename("mssql_rds_점검.txt") == "mssql_rds"
+    assert DB_MARIADB.variant_from_filename("mariadb_rds_점검.txt") == "mariadb_rds"
+
+
+def test_cloud_variant_alias_fallback():
+    assert CLOUD.variant_from_filename("AWS점검.xml") == "AWS"
+    assert CLOUD.variant_from_filename("azure_점검.xml") == "Azure"
+    # 두 클라우드 토큰이 동시에 매칭되면 모호 → None(fail-safe).
+    assert CLOUD.variant_from_filename("aws_azure.xml") is None

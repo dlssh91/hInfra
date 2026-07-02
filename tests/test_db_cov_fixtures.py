@@ -581,3 +581,41 @@ def test_oracle_dbm011_vuln_requires_dateutil():
     assert fv.verdict == "취약", (
         f"oracle DBM-011 NONE → 취약 기대, 실제: {fv.verdict!r}"
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 모드A2 classify-then-hold (DBM-003) — DB_COV 계약 기반 전엔진 항상보류 확인
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_mode_a2_dbm003_always_hold():
+    """DB_COV의 모든 엔진 DBM-003 계약이 good/vuln 모두 판단보류로 고정됨을 확인.
+
+    모드A2(classify-then-hold)는 label B 의도 항목을 항상 판단보류로 귀결시키며
+    자동 양호/취약 판정을 절대 하지 않는다(§거짓양호 방지). DB_COV 계약 자체가
+    이를 어기면 이 테스트가 실패한다(계약 회귀 고정).
+    """
+    for engine, items in DB_COV.items():
+        spec = items.get("DBM-003")
+        if spec is None or spec.get("uncovered"):
+            continue
+        assert spec.get("good_verdict") == "판단보류", (
+            f"{engine}/DBM-003: good_verdict가 판단보류가 아님(모드A2 계약 위반): "
+            f"{spec.get('good_verdict')!r}"
+        )
+        assert spec.get("vuln_verdict") == "판단보류", (
+            f"{engine}/DBM-003: vuln_verdict가 판단보류가 아님(모드A2 계약 위반): "
+            f"{spec.get('vuln_verdict')!r}"
+        )
+
+        variant = ENGINE_TO_VARIANT[engine]
+        for polarity in ("good", "vuln"):
+            _clear_cache()
+            reload_det_source()
+            raw = _make_raw(spec[polarity])
+            fv = judge("DBM-003", raw, variant, {})
+            if fv.handled:
+                assert fv.verdict == "판단보류", (
+                    f"{engine}/DBM-003/{polarity}: handled=True인데 판단보류가 아님: "
+                    f"{fv.verdict!r}"
+                )
+                assert fv.verdict != "양호"

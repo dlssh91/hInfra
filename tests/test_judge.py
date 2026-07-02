@@ -3,10 +3,61 @@ from unittest import mock
 
 import pytest
 
+import judge_tool.judge as judge_mod
 from judge_tool.judge import (
     build_evidence_text, parse_json_lenient, build_prompt, SYSTEM_PROMPT,
     judge_item, reconcile, OllamaClient)
 from judge_tool.models import Criterion, EvidenceItem, ResourceEvidence
+
+
+class _FakeTagsResp:
+    """requests.get(/api/tags) 응답 대역."""
+
+    def __init__(self, names):
+        self._names = names
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return {"models": [{"name": n} for n in self._names]}
+
+
+def _patch_tags(monkeypatch, names):
+    monkeypatch.setattr(judge_mod.requests, "get",
+                        lambda url, timeout=None: _FakeTagsResp(names))
+
+
+class TestHealthCheck:
+    """OllamaClient.health_check 페일패스트 — 태그 매칭 규율(H-1 회귀 고정)."""
+
+    def test_exact_tag_present_passes(self, monkeypatch):
+        _patch_tags(monkeypatch, ["qwen3-coder:30b", "llama3:8b"])
+        OllamaClient(url="http://x:11434", model="qwen3-coder:30b").health_check()
+
+    def test_tagged_request_rejects_base_only_match(self, monkeypatch):
+        # H-1 핵심: ':30b' 요청인데 ':7b'만 있으면 base('qwen3-coder')가
+        # 겹쳐도 통과시키면 안 된다(그러면 chat()이 404→조용히 전부 판단보류).
+        _patch_tags(monkeypatch, ["qwen3-coder:7b"])
+        with pytest.raises(RuntimeError, match="찾을 수 없습니다"):
+            OllamaClient(url="http://x:11434", model="qwen3-coder:30b").health_check()
+
+    def test_tagged_request_rejects_suffix_variant(self, monkeypatch):
+        _patch_tags(monkeypatch, ["qwen3-coder:30b-q4"])
+        with pytest.raises(RuntimeError, match="찾을 수 없습니다"):
+            OllamaClient(url="http://x:11434", model="qwen3-coder:30b").health_check()
+
+    def test_untagged_request_allows_base_match(self, monkeypatch):
+        # 태그 미지정 요청은 base 일치 완화 허용('qwen3-coder' → :latest 등).
+        _patch_tags(monkeypatch, ["qwen3-coder:latest"])
+        OllamaClient(url="http://x:11434", model="qwen3-coder").health_check()
+
+    def test_server_down_raises(self, monkeypatch):
+        def _boom(url, timeout=None):
+            raise OSError("connection refused")
+        monkeypatch.setattr(judge_mod.requests, "get", _boom)
+        with pytest.raises(RuntimeError, match="연결할 수 없습니다"):
+            OllamaClient(url="http://x:11434", model="qwen3-coder:30b").health_check()
 
 
 def _item(*statuses):

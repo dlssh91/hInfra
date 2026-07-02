@@ -31,30 +31,39 @@ _MYSQL = {
         "uncovered_reason": "crack_judge 설계 계약: 양호 판정 없음(crack하거나 보류). 양극성 불가.",
     },
 
-    # DBM-003: ACCOUNT_LOCKED/PASSWORD_EXPIRED 조건
-    # good: 조건을 트리거하는 필드가 없는 빈 RESULT → 양호
-    # vuln: password_expired='Y' 계정 존재 → 취약
+    # DBM-003: 업무상 불필요한 계정 존재 — 모드A2(classify-then-hold)
+    # good/vuln 모두 현실적 계정목록(활성/잠김/시스템내장 혼합) → 항상 판단보류.
     "DBM-003": {
-        "good": {"DBM-003": {"RESULT": []}},
-        "vuln": {"DBM-003": {"RESULT": [
-            {"USER": "old_user", "HOST": "localhost", "PASSWORD_EXPIRED": "Y"}
+        "good": {"DBM-003": {"RESULT": [
+            {"USER": "root", "HOST": "localhost", "ACCOUNT_LOCKED": "N"},
+            {"USER": "mysql.sys", "HOST": "localhost", "ACCOUNT_LOCKED": "Y"},
+            {"USER": "app_svc", "HOST": "%", "ACCOUNT_LOCKED": "N"},
         ]}},
-        "good_verdict": "양호",
-        "vuln_verdict": "취약",
-        "note": "label B → 모드A(detect-then-hold): vuln은 취약이 아닌 판단보류일 수 있음",
+        "vuln": {"DBM-003": {"RESULT": [
+            {"USER": "root", "HOST": "localhost", "ACCOUNT_LOCKED": "N"},
+            {"USER": "mysql.sys", "HOST": "localhost", "ACCOUNT_LOCKED": "Y"},
+            {"USER": "test_api", "HOST": "%", "ACCOUNT_LOCKED": "N"},
+        ]}},
+        "good_verdict": "판단보류",
+        "vuln_verdict": "판단보류",
+        "note": "label B → 모드A2(classify-then-hold): 항상 판단보류+분류정보. "
+                "good은 거짓취약 부재만 고정(계정분류 정리정보 동반).",
     },
 
     # DBM-004: 관리자 권한 — 모드A(detect-then-hold)
-    # good: 빈 RESULT → 양호
+    # good: RESULT 존재 + 무해행(SELECT는 관리자 권한 아님) → 후보0 → 양호.
     # vuln: SUPER 권한 존재 → 판단보류(모드A 후보 탐지)
     "DBM-004": {
-        "good": {"DBM-004": {"RESULT": []}},
+        "good": {"DBM-004": {"RESULT": [
+            {"GRANTEE": "'app'@'%'", "PRIVILEGE_TYPE": "SELECT"}
+        ]}},
         "vuln": {"DBM-004": {"RESULT": [
             {"GRANTEE": "hacker@%", "PRIVILEGE_TYPE": "SUPER", "IS_GRANTABLE": "NO"}
         ]}},
         "good_verdict": "양호",
         "vuln_verdict": "판단보류",
-        "note": "모드A: 후보 탐지 → 판단보류(자동 취약 아님)",
+        "note": "모드A: 후보 탐지 → 판단보류(자동 취약 아님). good은 RESULT 비어있지 않은 "
+                "무해행(신규 수집실패 가드 회피)으로 진짜 양호를 고정.",
     },
 
     # DBM-006: 로그인 실패 제한 — USER_ATTRIBUTES 필드
@@ -228,19 +237,27 @@ _MARIADB = {
         "uncovered_reason": "crack_judge 설계 계약: 양호 판정 없음. 양극성 불가.",
     },
 
-    # DBM-003: mariadb는 ACCOUNT_LOCKED 필드 대신 Password_expired 사용
+    # DBM-003: 업무상 불필요한 계정 존재 — 모드A2(classify-then-hold)
+    # mariadb는 ACCOUNT_LOCKED 필드 대신 PASSWORD_EXPIRED 사용. good/vuln 모두 판단보류.
     "DBM-003": {
-        "good": {"DBM-003": {"RESULT": []}},
-        "vuln": {"DBM-003": {"RESULT": [
-            {"USER": "old_user", "HOST": "localhost", "PASSWORD_EXPIRED": "Y"}
+        "good": {"DBM-003": {"RESULT": [
+            {"USER": "root", "HOST": "localhost", "PASSWORD_EXPIRED": "N"},
+            {"USER": "mariadb.sys", "HOST": "localhost", "PASSWORD_EXPIRED": "Y"},
         ]}},
-        "good_verdict": "양호",
-        "vuln_verdict": "취약",
-        "note": "label B → 모드A",
+        "vuln": {"DBM-003": {"RESULT": [
+            {"USER": "root", "HOST": "localhost", "PASSWORD_EXPIRED": "N"},
+            {"USER": "old_user", "HOST": "localhost", "PASSWORD_EXPIRED": "N"},
+        ]}},
+        "good_verdict": "판단보류",
+        "vuln_verdict": "판단보류",
+        "note": "label B → 모드A2(classify-then-hold): 항상 판단보류+분류정보. "
+                "good은 거짓취약 부재만 고정(계정분류 정리정보 동반).",
     },
 
     "DBM-004": {
-        "good": {"DBM-004": {"RESULT": []}},
+        "good": {"DBM-004": {"RESULT": [
+            {"GRANTEE": "'app'@'%'", "PRIVILEGE_TYPE": "USAGE"}
+        ]}},
         "vuln": {"DBM-004": {"RESULT": [
             {"GRANTEE": "bad@%", "PRIVILEGE_TYPE": "SUPER", "IS_GRANTABLE": "NO"}
         ]}},
@@ -367,14 +384,17 @@ _ORACLE = {
         "uncovered_reason": "crack_judge 설계 계약: 양호 판정 없음. 양극성 불가.",
     },
 
-    # DBM-003: oracle은 expiry_date/last_login/account_status 필드
-    # good: 빈 RESULT → 위반 없음 → 양호
-    # vuln: oracle config rules['last_login']=[''] → last_login='' 계정 탐지
-    #        + account_status not in exception (OPEN 허용)
-    #        + expiry_date가 6개월 이전(stale) → 취약
-    # expiry_date '19-DEC-25' = 2025-12-19 → 오늘(2026-06-19) 기준 6개월 이전 → 취약
+    # DBM-003: 업무상 불필요한 계정 존재 — 모드A2(classify-then-hold)
+    # oracle은 expiry_date/last_login/account_status/username 필드. good/vuln 모두 판단보류.
     "DBM-003": {
-        "good": {"DBM-003": {"RESULT": []}},
+        "good": {"DBM-003": {"RESULT": [
+            {
+                "username": "SYSTEM",
+                "account_status": "OPEN",
+                "last_login": "15-JUN-26 09.45.17.000000",
+                "expiry_date": "",
+            }
+        ]}},
         "vuln": {"DBM-003": {"RESULT": [
             {
                 "username": "OLD_USER",
@@ -383,20 +403,23 @@ _ORACLE = {
                 "expiry_date": "19-DEC-25",
             }
         ]}},
-        "good_verdict": "양호",
-        "vuln_verdict": "취약",
-        "note": "label B → 모드A. last_login='' → rules['last_login']=['']에 매칭. expiry_date가 6개월 이전이어야 함.",
+        "good_verdict": "판단보류",
+        "vuln_verdict": "판단보류",
+        "note": "label B → 모드A2(classify-then-hold): 항상 판단보류+분류정보. "
+                "good은 거짓취약 부재만 고정(계정분류 정리정보 동반).",
     },
 
     # DBM-004: grantee/username exception 기반
+    # good: RESULT 0행(exception 공백) → 위반0이지만 신규 수집실패 가드에 걸려 판단보류.
     "DBM-004": {
         "good": {"DBM-004_1": {"RESULT": []}},
         "vuln": {"DBM-004_1": {"RESULT": [
             {"grantee": "BAD_USER"}
         ]}},
-        "good_verdict": "양호",
+        "good_verdict": "판단보류",
         "vuln_verdict": "판단보류",
-        "note": "모드A",
+        "note": "모드A: RESULT 0행 → 신규 수집실패 가드(_base_result_rows_exist)에 걸려 "
+                "판단보류(권한목록 미수집). 후보 탐지 시에도 판단보류(자동 취약 아님).",
     },
 
     # DBM-006: FAILED_LOGIN_ATTEMPTS/IDLE_TIME
@@ -541,19 +564,27 @@ _MSSQL = {
         "uncovered_reason": "crack_judge 설계 계약: 양호 판정 없음. 양극성 불가.",
     },
 
-    # DBM-003: is_disabled=0 AND modify_date 6개월 초과
+    # DBM-003: 업무상 불필요한 계정 존재 — 모드A2(classify-then-hold)
+    # is_disabled=0/1 기준 활성/잠김. good/vuln 모두 판단보류.
     "DBM-003": {
-        "good": {"DBM-003_1": {"RESULT": []}},
+        "good": {"DBM-003_1": {"RESULT": [
+            {"name": "sa", "is_disabled": "0", "modify_date": "Jun 15 2026  9:41AM"}
+        ]}},
         "vuln": {"DBM-003_1": {"RESULT": [
             {"is_disabled": "0", "name": "old_user", "modify_date": "Jan-01-2020 00:00:00"}
         ]}},
-        "good_verdict": "양호",
-        "vuln_verdict": "취약",
+        "good_verdict": "판단보류",
+        "vuln_verdict": "판단보류",
+        "note": "label B → 모드A2(classify-then-hold): 항상 판단보류+분류정보. "
+                "good은 거짓취약 부재만 고정(계정분류 정리정보 동반).",
     },
 
     # DBM-004: sysadmin/serveradmin/securityadmin != '0'
+    # good: RESULT 존재 + 무해행(권한 전부 0) → 후보0 → 양호.
     "DBM-004": {
-        "good": {"DBM-004": {"RESULT": []}},
+        "good": {"DBM-004": {"RESULT": [
+            {"name": "app", "sysadmin": "0", "serveradmin": "0", "securityadmin": "0"}
+        ]}},
         "vuln": {"DBM-004": {"RESULT": [
             {"name": "bad_user", "sysadmin": "1", "serveradmin": "0", "securityadmin": "0"}
         ]}},

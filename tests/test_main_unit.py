@@ -5,7 +5,9 @@ import openpyxl
 import pytest
 
 import judge_tool.main as main_mod
+from judge_tool.errors import ReportError
 from judge_tool.main import main, run, _extract_criteria_version
+from judge_tool.models import Criterion
 from judge_tool.profile import CLOUD
 
 FIXTURE_XML = os.path.join(
@@ -496,6 +498,233 @@ def test_extract_criteria_version_from_real_filename():
 
 def test_extract_criteria_version_fallback_when_no_pattern():
     assert _extract_criteria_version("criteria.xlsx") == "제2026-1호"
+
+
+# --------------------------------------------------------------------------
+# 스마트 런처: _needs_llm — Ollama 페일패스트 헬스체크 게이트 로직
+# --------------------------------------------------------------------------
+
+def _crit(item_id="X-001", variant="AWS", judgment_method="llm",
+         summary_instruction=None, standard="기준", applicable=True):
+    return Criterion(
+        item_id=item_id, item_name="항목", risk=3.0, variant=variant,
+        eval_type="스크립트", standard=standard, method="방법",
+        applicable=applicable, judgment_method=judgment_method,
+        summary_instruction=summary_instruction)
+
+
+def test_needs_llm_true_for_llm_method():
+    criteria = {("X-001", "AWS"): _crit(judgment_method="llm")}
+    assert main_mod._needs_llm(criteria, "AWS") is True
+
+
+def test_needs_llm_true_for_llm_det_method():
+    criteria = {("X-001", "AWS"): _crit(judgment_method="llm_det")}
+    assert main_mod._needs_llm(criteria, "AWS") is True
+
+
+def test_needs_llm_false_for_pure_det_and_fw_policy_only():
+    """iss 프로파일처럼 전 항목이 det/fw_policy(순결정론)뿐이면 LLM 불필요."""
+    criteria = {
+        ("X-001", "fw"): _crit(variant="fw", judgment_method="det"),
+        ("X-002", "fw"): _crit(variant="fw", judgment_method="fw_policy"),
+    }
+    assert main_mod._needs_llm(criteria, "fw") is False
+
+
+def test_needs_llm_false_for_interview_holdonly_without_summary():
+    criteria = {("X-001", "AWS"): _crit(
+        judgment_method="interview_holdonly", summary_instruction=None)}
+    assert main_mod._needs_llm(criteria, "AWS") is False
+
+
+def test_needs_llm_true_for_interview_with_summary_instruction():
+    """method 이름이 interview/interview_holdonly여도 실제
+    summary_instruction이 채워져 있으면(실행 시 LLM 요약 호출) LLM 필요로 본다."""
+    criteria = {("X-001", "AWS"): _crit(
+        judgment_method="interview", summary_instruction="요약하라")}
+    assert main_mod._needs_llm(criteria, "AWS") is True
+
+
+def test_needs_llm_ignores_non_judgeable_and_other_variant():
+    criteria = {
+        # 다른 variant는 무시
+        ("X-001", "Azure"): _crit(variant="Azure", judgment_method="llm"),
+        # applicable=False(비대상)는 is_judgeable=False → 무시
+        ("X-002", "AWS"): _crit(variant="AWS", judgment_method="llm",
+                                applicable=False),
+        ("X-003", "AWS"): _crit(variant="AWS", judgment_method="det"),
+    }
+    assert main_mod._needs_llm(criteria, "AWS") is False
+
+
+def test_needs_llm_false_on_empty_criteria():
+    assert main_mod._needs_llm({}, "AWS") is False
+
+
+# --------------------------------------------------------------------------
+# 스마트 런처: --criteria 자동탐색 (_discover_criteria_path)
+# --------------------------------------------------------------------------
+
+def test_discover_criteria_path_no_match_raises_report_error(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    # 패키지 루트 폴백도 실데이터를 못 찾도록 존재하지 않는 경로로 돌린다.
+    monkeypatch.setattr(main_mod, "_PKG_ROOT", str(tmp_path / "no_such_pkg_root"))
+    with pytest.raises(ReportError):
+        main_mod._discover_criteria_path()
+
+
+def test_discover_criteria_path_single_match(tmp_path, monkeypatch):
+    ref_dir = tmp_path / "ref"
+    ref_dir.mkdir()
+    f = ref_dir / "전자금융기반시설 보안 취약점 평가기준(제2026-1호) 평가자용.xlsx"
+    f.write_text("x", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(main_mod, "_PKG_ROOT", str(tmp_path / "no_such_pkg_root"))
+
+    found = main_mod._discover_criteria_path()
+    assert os.path.realpath(found) == os.path.realpath(str(f))
+
+
+def test_discover_criteria_path_picks_latest_version_when_multiple(
+        tmp_path, monkeypatch):
+    ref_dir = tmp_path / "ref"
+    ref_dir.mkdir()
+    old = ref_dir / "평가기준(제2025-3호).xlsx"
+    new = ref_dir / "평가기준(제2026-1호).xlsx"
+    old.write_text("x", encoding="utf-8")
+    new.write_text("x", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(main_mod, "_PKG_ROOT", str(tmp_path / "no_such_pkg_root"))
+
+    found = main_mod._discover_criteria_path()
+    assert os.path.realpath(found) == os.path.realpath(str(new))
+
+
+# --------------------------------------------------------------------------
+# 스마트 런처: --profile 자동추정 실패 시 종료 (_resolve_profile)
+# --------------------------------------------------------------------------
+
+def test_resolve_profile_explicit_wins_over_guess():
+    # 명시 지정이 있으면 파일명이 무엇이든 그대로 사용(기존 동작 불변).
+    assert main_mod._resolve_profile("random.xml", "cloud") == "cloud"
+
+
+def test_resolve_profile_guesses_from_marker():
+    assert main_mod._resolve_profile("aws_report_x.xml", None) == "cloud"
+
+
+def test_resolve_profile_ambiguous_raises_report_error():
+    with pytest.raises(ReportError, match="확정할 수 없습니다"):
+        main_mod._resolve_profile("unknown_result.json", None)
+
+
+def test_resolve_profile_unrecognized_raises_report_error():
+    with pytest.raises(ReportError, match="추정할 수 없습니다"):
+        main_mod._resolve_profile("notes.txt", None)
+
+
+# --------------------------------------------------------------------------
+# 스마트 런처: main() 하위호환 — --profile/--criteria 명시 시 자동추정 우회
+# --------------------------------------------------------------------------
+
+def test_main_cli_profile_omitted_is_autoguessed_from_filename(
+        tmp_path, monkeypatch):
+    """--profile을 생략해도 파일명(aws_report_*)으로 cloud가 자동추정되어
+    기존처럼 동작해야 한다(하위호환: 명시 호출은 그대로 동작)."""
+    rep_dir, crit_dir, out_dir = (tmp_path / d for d in ("rep", "crit", "out"))
+    for d in (rep_dir, crit_dir, out_dir):
+        os.makedirs(str(d), exist_ok=True)
+    report = _copy_fixture_xml(rep_dir)
+    criteria = os.path.join(str(crit_dir), "criteria.xlsx")
+    _write_synthetic_criteria(criteria)
+
+    monkeypatch.setattr(main_mod, "OllamaClient",
+                        lambda *a, **k: StubClient())
+
+    main(["--report", report, "--criteria", criteria,
+          "--out-dir", str(out_dir), "--model", "stub"])
+
+    base = os.path.splitext(os.path.basename(report))[0]
+    assert os.path.exists(os.path.join(str(out_dir), f"result_{base}.json"))
+
+
+def test_main_positional_report_argument_works(tmp_path, monkeypatch):
+    """위치인자로 --report를 대체할 수 있어야 한다(python3 -m judge_tool <파일>)."""
+    rep_dir, crit_dir, out_dir = (tmp_path / d for d in ("rep", "crit", "out"))
+    for d in (rep_dir, crit_dir, out_dir):
+        os.makedirs(str(d), exist_ok=True)
+    report = _copy_fixture_xml(rep_dir)
+    criteria = os.path.join(str(crit_dir), "criteria.xlsx")
+    _write_synthetic_criteria(criteria)
+
+    monkeypatch.setattr(main_mod, "OllamaClient",
+                        lambda *a, **k: StubClient())
+
+    main([report, "--criteria", criteria, "--out-dir", str(out_dir),
+          "--model", "stub"])
+
+    base = os.path.splitext(os.path.basename(report))[0]
+    assert os.path.exists(os.path.join(str(out_dir), f"result_{base}.json"))
+
+
+def test_main_no_report_at_all_exits_cleanly():
+    with pytest.raises(SystemExit):
+        main([])
+
+
+def test_main_profile_ambiguous_exits_with_candidates(tmp_path, capsys):
+    """마커/확장자로 프로파일을 확정할 수 없는 입력은 후보를 안내하고 종료한다
+    (오판정보다 명시 요구가 안전 — cloud 무조건 폴백 제거 확인)."""
+    report = os.path.join(str(tmp_path), "unknown_result.json")
+    with open(report, "w", encoding="utf-8") as fh:
+        fh.write("{}")
+    criteria = os.path.join(str(tmp_path), "criteria.xlsx")
+    _write_synthetic_criteria(criteria)
+
+    with pytest.raises(SystemExit):
+        main(["--report", report, "--criteria", criteria])
+
+    err = capsys.readouterr().err
+    assert "확정할 수 없습니다" in err
+
+
+# --------------------------------------------------------------------------
+# 스마트 런처: 배치 모드 후보파일 나열 (_list_candidate_reports)
+# --------------------------------------------------------------------------
+
+def test_list_candidate_reports_filters_criteria_and_prior_outputs(tmp_path):
+    (tmp_path / "aws_report_a.xml").write_text("x", encoding="utf-8")
+    (tmp_path / "mysql_result.json").write_text("{}", encoding="utf-8")
+    # DB 결과 표준 포맷 .txt(마커 있는 실결과)는 후보에 포함되어야 한다.
+    (tmp_path / "oracle_result.txt").write_text("x", encoding="utf-8")
+    (tmp_path / "평가기준(제2026-1호).xlsx").write_text("x", encoding="utf-8")
+    (tmp_path / "result_aws_report_a.json").write_text("{}", encoding="utf-8")
+    (tmp_path / ".hidden.xml").write_text("x", encoding="utf-8")
+
+    found = {os.path.basename(p)
+            for p in main_mod._list_candidate_reports(str(tmp_path))}
+    # 기준 xlsx / result_ 접두 산출물 / 숨김파일은 제외, .txt 결과는 포함.
+    assert found == {"aws_report_a.xml", "mysql_result.json", "oracle_result.txt"}
+
+
+def test_batch_explicit_outdir_inside_scan_rejected_before_mkdir(tmp_path):
+    """M-2: 명시적 --out-dir이 스캔 폴더 내부면 디렉터리 생성 전에 거부한다."""
+    import types
+    scan = tmp_path / "scan"
+    scan.mkdir()
+    (scan / "aws_report_a.xml").write_text("x", encoding="utf-8")
+    (tmp_path / "crit.xlsx").write_text("x", encoding="utf-8")
+    bad_out = scan / "out"  # 스캔 폴더 하위 → 실데이터 오염 위험 → 거부 대상
+    ns = types.SimpleNamespace(
+        report=str(scan), out_dir=str(bad_out), criteria=str(tmp_path / "crit.xlsx"),
+        profile=None, ollama_url="http://x:11434", model="qwen3-coder:30b",
+        skip_preflight=True, hashcat_path=None, hashcat_wordlist=None,
+        hashcat_rules=None, hashcat_timeout=600)
+    with pytest.raises(SystemExit):
+        main_mod._run_batch(ns)
+    # 가드가 makedirs보다 먼저 걸리므로 out 디렉터리가 만들어지지 않아야 한다.
+    assert not bad_out.exists()
 
 
 def test_extract_criteria_version_other_version():

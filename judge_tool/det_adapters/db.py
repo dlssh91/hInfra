@@ -14,6 +14,10 @@
   - 증거존재 가드(D3): base의 data_key 없으면 handled=False (거짓양호 구조 차단)
   - 예외내성(R3): vendor dbm_process_data 예외 삼킴 감지 — stdout "[!] Exception Occurred" 캡처 후
     exc_keys 추출, 빈 위반이면서 exc_keys에 포함된 base → handled=False (거짓양호 방지)
+  - 결정7(모드A2): _CLASSIFY_THEN_HOLD 모드(DBM-003) — 벤더 후보 조건(잠김/만료)만으로는
+    활성 의심계정을 후보0=양호로 놓치는 거짓양호가 있어, DBM-003은 항상 판단보류 +
+    결정론 계정분류 정리정보(활성/잠김만료/시스템내장/불명 + 의심 계정명)를
+    citations/interview_summary로 동반한다. LLM 호출 없음(det가 직접 생성).
   - §7 누출경계: citation = _mask_row 처리된 위반행만, raw data dict 미포함
 
 레지스트리 등록: 모듈 import 시 db_mysql/db_oracle/db_mssql/db_mariadb/db_postgresql 5개 자동 등록.
@@ -286,6 +290,35 @@ def _mask_violations(rows: list) -> list:
 # 결정론이 "후보"를 탐지하되 업무 필요성은 사람이 판단하는 항목(label B 의도).
 # 위반(후보) ≥1 → 판단보류 + 후보목록 citations, 위반0 → 양호.
 _DETECT_THEN_HOLD: frozenset = frozenset({"DBM-004"})
+
+# ── 모드 A2: classify-then-hold (DBM-003 — 업무상 불필요한 계정 존재) ────────
+# DBM-003은 label B 의도(업무 필요성=사람 판단)이나 기존 det_common이 "활성 의심계정"을
+# 벤더 후보 조건(잠김/만료)에 안 걸려 후보 0건으로 놓쳐 거짓양호가 발생한다.
+# 모드A(detect-then-hold)처럼 "후보0=양호"로 처리하면 활성 의심계정을 놓치므로 부적합.
+# 신규 모드A2 = 항상 판단보류 + 결정론 계정분류 정리정보(활성/잠김만료/시스템내장/불명 +
+# 의심 계정명) 동반. det가 직접 결정론으로 정리정보를 생성한다(LLM 호출 없음, handled=True).
+_CLASSIFY_THEN_HOLD: frozenset = frozenset({"DBM-003"})
+
+# 의심 계정명 판단용 부분일치 토큰(소문자, 정보전용 — 오탐 허용).
+_SUSPICIOUS_NAME_TOKENS: frozenset = frozenset({"test", "temp", "old", "backup"})
+
+# 클라우드 관리형 DB 공통 내장계정(mysql/mariadb 시스템계정 판별 보강용).
+_CLOUD_BUILTIN_USERS: frozenset = frozenset({"rdsadmin", "rdsrepladmin", "azure_superuser"})
+
+# oracle 표준 내장/시스템 스키마 계정(대문자 비교).
+_ORACLE_BUILTIN_USERS: frozenset = frozenset({
+    "SYS", "SYSTEM", "AUDSYS", "SYSBACKUP", "SYSDG", "SYSKM", "SYSRAC", "OUTLN",
+    "XS$NULL", "GSMADMIN_INTERNAL", "GSMUSER", "GSMCATUSER", "GGSYS", "DIP",
+    "REMOTE_SCHEDULER_AGENT", "DBSFWUSER", "ORACLE_OCM", "SYS$UMF", "DBSNMP",
+    "APPQOSSYS", "ANONYMOUS", "XDB", "WMSYS", "MDSYS", "MDDATA", "CTXSYS",
+    "ORDSYS", "ORDDATA", "ORDPLUGINS", "SI_INFORMTN_SCHEMA", "OLAPSYS", "DVSYS",
+    "DVF", "LBACSYS", "OJVMSYS", "RDSADMIN",
+})
+
+# postgresql(cloud) 내장/관리형 계정.
+_PG_BUILTIN_USERS: frozenset = frozenset({
+    "postgres", "rdsadmin", "rdstopmgr", "azuresu", "azure_pg_admin",
+})
 
 # ── 모드 D: empty-RESULT / 기대변수-부재 거짓양호 가드 (DBM-019 — 비밀번호 재사용 방지)
 # 재사용 방지 설정값이 '없음/비활성(UNLIMITED·0·미로드)'이면 위반 탐지 → 취약.
@@ -581,6 +614,338 @@ def _extract_audit_detail(engine: str, data: dict) -> str:
     return ""
 
 
+# ── 모드 A2 헬퍼: DBM-003 classify-then-hold ────────────────────────────────
+
+def _base_result_rows_exist(base: str, data: dict) -> bool:
+    """base 또는 base_* data_key 중 RESULT가 비어있지 않은 항목이 1개 이상 있으면 True.
+
+    모드A(DBM-004) 수집실패 가드: 후보 0건이 "권한 없음(진짜 양호)"인지
+    "권한목록 자체를 수집 못함(미수집)"인지 구분한다. RESULT가 전부 빈 배열이면
+    수집실패로 간주해 자동 양호 판정을 금지한다.
+    """
+    for k, v in data.items():
+        if k == base or k.startswith(base + "_"):
+            if isinstance(v, dict) and v.get("RESULT"):
+                return True
+    return False
+
+
+def _dbm003_collect_rows(engine: str, data: dict) -> tuple:
+    """엔진별 DBM-003 계정 원시행 수집 (모드A2).
+
+    반환: (rows: list[dict], last_login_map: dict).
+      rows: 각 행 _mask_row 처리 완료(§7 마스킹 경계 준수).
+      last_login_map: mssql 전용(name → last_login_time). 그 외 엔진은 빈 dict.
+    engine별 규칙(§3):
+      mysql/mariadb/postgresql: data['DBM-003'].RESULT.
+      oracle: 'DBM-003'|'DBM-003_11g'|'DBM-003_12c' 존재키 concat,
+              username 중복 제거(선착순).
+      mssql: 'DBM-003_1'.RESULT(계정) + 'DBM-003_2'.RESULT → {name: last_login} 맵.
+    """
+    rows: list = []
+    last_login_map: dict = {}
+    try:
+        if engine in ("mysql", "mariadb", "postgresql"):
+            for r in data.get("DBM-003", {}).get("RESULT", []) or []:
+                if isinstance(r, dict):
+                    rows.append(_mask_row(r))
+        elif engine == "oracle":
+            seen = set()
+            for key in ("DBM-003", "DBM-003_11g", "DBM-003_12c"):
+                for r in data.get(key, {}).get("RESULT", []) or []:
+                    if not isinstance(r, dict):
+                        continue
+                    masked = _mask_row(r)
+                    uname = masked.get("username")
+                    if uname in seen:
+                        continue
+                    seen.add(uname)
+                    rows.append(masked)
+        elif engine == "mssql":
+            for r in data.get("DBM-003_1", {}).get("RESULT", []) or []:
+                if isinstance(r, dict):
+                    rows.append(_mask_row(r))
+            for r in data.get("DBM-003_2", {}).get("RESULT", []) or []:
+                if not isinstance(r, dict):
+                    continue
+                masked = _mask_row(r)
+                name = masked.get("name")
+                if name is not None:
+                    last_login_map[name] = masked.get("last_login_time", "")
+    except Exception:  # noqa: BLE001
+        return [], {}
+    return rows, last_login_map
+
+
+def _dbm003_classify_account(engine: str, row: dict, last_login_map: dict) -> Optional[dict]:
+    """계정 1행을 분류한다 (모드A2, §3 표).
+
+    반환: {'name','state','system','suspicious','note'} | None(해석 불가 행).
+    state ∈ {'활성','잠김/만료','불명'}. exception은 config에서 .get 체인으로
+    조회하며 KeyError는 흡수(빈 dict 취급)한다.
+    """
+    try:
+        exception_cfg = _load_config(engine).get("exception", {}).get("DBM-003", {}) or {}
+    except Exception:  # noqa: BLE001
+        exception_cfg = {}
+
+    try:
+        if engine == "mysql":
+            user = row.get("USER")
+            if user is None:
+                return None
+            host = row.get("HOST", "")
+            name = f"{user}@{host}"
+            locked_val = row.get("ACCOUNT_LOCKED")
+            expired_val = row.get("PASSWORD_EXPIRED")
+            if locked_val == "Y" or expired_val == "Y":
+                state = "잠김/만료"
+            elif locked_val == "N":
+                state = "활성"
+            elif expired_val == "N":
+                state = "활성"
+            else:
+                state = "불명"
+            exc_users = set(exception_cfg.get("USER", []) or [])
+            is_system = user in exc_users or user in _CLOUD_BUILTIN_USERS
+            note = ""
+        elif engine == "mariadb":
+            user = row.get("USER")
+            if user is None:
+                return None
+            host = row.get("HOST", "")
+            name = f"{user}@{host}"
+            expired_val = row.get("PASSWORD_EXPIRED")
+            if expired_val == "Y":
+                state = "잠김/만료"
+            elif expired_val == "N":
+                state = "활성"
+            else:
+                state = "불명"
+            exc_users = set(exception_cfg.get("USER", []) or [])
+            is_system = user in exc_users or user in _CLOUD_BUILTIN_USERS
+            note = ""
+        elif engine == "oracle":
+            username = row.get("username")
+            if username is None:
+                return None
+            name = username
+            status = str(row.get("account_status") or "")
+            su = status.upper()
+            if "LOCKED" in su or "EXPIRED" in su:
+                state = "잠김/만료"
+            elif su.startswith("OPEN"):
+                state = "활성"
+            else:
+                state = "불명"
+            is_system = str(username).upper() in _ORACLE_BUILTIN_USERS
+            last_login = row.get("last_login") or "로그인이력 없음"
+            expiry_date = row.get("expiry_date") or ""
+            note = f"last_login={last_login}, expiry_date={expiry_date}"
+        elif engine == "mssql":
+            name = row.get("name")
+            if name is None:
+                return None
+            is_disabled = row.get("is_disabled")
+            if is_disabled == "0":
+                state = "활성"
+            elif is_disabled == "1":
+                state = "잠김/만료"
+            else:
+                state = "불명"
+            is_system = (
+                name == "sa" or "##MS" in name
+                or name.startswith(("NT AUTHORITY", "NT SERVICE", "BUILTIN"))
+            )
+            last_login = last_login_map.get(name) or "로그인이력 없음"
+            modify_date = row.get("modify_date", "")
+            note = f"last_login={last_login}, modify_date={modify_date}"
+        elif engine == "postgresql":
+            rolname = row.get("rolname")
+            if rolname is None:
+                return None
+            name = rolname
+            rolcanlogin = row.get("rolcanlogin")
+            if rolcanlogin == "f":
+                state = "잠김/만료"
+            elif rolcanlogin == "t":
+                state = "활성"
+            else:
+                state = "불명"
+            is_system = str(rolname).startswith("pg_") or rolname in _PG_BUILTIN_USERS
+            note = ""
+        else:
+            return None
+    except Exception:  # noqa: BLE001
+        return None
+
+    name_lower = str(name).lower()
+    suspicious = (not is_system) and any(tok in name_lower for tok in _SUSPICIOUS_NAME_TOKENS)
+
+    return {"name": name, "state": state, "system": is_system,
+            "suspicious": suspicious, "note": note}
+
+
+def _dbm003_overview(engine: str, data: dict, violations: list) -> Optional[tuple]:
+    """모드A2 판단보류용 (rationale, citations, interview_summary) 생성.
+
+    해석가능 계정행이 0건이면 None(=미수집 보류를 호출부가 별도 처리).
+    전체 try/except로 감싸 예외 시 None을 반환한다(fail-closed —
+    분류 실패가 거짓양호로 이어지지 않고 호출부의 "미수집" 보류로 흡수됨).
+    violations 인자는 시그니처 일관성을 위해 받으나 DBM-003은 벤더 위반목록이
+    아닌 원시 계정목록 자체를 분류 대상으로 삼는다(§3).
+    """
+    try:
+        rows, last_login_map = _dbm003_collect_rows(engine, data)
+        classified = []
+        for row in rows:
+            c = _dbm003_classify_account(engine, row, last_login_map)
+            if c is not None:
+                classified.append(c)
+
+        if not classified:
+            return None
+
+        system_accounts = [c for c in classified if c["system"]]
+        active = [c for c in classified if c["state"] == "활성" and not c["system"]]
+        locked = [c for c in classified if c["state"] == "잠김/만료" and not c["system"]]
+        unknown = [c for c in classified if c["state"] == "불명" and not c["system"]]
+        suspicious = [c for c in classified if c["suspicious"]]
+
+        a, b, c_cnt, d = len(active), len(locked), len(system_accounts), len(unknown)
+        n = a + b + c_cnt + d
+        e = len(suspicious)
+        f = a + b + d  # 시스템내장 제외 결정론 후보(=담당자 검토 대상)
+
+        rationale = (
+            f"[인터뷰 필요 — 자동판정 금지] 계정 {n}건 분류"
+            f"(활성 {a}·잠김/만료 {b}·시스템내장 {c_cnt}·불명 {d}), "
+            f"의심 계정명 {e}건, 결정론 후보 {f}건 (engine={engine}) — "
+            "업무상 필요성은 담당자 확인 필요"
+        )
+
+        citations: list = []
+        if suspicious:
+            names = [c["name"] for c in suspicious]
+            for nm in names[:5]:
+                citations.append(f"[의심계정명] {nm}")
+            if len(names) > 5:
+                citations.append(f"[의심계정명] 외 {len(names) - 5}건")
+
+        citations.append(
+            f"[결정론 후보 {f}건] 시스템내장 제외 전체 계정 "
+            f"(활성 {a}·잠김/만료 {b}·불명 {d})"
+        )
+
+        def _names_line(label: str, group: list) -> str:
+            names = [c["name"] for c in group]
+            shown = names[:10]
+            line = f"[{label} {len(group)}] " + (", ".join(shown) if shown else "-")
+            if len(names) > 10:
+                line += f" 외 {len(names) - 10}건"
+            return line
+
+        citations.append(_names_line("활성", active))
+        citations.append(_names_line("잠김/만료", locked))
+        citations.append(_names_line("시스템내장", system_accounts))
+        if d:
+            citations.append(_names_line("불명", unknown))
+        citations = citations[:20]
+
+        summary_lines = [
+            f"[DBM-003 계정 분류 정리 — engine={engine}]",
+            f"전체 {n}건: 활성 {a} / 잠김·만료 {b} / 시스템내장 {c_cnt} / 불명 {d}",
+        ]
+        if suspicious:
+            summary_lines.append(
+                "의심 계정명(test/temp/old/backup 부분일치): "
+                + ", ".join(c["name"] for c in suspicious)
+            )
+        if active:
+            summary_lines.append("활성 계정: " + ", ".join(c["name"] for c in active[:10]))
+        if locked:
+            summary_lines.append("잠김/만료 계정: " + ", ".join(c["name"] for c in locked[:10]))
+        summary_lines.append(
+            "확인 필요: (1) 활성 계정 각각의 업무상 필요성 "
+            "(2) 잠김/만료 계정의 삭제/보존 사유 (3) 의심 계정명 계정의 용도"
+        )
+        interview_summary = "\n".join(summary_lines)
+
+        return rationale, citations, interview_summary
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _dbm004_hold_info(engine: str, violations: list) -> tuple:
+    """모드A(DBM-004) 판단보류 citations 집계 — grantee(계정)별 권한 건수/목록.
+
+    반환: (citations: list[str], interview_summary: str).
+    grantee별 '{grantee} — {k}건: P1,P2,P3 (+m)' 형식, 건수 내림차순, 최대 20줄
+    (초과분은 말미에 '외 n개 계정'). 미지 스키마 행은 개별 _mask_violations 1줄
+    폴백으로 남긴다. 예외 발생 시 (_mask_violations(violations), "").
+    """
+    try:
+        grants: dict = {}
+        unknown_lines: list = []
+
+        for row in violations:
+            if not isinstance(row, dict):
+                continue
+            masked = _mask_row(row)
+            matched = False
+            if engine in ("mysql", "mariadb") and "GRANTEE" in masked:
+                grantee = str(masked.get("GRANTEE", "")).replace("'", "")
+                priv = str(masked.get("PRIVILEGE_TYPE", "") or "").replace("'", "")
+                bucket = grants.setdefault(grantee, [])
+                if priv:
+                    bucket.append(priv)
+                matched = True
+            elif engine == "oracle" and "grantee" in masked and "granted_role" in masked:
+                grants.setdefault(masked.get("grantee"), []).append(
+                    str(masked.get("granted_role", "")))
+                matched = True
+            elif engine == "oracle" and "username" in masked and "grantee" not in masked:
+                grants.setdefault(masked.get("username"), []).append("SYSDBA")
+                matched = True
+            elif engine == "oracle" and "grantee" in masked and "privilege" in masked:
+                grants.setdefault(masked.get("grantee"), []).append(
+                    str(masked.get("privilege", "")))
+                matched = True
+            elif engine == "mssql" and "name" in masked:
+                roles = [
+                    role for role in ("sysadmin", "serveradmin", "securityadmin")
+                    if str(masked.get(role, "")) == "1"
+                ]
+                grants.setdefault(masked.get("name"), []).extend(roles)
+                matched = True
+            if not matched:
+                unknown_lines.append(json.dumps(masked, ensure_ascii=False))
+
+        if not grants and not unknown_lines:
+            return _mask_violations(violations), ""
+
+        ordered = sorted(grants.items(), key=lambda kv: len(kv[1]), reverse=True)
+
+        citations: list = []
+        for grantee, privs in ordered[:20]:
+            k = max(len(privs), 1)
+            preview = ", ".join(privs[:3]) if privs else "(권한정보 없음)"
+            extra = f" (+{len(privs) - 3})" if len(privs) > 3 else ""
+            citations.append(f"{grantee} — {k}건: {preview}{extra}")
+
+        remaining = 20 - len(citations)
+        if remaining > 0:
+            citations.extend(unknown_lines[:remaining])
+
+        if len(ordered) > 20:
+            citations.append(f"외 {len(ordered) - 20}개 계정")
+
+        interview_summary = "\n".join(citations) if citations else ""
+        return citations, interview_summary
+    except Exception:  # noqa: BLE001
+        return _mask_violations(violations), ""
+
+
 def judge(
     item_id: str,
     raw_output: str,
@@ -760,10 +1125,53 @@ def judge(
                 handled=False,
             )
 
+    # ── 모드 A2: classify-then-hold (DBM-003 — 업무상 불필요한 계정 존재) ────
+    # 활성 의심계정은 벤더 후보(잠김/만료) 조건에 안 걸려 후보0=양호로는 놓친다.
+    # 항상 판단보류 + 결정론 계정분류 정리정보(활성/잠김만료/시스템내장/불명 +
+    # 의심 계정명) 동반. 해석가능 계정행 0건이면 미수집 판단보류.
+    if base in _CLASSIFY_THEN_HOLD:
+        overview = _dbm003_overview(engine, data, violations)
+        if overview is None:
+            return ForcedVerdict(
+                verdict="판단보류",
+                confidence=0.0,
+                rationale=(
+                    f"[계정목록 미수집 → 판단보류] DBM-003 계정 행이 수집되지 않아 "
+                    "불필요 계정 존재 여부를 확인할 수 없음 — 자동 양호 판정 불가 "
+                    f"(engine={engine})"
+                ),
+                citations=[],
+                ev_status="review",
+                handled=True,
+            )
+        rationale, citations, summary = overview
+        return ForcedVerdict(
+            verdict="판단보류",
+            confidence=0.0,
+            rationale=rationale,
+            citations=citations,
+            ev_status="review",
+            handled=True,
+            interview_summary=summary,
+        )
+
     # ── 모드 A: detect-then-hold (DBM-004 — 후보 나열, 판정은 사람) ──────────
     # 위반(후보)≥1 → 판단보류 + 후보목록, 위반0 → 양호. (R3 차단은 위에서 선적용)
+    # 후보0 + RESULT 전체 0행(수집실패) → 판단보류(권한목록 미수집, 거짓양호 방지).
     if base in _DETECT_THEN_HOLD:
         if not violations:
+            if not _base_result_rows_exist(base, data):
+                return ForcedVerdict(
+                    verdict="판단보류",
+                    confidence=0.0,
+                    rationale=(
+                        f"[권한목록 미수집 → 판단보류] RESULT 0행 — 권한 목록 수집 자체가 "
+                        f"이루어지지 않아 자동 양호 판정 불가 (engine={engine}, item={base})"
+                    ),
+                    citations=[],
+                    ev_status="review",
+                    handled=True,
+                )
             return ForcedVerdict(
                 verdict="양호",
                 confidence=0.9,
@@ -772,6 +1180,7 @@ def judge(
                 ev_status="good",
                 handled=True,
             )
+        hold_citations, hold_summary = _dbm004_hold_info(engine, violations)
         return ForcedVerdict(
             verdict="판단보류",
             confidence=0.0,
@@ -779,9 +1188,10 @@ def judge(
                 f"결정론 탐지: 후보 {len(violations)}건 — "
                 "업무상 필요성 담당자 확인 필요 (자동 취약 판정 보류)"
             ),
-            citations=_mask_violations(violations),
+            citations=hold_citations,
             ev_status="review",
             handled=True,
+            interview_summary=hold_summary,
         )
 
     # ── 모드 C: detect-vuln-else-hold (DBM-011 — 감사로그 수집 및 백업) ──────

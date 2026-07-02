@@ -266,6 +266,46 @@ class OllamaClient:
         resp.raise_for_status()
         return resp.json()["message"]["content"]
 
+    def health_check(self) -> None:
+        """Ollama 서버 가동 여부와 self.model 존재 여부를 확인한다.
+
+        신규 네트워크 접점을 추가하지 않는다 — 기존 self.url(보통
+        localhost:11434) 에 GET /api/tags 만 호출한다(기존 chat()의
+        POST /api/chat과 동일 호스트). 실패(서버 미가동/모델 미설치) 시
+        RuntimeError를 던진다. 호출부(main.run)가 한글 안내로 감싼다.
+
+        태그 비교는 ':latest' 등 접미사 차이를 허용하기 위해 콜론 앞
+        base name까지 일치하면 통과로 본다(예: 'qwen3-coder:30b' 요청에
+        'qwen3-coder:30b-q4' 태그만 있어도 base 'qwen3-coder' 일치로는
+        통과시키지 않도록, base 비교는 원본 태그가 정확히 없을 때의
+        완화 조건으로만 사용 — 정확한 태그 우선, 없으면 base 일치도 허용).
+        """
+        try:
+            resp = requests.get(f"{self.url}/api/tags", timeout=self.timeout)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:  # noqa: BLE001 - 서버 미가동/네트워크 오류 등 원인 다양
+            raise RuntimeError(
+                f"Ollama 서버({self.url})에 연결할 수 없습니다: {type(e).__name__}"
+            ) from e
+        names = {m.get("name", "") for m in (data.get("models") or [])
+                if isinstance(m, dict)}
+        base_names = {n.split(":")[0] for n in names}
+        want = self.model
+        # 태그가 명시된 요청(콜론 포함, 예: 'qwen3-coder:30b')은 정확 일치만
+        # 허용한다 — ':7b'/':30b-q4' 등 다른 태그만 설치돼 있으면 chat()이
+        # 404를 받아 "조용히 전부 판단보류"로 새므로 헬스체크가 반드시 거른다.
+        # 태그 미지정 요청('qwen3-coder')일 때만 base 일치 완화를 적용한다.
+        if ":" in want:
+            if want in names:
+                return
+        else:
+            if want in names or want in base_names:
+                return
+        installed = ", ".join(sorted(names)) or "(설치된 모델 없음)"
+        raise RuntimeError(
+            f"모델 '{want}'을 찾을 수 없습니다. 설치된 모델: {installed}")
+
 
 class ClaudeCliClient:
     """claude -p CLI를 사용하는 Anthropic 모델 클라이언트.

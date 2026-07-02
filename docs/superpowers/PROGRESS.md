@@ -1,6 +1,17 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-07-02 오후 (**FW B′-1 구현+Opus 리뷰 SHIP 완료(1901 passed, 미커밋 작업트리). ★다음 착수=B′-1 simplify 마무리(선택, 사용자 중단으로 미실시) → B′-2 SECUI src_port 거짓양호 봉쇄**. 설계=`docs/superpowers/specs/2026-07-02-fw-implementation-design.md` §Phase B′. 잔여도메인 설계=`...remaining-domains-design.md`.) **"다음에 진행해줘"/"개발진행해" → 아래 ★B′-1 SHIP 블록의 "다음 착수" 항목부터.**
+> ═══ 재개 안내 (pull 후 "진행해줘"/"개발진행해"라고 하면 여기부터) ═══
+> **★★ 다음 착수 = 판단로직 거짓양호 수정 F1~F5** (설계=`docs/superpowers/specs/2026-07-03-falsegood-audit.md`). 순서: ①F2(DBM-025 EoS: item_configs 4파일 det_common 제거+DET_SOURCE STUB+cov 문서정정, 코드무변경) → ②모드J 인프라(db.py)+F3(DBM-009)+F4(DBM-014)+cov 픽스처 2건 교체 → ③F1(DBM-008 vendor 수집키 정합, mysql/oracle analysis.py+KNOWN_BUGS) → ④F5(DBM-013 cloud 와일드카드 parity). 각 커밋 후 `python3 -m pytest tests/ -q` 전체통과. **전부 합성 픽스처로 검증 가능(모델·실데이터 불필요).** 후속=F6~F8, 그다음 FW B′-2(실데이터 환경).
+> ⏳ **미완 리뷰**: ④파일명→플랫폼 인지(profile.py, 2005 passed 구현완료)는 **Fable 리뷰 미실시** — 재개 시 리뷰부터 or 그대로 SHIP 판단.
+> ═══════════════════════════════════════════════════
+>
+> 마지막 업데이트: 2026-07-03 (**4트랙 커밋·push 완료(2005 passed / 100 skipped / 0 failed):**
+> ① **DBM-003 모드A2(classify-then-hold)** — 코어 Opus리뷰 High "DBM-003 거짓양호" 해소(항상 판단보류+결정론 계정분류 인터뷰정보). Opus리뷰 SHIP.
+> ② **스마트 런처 UX** — criteria 자동탐색·profile 자동추정·out 기본화·Ollama 페일패스트·`python3 -m judge_tool`/`judge.sh`·무인자 대화형·폴더드롭 배치·docs/USAGE.md. Fable리뷰(H-1+미듐)→Sonnet개선 SHIP.
+> ③ **로컬 웹 UI**(`judge_tool/webui/`, `./judge.sh --web`) — 127.0.0.1 전용·stdlib·외부리소스0. 드래그앤드롭→자산 등록(프로파일 자동추정)→판정 실행(run() 재사용)→자산별 결과 대시보드+인터뷰요약 패널. 프로젝트/자산 디스크 영속화 `judge_projects/`(git 미추적, .gitignore 추가됨). 설계=`docs/superpowers/specs/2026-07-03-webui-design.md`. Fable리뷰(H-1워커사망)→개선→재리뷰(M-3 keep-alive desync 발견·실증)→개선 SHIP.
+> ④ **파일명→플랫폼 인지 확장**(profile.py) — `guess_profile`에 Stage B(플랫폼 별칭 스캔, 영문+한글, NFC정규화, 거짓라우팅 방지 fail-safe) 추가. 잠복 오탐(`오라클_result.xlsx`→iss 거짓라우팅) 해소. 설계=`docs/superpowers/specs/2026-07-03-filename-recognition-design.md`. Sonnet구현 완료(2005 passed). **Fable 리뷰 미실시 — 재개 시 처리.**
+> 공통: 코어 판정엔진(`run()`/`_HANDLERS`/vendor analysis) 무변경 — ②③④는 그 위 편의/인지 계층만. **FW 실데이터가 이 환경에 없어 FW 트랙(B′-2)은 미착수.**
+> **다음 착수는 위 재개안내 참조.**)
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. 이 파일이 단일 진실원천.
 >  재개 트리거: "개발진행해"/"개발해줘"/"이어서 진행"/"다음 작업"/**"다음에 진행해"** → 아래 TL;DR ★다음 착수부터.)
 
@@ -35,7 +46,7 @@
   - **실검증 결과**: 20파일 중 **성공 15**(전부 SECUI, 37/37 판정, ISS-037만 보류=설계대로) / **실패 5**(한글 13열 포맷 P13/P14/P24/P25=파서 ReportError 크래시, P15 CSV=openpyxl 미지원). ID70/PaloAlto 어댑터 실데이터 실행 0회(합성 픽스처만=실증 공백). **그룹객체 미파싱**: src 2.8% / **dst 35.5%(파일 최대 96.9%)** / svc 0%.
   - **Opus 코드리뷰 발견**: [H-1] SECUI 파서 src_ports 항상 "any"(수집코드 부재)→**ISS-035 전면 거짓양호** / [H-2] 미지원 포맷=판단보류 아닌 크래시 / [H-4] IP 대시범위(`a-b`) 미파싱→광역·그림자 미탐 / [M-1] 광역임계 /8 과관대(/12~/16 미탐) / [M-2] `_policy_covers` 포트 비대칭(lower 전포트+upper 제한→거짓 그림자, 오탐방향) / [M-3] 넓은 src범위(1024-65535) 지정 미탐. 직렬화 왕복 무결.
   - **★B′ 구현 순서**(설계 `docs/superpowers/specs/2026-07-02-fw-implementation-design.md` §Phase B′): **B′-1** 미지원포맷 크래시→판단보류 강등 + 한글13열 어댑터 + CSV 분기 → **B′-2** SECUI src_port(파싱 추가 or ISS-035 capability 강등) → **B′-3** 그룹객체 확장(dst 주소객체 우선, 객체정의 시트 헤더 확인 선행) → **B′-4** 정밀도(H-4/M-1/M-2).
-  - **⏳ 사용자 결정 대기(코어 Opus 리뷰 High, FW와 독립)**: DBM-003(4엔진)·SRV-074 = label B(인터뷰) 의도인데 `judgment_method: det_common` 우선으로 자동판정(활성 의심계정→양호 방향, needs_review로만 완화). 선택지 (a) detect-then-hold 편입(후보→판단보류) vs (b) judgment_method 제거(인터뷰 복귀). + cov 계약테스트 handled=False skip 관용→fail 승격 권고, db_cov_contract DBM-003 note 정정 필요.
+  - **✅ 해소(2026-07-02 저녁) — 코어 Opus 리뷰 High "DBM-003 거짓양호"**: 사용자 (a) detect-then-hold 방향 확정. 단 구현 중 Fable 설계가 정정 — **기존 모드A(후보0=양호)에 넣으면 안 됨**(벤더 후보=잠김/만료뿐 → 활성 의심계정은 후보0=양호로 여전히 샘). 신규 **모드A2 classify-then-hold** 신설: DBM-003은 **항상 판단보류** + 결정론 계정분류 정리정보(활성/잠김만료/시스템내장/불명 + 의심계정명 test/temp/old/backup)를 `ForcedVerdict.interview_summary`→`Judgment.interview_summary`→산출물 "인터뷰요약" 컬럼으로 동반(사용자 요구="인터뷰하기 쉽게 정보를 줘라"). 4엔진(mysql/mariadb/oracle/mssql)+pg(cloud). **DBM-004**(기존 모드A)도 보강: RESULT 0행 수집실패→판단보류 가드 추가, 보류 citations를 grantee별 권한집계로 교체. 구현=`judge_tool/det_adapters/db.py`(_CLASSIFY_THEN_HOLD·헬퍼 5개·judge() 모드A2 블록), base.py(interview_summary 필드), main.py(_det_common_handler 배선). **db_cov_contract DBM-003 note 정정 완료**(취약→판단보류, 양극성 모두 보류). 회귀 0(1942 passed). **SRV-074는 범위 제외**(2026-06-16 사용자 결정으로 det_common+label B가 의도된 설계로 확정 — 건드리지 않음). ⏳잔여: cov 계약테스트 handled=False skip 관용→fail 승격 권고(백로그 유지, 본건과 독립).
   - 잔여 도메인(서버/웹WAS/컨테이너/OS가상화/네트워크/비FW) 설계: `docs/superpowers/specs/2026-07-02-remaining-domains-design.md` (우선순위: FW → 컨테이너 normalize_id+kind → 서버/웹WAS 도커 자가수집 → 네트워크 수집기 협의 → OS가상화/비FW 샘플 대기).
 
   **현황**: `judge_tool/fw_policy.py`에 **ISS-030~041 방화벽 이상정책 결정론 탐지 이미 구현**(2026-06-12, 486 tests). LLM 없이 ipaddress(stdlib)+집합연산으로 전수 탐지(=결정론, 정당성=사람, needs_review=True). 프로파일 `iss`(FW, fw_policy_xlsx 파서)/`iss_device`(비-FW iss_xml).

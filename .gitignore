@@ -31,3 +31,6 @@ read_xlsx.py
 
 # 에이전트 worktree/세션 상태 — git 미추적
 .claude/
+
+# 웹UI 프로젝트 저장소 — 업로드 결과파일(대외비 가능)·판정산출물 보관, push 제외
+judge_projects/

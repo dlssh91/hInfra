@@ -1,4 +1,5 @@
 import argparse
+import glob
 import hashlib
 import logging
 import os
@@ -6,7 +7,7 @@ import re
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
 import json as _json
 
@@ -20,7 +21,7 @@ from judge_tool.mapper import aggregate
 from judge_tool.models import EvidenceItem, Judgment, ResourceEvidence
 from judge_tool.parsers import get_parser
 from judge_tool.preflight import PreflightError, run_preflight  # noqa: F401
-from judge_tool.profile import get_profile
+from judge_tool.profile import get_profile, guess_profile, list_profile_keys
 from judge_tool.writer import build_coverage, write_excel, write_json
 
 # 결정론 어댑터 등록 — import 시 _DET_ADAPTERS["server"] 등록 부작용 발생
@@ -537,6 +538,9 @@ def _det_common_handler(crit, item, ctx: "JudgeContext") -> Optional[Judgment]:
         )
         j.label = crit.label
         j.needs_review = True  # 탐지=결정론, 임계값 정당성=사람
+        summary = getattr(fv, "interview_summary", None)
+        if summary:
+            j.interview_summary = summary
         return j
     except Exception as e2:  # noqa: BLE001
         log.warning("det_common reconcile 실패, §18.3 라벨 라우팅 item=%s type=%s",
@@ -581,6 +585,168 @@ def _guard_out_dir(out_dir: str, report_path: str, criteria_path: str) -> None:
             raise SystemExit(
                 "출력 디렉터리가 입력 데이터 디렉터리와 같습니다. "
                 "별도 --out-dir을 지정하세요.")
+
+
+def _resolve_out_dir(preferred: str, report_path: str, criteria_path: str) -> str:
+    """out-dir 후보가 입력 경로와 충돌하면 저장소 루트의 out/으로 자동
+    폴백한다.
+
+    대화형/배치 모드는 "결과 파일이 있는 폴더"를 스캔 대상으로 삼는데,
+    실사용자가 그 폴더 자체에서(cwd=해당 폴더) judge_tool을 실행하면
+    기본 out-dir('out')이 입력 폴더의 하위가 되어 _guard_out_dir가
+    거부한다. 이 경우 사람이 --out-dir을 다시 입력하게 만들기보다
+    저장소 루트의 out/으로 조용히 대체해 "그냥 동작"하게 한다.
+    사용자가 --out-dir을 명시한 경로(단일파일 CLI)는 이 함수를 거치지
+    않고 기존 엄격한 _guard_out_dir만 적용된다(하위호환 불변).
+    """
+    try:
+        _guard_out_dir(preferred, report_path, criteria_path)
+        return preferred
+    except SystemExit:
+        fallback = os.path.join(_PKG_ROOT, "out")
+        if fallback == os.path.abspath(preferred):
+            # 폴백 후보가 방금 거부된 경로와 동일 → 완화할 여지 없음.
+            # 가드가 거부한 경로를 무검증 반환하지 않고 원래 거부를 유지한다.
+            raise
+        _guard_out_dir(fallback, report_path, criteria_path)
+        return fallback
+
+
+# ── 스마트 런처: 자동추정/헬스체크/배치용 헬퍼 ───────────────────────────────
+
+# 이 method들은 client.chat()을 절대 호출하지 않음이 코드로 보장된다:
+# det(canned/EOL 결정론), fw_policy(방화벽 결정론 탐지) — _defer_or_eol/
+# _fw_policy_handler 참조. 그 외(llm/llm_det/interview*/det_common)는
+# 실행 경로에 따라 LLM 호출 가능성이 있으므로 보수적으로 "필요"로 간주한다.
+_NEVER_LLM_METHODS = {"det", "fw_policy"}
+
+
+def _needs_llm(criteria: Dict, variant: str) -> bool:
+    """이 variant의 판정대상 항목 중 LLM 호출 가능성이 있는 항목이 있는지 판별.
+
+    Ollama 페일패스트 헬스체크의 게이트로 쓰인다(iss처럼 순수 결정론
+    프로파일은 Ollama가 없어도 동작해야 하므로 헬스체크를 건너뛴다).
+    interview/interview_holdonly는 classify_method가 summary_instruction
+    유무로 정적 분류하지만, 안전을 위해 실제 crit.summary_instruction 값을
+    직접 확인한다(§18.3 라벨 라우팅으로 method가 우회되는 경우까지 대비).
+    """
+    for (_item_id, crit_variant), crit in criteria.items():
+        if crit_variant != variant or not crit.is_judgeable:
+            continue
+        method = crit.judgment_method
+        if method in _NEVER_LLM_METHODS:
+            continue
+        if method in ("interview", "interview_holdonly"):
+            if crit.summary_instruction:
+                return True
+            continue
+        # llm / llm_det / det_common(어댑터 미처리 시 라벨 라우팅으로 LLM
+        # 폴백 가능) / 미등록 method → 보수적으로 LLM 필요로 간주.
+        return True
+    return False
+
+
+# 평가기준 xlsx 자동탐색 시 뒤질 후보 디렉터리(우선순위 순).
+# 1) 현재 작업 디렉터리 기준 ref/ — judge.sh가 작업루트로 cd 후 실행하므로
+#    일반적인 실사용 경로. 2) 패키지 설치 위치 기준 ref/ — cwd가 다르더라도
+#    'python3 -m judge_tool' 을 다른 위치에서 띄운 경우의 안전망.
+_PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _discover_criteria_path() -> str:
+    """--criteria 미지정 시 ref/ 아래 평가기준 xlsx를 자동탐색한다.
+
+    패턴: '*평가기준*제*호*.xlsx'. 복수 매칭이면 파일명의 '제YYYY-N호'
+    버전이 가장 높은 파일을 선택한다(최신 고시 우선). 매칭이 없으면
+    ReportError로 명확한 한글 안내를 낸다(추측 대신 사용자에게 --criteria
+    직접 지정을 요구 — 오판정보다 명시 요구가 안전).
+    """
+    pattern = "*평가기준*제*호*.xlsx"
+    search_dirs = []
+    for base in (os.getcwd(), _PKG_ROOT):
+        d = os.path.join(base, "ref")
+        if d not in search_dirs:
+            search_dirs.append(d)
+
+    matches: List[str] = []
+    for d in search_dirs:
+        matches.extend(glob.glob(os.path.join(d, pattern)))
+    # 중복 제거(realpath 기준), 순서 보존
+    seen = set()
+    unique: List[str] = []
+    for m in matches:
+        rp = os.path.realpath(m)
+        if rp not in seen:
+            seen.add(rp)
+            unique.append(m)
+    matches = unique
+
+    if not matches:
+        raise ReportError(
+            "--criteria가 지정되지 않았고, 다음 위치의 'ref/' 아래에서 평가기준 "
+            f"xlsx 파일을 자동으로 찾지 못했습니다: {search_dirs}. "
+            "--criteria 옵션으로 평가기준 xlsx 경로를 직접 지정하세요.")
+    if len(matches) == 1:
+        return matches[0]
+
+    def _version_key(path: str) -> Tuple[int, int]:
+        m = _CRITERIA_VERSION.search(os.path.basename(path))
+        if not m:
+            return (0, 0)
+        vm = re.search(r"제(\d{4})-(\d+)호", m.group(0))
+        return (int(vm.group(1)), int(vm.group(2))) if vm else (0, 0)
+
+    matches.sort(key=_version_key, reverse=True)
+    return matches[0]
+
+
+def _resolve_profile(report_path: str, explicit: Optional[str]) -> str:
+    """--profile 미지정 시 파일명/확장자로 자동추정한다.
+
+    명시된 프로파일이 있으면 그대로 사용(기존 동작 불변). 없으면
+    profile.guess_profile()로 추정하되, 모호(복수 후보)하거나 추정 불가면
+    ReportError로 후보/사용법을 안내하고 종료한다 — cloud 무조건 폴백은
+    제거(오판정보다 명시 요구가 안전).
+    """
+    if explicit:
+        return explicit
+    guessed, candidates = guess_profile(report_path)
+    if guessed:
+        return guessed
+    if candidates:
+        raise ReportError(
+            f"--profile을 확정할 수 없습니다(파일명으로 프로파일 후보가 여럿입니다): "
+            f"{list(candidates)}. --profile 옵션으로 직접 지정하세요.")
+    raise ReportError(
+        f"--profile을 추정할 수 없습니다(파일명/확장자로 식별 불가): {report_path}. "
+        f"--profile 옵션으로 직접 지정하세요(사용 가능: {list(list_profile_keys())}).")
+
+
+# 배치/대화형 모드에서 후보로 취급할 결과 파일 확장자.
+# .txt = DB 결과 표준 포맷(CLAUDE.md 예시 --report <result.txt>, 픽스처
+# sample_db_mysql.txt 등)이므로 반드시 포함 — 누락 시 폴더드롭에서 조용히 제외됨.
+_CANDIDATE_EXTS = (".xml", ".json", ".xlsx", ".csv", ".txt")
+
+
+def _list_candidate_reports(directory: str) -> List[str]:
+    """디렉터리 안에서 판정 대상일 법한 결과 파일 목록을 반환(정렬됨).
+
+    평가기준 xlsx('평가기준' 포함 파일명)와 기존 산출물('result_' 접두)은
+    후보에서 제외한다.
+    """
+    out: List[str] = []
+    for name in sorted(os.listdir(directory)):
+        if name.startswith("."):
+            continue
+        ext = os.path.splitext(name)[1].lower()
+        if ext not in _CANDIDATE_EXTS:
+            continue
+        if "평가기준" in name or name.startswith("result_"):
+            continue
+        full = os.path.join(directory, name)
+        if os.path.isfile(full):
+            out.append(full)
+    return out
 
 
 def run(report_path: str, criteria_path: str, profile_key: str, client,
@@ -656,6 +822,24 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
             profile.parser, report_path)
 
     criteria = load_criteria(criteria_path, profile, profile_key=profile_key)
+
+    # Ollama 페일패스트: LLM이 필요한 판정인데 서버·모델이 없으면 판정 루프를
+    # 다 돌기 전에 먼저 알린다. 예외: skip_preflight(테스트/오프라인 모드) 또는
+    # 이 variant가 순결정론(det/fw_policy만, 예: iss)이면 건너뛴다. client가
+    # health_check를 제공하지 않는 대역(테스트 Stub 등)도 자연히 건너뛴다.
+    if not skip_preflight and _needs_llm(criteria, variant):
+        health_check = getattr(client, "health_check", None)
+        if callable(health_check):
+            try:
+                health_check()
+            except Exception as e:  # noqa: BLE001 - 원인 다양(미가동/모델 없음/네트워크)
+                model_name_for_hint = getattr(client, "model", "qwen3-coder:30b")
+                raise ReportError(
+                    f"[Ollama 확인 실패] {e} "
+                    "Ollama가 실행 중인지 확인하세요: `ollama serve`, "
+                    f"`ollama pull {model_name_for_hint}`."
+                ) from e
+
     raw_checks = parser.parse(report_path)
     items = aggregate(raw_checks, variant, profile)
 
@@ -751,22 +935,189 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
         _db_pwcrack_seam.clear_hashcat_opts()
 
 
+def _hashcat_opts_from_args(args):
+    """argparse Namespace → HashcatOpts. main()/_run_batch가 공유."""
+    from judge_tool.det_adapters.db_pwcrack import HashcatOpts as _HashcatOpts
+    return _HashcatOpts(
+        hashcat_path=args.hashcat_path,
+        wordlist=args.hashcat_wordlist,
+        rules=args.hashcat_rules,
+        timeout=args.hashcat_timeout,
+    )
+
+
+def _run_batch(args) -> None:
+    """--report에 디렉터리가 주어진 경우: 폴더 안 결과파일을 파일별로
+    프로파일 자동추정 후 순차 판정한다. 한 파일의 실패가 나머지 파일
+    처리를 막지 않도록 격리하고, 끝에 파일별 1행 종합 요약을 출력한다.
+    """
+    files = _list_candidate_reports(args.report)
+    if not files:
+        print(f"오류: '{args.report}' 안에서 처리할 결과 파일을 찾지 못했습니다.",
+              file=sys.stderr)
+        raise SystemExit(2)
+
+    # out-dir이 argparse 기본값('out') 그대로면, 사용자가 결과 폴더 자체에서
+    # 실행해도(cwd=args.report) 조용히 동작하도록 충돌 시 저장소 루트
+    # out/으로 자동 폴백한다. --out-dir을 명시했다면 기존 엄격한 가드 적용.
+    # 스캔 폴더 자체를 가드 기준으로 삼기 위해 프로브 경로(폴더 내 임의 파일)를
+    # 넘긴다 — _guard_out_dir는 report_path의 dirname을 입력 디렉터리로 보므로
+    # 디렉터리를 그대로 넘기면 그 '부모'가 기준이 되어버린다.
+    scan_probe = os.path.join(args.report, "_")
+    out_dir = args.out_dir
+    if out_dir == "out":
+        out_dir = _resolve_out_dir(out_dir, scan_probe, args.criteria)
+    else:
+        # 명시적 --out-dir: makedirs 전에 선가드 — 실데이터/입력 폴더 안에
+        # 디렉터리를 만들고서야 거부하는 것(M-2)을 방지. 실패 시 SystemExit로
+        # 배치 시작 전 즉시 중단(파일별 격리 대상이 아닌 설정 오류).
+        _guard_out_dir(out_dir, scan_probe, args.criteria)
+    os.makedirs(out_dir, exist_ok=True)
+    hashcat_opts = _hashcat_opts_from_args(args)
+
+    rows: List[Tuple[str, str, str, str]] = []  # (파일명, 프로파일, 상태, 상세)
+    for path in files:
+        base = os.path.splitext(os.path.basename(path))[0]
+        json_out = os.path.join(out_dir, f"result_{base}.json")
+        xlsx_out = os.path.join(out_dir, f"result_{base}.xlsx")
+        name = os.path.basename(path)
+        try:
+            profile_key = _resolve_profile(path, args.profile)
+            # out_dir은 루프 진입 전에 스캔 폴더 기준으로 선가드했다(비재귀
+            # 목록이라 전 파일이 같은 폴더). 파일별 재가드는 SystemExit로
+            # 배치를 중단시키므로 두지 않는다(M-3).
+            client = OllamaClient(url=args.ollama_url, model=args.model)
+            cov = run(path, args.criteria, profile_key, client,
+                     json_out, xlsx_out, args.model,
+                     skip_preflight=args.skip_preflight,
+                     hashcat_opts=hashcat_opts)
+            rows.append((name, profile_key, "성공",
+                        f"{cov['judged']}/{cov['expected']} 판정, "
+                        f"미판정 {len(cov['missing'])}"))
+        except (ReportError, OSError) as e:
+            rows.append((name, "-", "실패", str(e)))
+        except Exception as e:  # noqa: BLE001 - 배치 격리: 파일 1건의 우발적
+            # 예외도 전체 배치를 중단시키지 않는다(불변 계약: 실패 격리).
+            log.warning("배치 처리 중 예외 report=%s type=%s", path, type(e).__name__)
+            rows.append((name, "-", "실패", f"{type(e).__name__}: {e}"))
+
+    print(f"\n=== 배치 판정 요약 ({len(rows)}건) ===")
+    for name, prof, status, detail in rows:
+        print(f"[{status}] {name}  (profile={prof})  {detail}")
+    ok = sum(1 for r in rows if r[2] == "성공")
+    print(f"\n성공 {ok}/{len(rows)}. 산출물 위치: {out_dir}")
+
+
+def _interactive_main() -> None:
+    """무인자 대화형 모드: 인자 0개 + tty에서 진입(스마트 런처).
+
+    현재 폴더의 후보 결과파일을 나열(추정 프로파일 병기) → 사용자가 번호
+    선택 → 추정 프로파일 확인(엔터=수락) → 실행. stdlib input()만 사용.
+    """
+    print("=== judge_tool 대화형 모드 ===")
+    cwd = os.getcwd()
+    dir_in = input(f"결과 파일이 있는 폴더 [{cwd}]: ").strip() or cwd
+    if not os.path.isdir(dir_in):
+        print(f"오류: 폴더를 찾을 수 없습니다: {dir_in}", file=sys.stderr)
+        raise SystemExit(2)
+
+    files = _list_candidate_reports(dir_in)
+    if not files:
+        print(f"오류: '{dir_in}' 안에서 결과 파일을 찾지 못했습니다.", file=sys.stderr)
+        raise SystemExit(2)
+
+    print("\n번호  파일명                                      추정 프로파일")
+    guesses: List[Optional[str]] = []
+    for i, path in enumerate(files, start=1):
+        guessed, candidates = guess_profile(path)
+        guesses.append(guessed)
+        if guessed:
+            label = guessed
+        elif candidates:
+            label = f"모호({','.join(candidates)})"
+        else:
+            label = "추정 불가"
+        print(f"[{i:2d}] {os.path.basename(path):42s} {label}")
+
+    sel = input(f"\n판정할 파일 번호 선택 (1-{len(files)}): ").strip()
+    try:
+        idx = int(sel) - 1
+        if not (0 <= idx < len(files)):
+            raise ValueError
+    except ValueError:
+        print("오류: 올바른 번호를 입력하세요.", file=sys.stderr)
+        raise SystemExit(2)
+
+    report_path = files[idx]
+    guessed_profile = guesses[idx]
+    prompt = (f"추정 프로파일: {guessed_profile} (엔터=수락, 다른 값 입력=변경): "
+             if guessed_profile else
+             "프로파일을 추정하지 못했습니다. 직접 입력하세요"
+             f"(사용 가능: {list(list_profile_keys())}): ")
+    prof_in = input(prompt).strip()
+    profile_key = prof_in or guessed_profile
+    if not profile_key:
+        print("오류: 프로파일이 지정되지 않았습니다.", file=sys.stderr)
+        raise SystemExit(2)
+
+    model = "qwen3-coder:30b"
+
+    try:
+        criteria_path = _discover_criteria_path()
+        # 기본 out-dir('out')이 방금 스캔한 폴더(=cwd)와 충돌하면(사용자가
+        # 결과 폴더 안에서 바로 실행한 흔한 경우) 저장소 루트 out/으로
+        # 조용히 대체한다 — 대화형 모드는 --out-dir을 물어보지 않으므로
+        # 여기서 막히면 사용자가 다시 CLI로 돌아가야 해 UX가 깨진다.
+        out_dir = _resolve_out_dir("out", report_path, criteria_path)
+        base = os.path.splitext(os.path.basename(report_path))[0]
+        json_out = os.path.join(out_dir, f"result_{base}.json")
+        xlsx_out = os.path.join(out_dir, f"result_{base}.xlsx")
+        client = OllamaClient(url="http://localhost:11434", model=model)
+        cov = run(report_path, criteria_path, profile_key, client,
+                 json_out, xlsx_out, model)
+    except (ReportError, OSError) as e:
+        print(f"오류: {e}", file=sys.stderr)
+        raise SystemExit(2) from e
+
+    print(f"\n판정 {cov['judged']}/{cov['expected']} 완료. 미판정: {cov['missing']}")
+    print(f"출력: {json_out}\n      {xlsx_out}")
+
+
 def main(argv=None):
+    # 무인자 대화형 진입: 실제 CLI 인자가 0개이고 표준입력이 tty일 때만
+    # (파이프/CI 등 비대화형 환경에서는 기존 argparse 동작을 그대로 유지 —
+    # pytest처럼 stdin이 tty가 아닌 환경은 이 분기에 절대 들어오지 않는다).
+    resolved_argv = sys.argv[1:] if argv is None else argv
+    if not resolved_argv and sys.stdin.isatty():
+        return _interactive_main()
+
     ap = argparse.ArgumentParser(
         description="클라우드 점검 결과 LLM 자동 판단 도구")
-    ap.add_argument("--report", required=True, help="점검 결과 XML 경로")
-    ap.add_argument("--criteria", required=True, help="평가기준 xlsx 경로")
-    ap.add_argument("--profile", default="cloud")
+    ap.add_argument("report_positional", nargs="?", default=None,
+                    metavar="REPORT",
+                    help="점검 결과 파일/폴더 경로(위치인자, --report와 동일. "
+                         "예: python3 -m judge_tool result.xml)")
+    ap.add_argument("--report", default=None,
+                    help="점검 결과 파일 경로(디렉터리 지정 시 배치 판정). "
+                         "위치인자로도 지정 가능.")
+    ap.add_argument("--criteria", default=None,
+                    help="평가기준 xlsx 경로. 미지정 시 ref/ 아래 "
+                         "'*평가기준*제*호*.xlsx'를 자동탐색(복수면 최신 "
+                         "'제N호' 선택).")
+    ap.add_argument("--profile", default=None,
+                    help="미지정 시 파일명/확장자로 자동추정. 모호하거나 "
+                         "추정 불가면 후보를 안내하고 종료.")
     ap.add_argument("--variant", default=None,
                     help="변형 강제 지정(파일명 자동식별을 건너뜀). "
                          "예: oracle_native, mysql_rds")
-    ap.add_argument("--out-dir", default=".")
+    ap.add_argument("--out-dir", default="out")
     ap.add_argument("--model", default="qwen3-coder:30b")
     ap.add_argument("--ollama-url", default="http://localhost:11434")
     ap.add_argument("--skip-preflight", "--no-llm-gate",
                     action="store_true", default=False,
-                    help="pre-flight 인코딩 교정·LLM 게이트를 건너뜀 "
-                         "(테스트/오프라인 모드용). 기본은 활성화.")
+                    help="pre-flight 인코딩 교정·LLM 게이트 및 Ollama "
+                         "헬스체크를 건너뜀(테스트/오프라인 모드용). "
+                         "기본은 활성화.")
     # ── Phase 4c-a: hashcat 연동 옵션 ─────────────────────────────────────────
     ap.add_argument(
         "--hashcat-path", default=None, metavar="PATH",
@@ -786,23 +1137,41 @@ def main(argv=None):
     )
     args = ap.parse_args(argv)
 
-    _guard_out_dir(args.out_dir, args.report, args.criteria)
+    # 위치인자와 --report를 동시에, 그것도 서로 다르게 지정하면 어느 하나가
+    # 조용히 무시되어 "지정한 파일이 판정 안 됨"이 된다(M-4) — 명시적으로 거부.
+    if (args.report_positional and args.report
+            and os.path.abspath(args.report_positional) != os.path.abspath(args.report)):
+        print("오류: 위치인자와 --report에 서로 다른 경로가 지정되었습니다 "
+              f"('{args.report_positional}' vs '{args.report}'). 하나만 지정하세요.",
+              file=sys.stderr)
+        raise SystemExit(2)
+    args.report = args.report or args.report_positional
+    if not args.report:
+        print("오류: 점검 결과 파일/폴더 경로가 필요합니다 "
+              "(위치인자 또는 --report로 지정하세요).", file=sys.stderr)
+        raise SystemExit(2)
 
-    base = os.path.splitext(os.path.basename(args.report))[0]
-    json_out = os.path.join(args.out_dir, f"result_{base}.json")
-    xlsx_out = os.path.join(args.out_dir, f"result_{base}.xlsx")
-
-    # Phase 4c-a: hashcat 옵션 조립 (바이너리 지정 또는 PATH 자동탐지; 없으면 None)
-    from judge_tool.det_adapters.db_pwcrack import HashcatOpts as _HashcatOpts
-    hashcat_opts = _HashcatOpts(
-        hashcat_path=args.hashcat_path,
-        wordlist=args.hashcat_wordlist,
-        rules=args.hashcat_rules,
-        timeout=args.hashcat_timeout,
-    )
-
-    client = OllamaClient(url=args.ollama_url, model=args.model)
     try:
+        if args.criteria is None:
+            args.criteria = _discover_criteria_path()
+
+        # 배치 모드: --report가 디렉터리면 폴더 안 파일들을 순차 판정.
+        if os.path.isdir(args.report):
+            _run_batch(args)
+            return
+
+        args.profile = _resolve_profile(args.report, args.profile)
+
+        _guard_out_dir(args.out_dir, args.report, args.criteria)
+
+        base = os.path.splitext(os.path.basename(args.report))[0]
+        json_out = os.path.join(args.out_dir, f"result_{base}.json")
+        xlsx_out = os.path.join(args.out_dir, f"result_{base}.xlsx")
+
+        # Phase 4c-a: hashcat 옵션 조립 (바이너리 지정 또는 PATH 자동탐지; 없으면 None)
+        hashcat_opts = _hashcat_opts_from_args(args)
+
+        client = OllamaClient(url=args.ollama_url, model=args.model)
         cov = run(args.report, args.criteria, args.profile, client,
                   json_out, xlsx_out, args.model,
                   variant_override=args.variant,

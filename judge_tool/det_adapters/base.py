@@ -136,6 +136,9 @@ class ForcedVerdict:
     citations: 위반 증거 인용(취약 시)
     ev_status: "good" | "bad" | "review"  (합성 ResourceEvidence용)
     handled: False면 이 항목은 결정론 대상 아님 → 호출부에서 LLM 폴백
+    interview_summary: B라벨 det가 판단보류와 함께 생성한 인터뷰 정리정보(옵션).
+      trailing default라 기존 생성부는 전부 무영향. _det_common_handler가
+      writer의 "인터뷰요약" 컬럼(Judgment.interview_summary)으로 전달한다.
     """
     verdict: str
     confidence: float
@@ -143,6 +146,7 @@ class ForcedVerdict:
     citations: list = field(default_factory=list)
     ev_status: str = "review"
     handled: bool = True
+    interview_summary: Optional[str] = None
 
 
 # 어댑터 레지스트리: profile_key → adapter callable

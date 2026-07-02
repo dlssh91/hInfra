@@ -19,6 +19,7 @@ DBM-001:
   needs_review: true
   label: C
   canned_message: 비밀번호 해시가 확인되었으나, 사전공격으로 판단 불가(spare4 미수집 또는 미지원 포맷). 담당자가 비밀번호 정책 프로파일(PROFILE) 설정값으로 간접 확인 필요.
+# 모드A2(classify-then-hold): det가 분류정보 생성+항상 판단보류. summary_instruction은 handled=False 폴백(LLM 요약)용으로 유지.
 DBM-003:
   judgment_method: det_common
   needs_review: true
