@@ -1,9 +1,20 @@
-"""방화벽 정책 XLSX 파서.
+"""방화벽 정책 XLSX/CSV 파서.
 
 지원 포맷:
   1. SECUI류: 'Font Color:' 범례 + Seq/Two-way/Action/From/To/Service 헤더
   2. ID70: 'PRIORITY/SVC SPEC/SRC TYPE' 70열
   3. PaloAlto: 'Hit Count' 컬럼 포함
+  4. krfw: 한글 13열(룰 NUM/출발지/목적지/서비스/Protocol/.../정책/.../활성화/설명)
+     — P13/P14/P24/P25 실증 포맷.
+
+미지원/미인식 포맷(unknown)은 예외를 던지지 않고 빈 정책 목록으로 emit한다
+(B'-1: 방어적 강등 — 이전에는 ReportError로 크래시했음). unknown 포맷은
+fw_policy.detect_for_iss()의 기존 unknown 경로가 전 항목 "판단보류"로
+처리하므로 거짓양호가 아니다. 파일 자체를 열 수 없는 경우(손상/권한 등)는
+여전히 ReportError.
+
+입력 확장자가 .csv면 openpyxl 대신 stdlib csv로 로드한다(utf-8-sig 우선,
+실패 시 cp949 폴백) — 이후 파이프라인(포맷 sniff~파싱)은 xlsx와 동일하다.
 
 parse() 계약:
   [(iss_id, [], context_str), ...] — ISS-030~041 12개 3-튜플.
@@ -13,12 +24,20 @@ context 형식:
   FW_FORMAT:<fmt>\\n
   FW_SHEETS:<s1,s2,...>\\n
   FW_POLICY_COUNT:<n>\\n
+  FW_PARSE_STATS_JSON:<compact_json>\\n
   FW_POLICIES_JSON:<compact_json>
+
+parse_stats(최소본, 가산적 계측 — 그룹객체 확장 우선순위 및 거짓양호 봉쇄
+가드용 근거 수치): {rows_total, rows_parsed, rows_dropped,
+unrecognized_action_count}. rows_total/parsed/dropped는 시트별 대략치(헤더 1행
+제외 근사)이며 요약시트 노출은 범위 밖 — unrecognized_action_count만 핸들러
+가드(detect_for_iss unrecognized_action_count 인자)에 사용된다.
 
 detect_variant():
   ISS 프로파일은 FW 변형만 구현 → 항상 "fw" 반환.
   main.run의 hasattr(parser, 'detect_variant') seam에서 호출됨.
 """
+import csv
 import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -48,56 +67,100 @@ def detect_variant(xlsx_path: str) -> str:
     return "fw"
 
 
+def _load_csv_rows(path: str) -> List[Tuple]:
+    """CSV 파일을 행 튜플 리스트로 로드. utf-8-sig 우선, 실패 시 cp949 폴백."""
+    last_err: Optional[Exception] = None
+    for enc in ("utf-8-sig", "cp949"):
+        try:
+            with open(path, encoding=enc, newline="") as f:
+                return [tuple(row) for row in csv.reader(f)]
+        except UnicodeDecodeError as e:
+            last_err = e
+            continue
+    raise ReportError(
+        f"방화벽 정책 CSV 인코딩 판별 실패(utf-8-sig/cp949 모두 실패): {path}"
+    ) from last_err
+
+
 def parse(
     xlsx_path: str,
 ) -> List[Tuple[str, List[ResourceEvidence], Optional[str]]]:
-    """방화벽 정책 XLSX → ISS-030~041 12개 3-튜플 emit.
+    """방화벽 정책 XLSX/CSV → ISS-030~041 12개 3-튜플 emit.
 
-    모든 정책 시트를 순회해 Policy 리스트를 합산하고,
+    모든 정책 시트(csv는 단일 가상 시트)를 순회해 Policy 리스트를 합산하고,
     compact JSON으로 직렬화해 context에 담는다.
     resources는 빈 리스트 — 탐지/판정은 _fw_policy_handler에서.
+
+    포맷 미인식(unknown) 또는 정책 0건이어도 예외를 던지지 않는다(B'-1) —
+    파일을 아예 열 수 없는 경우만 ReportError.
     """
-    try:
-        wb = openpyxl.load_workbook(xlsx_path, data_only=True, read_only=True)
-    except Exception as e:
-        raise ReportError(
-            f"방화벽 정책 파일 열기 실패: {xlsx_path} ({type(e).__name__}). "
-            "Excel 파일이 손상되었거나 접근 권한이 없습니다."
-        ) from e
+    is_csv = xlsx_path.lower().endswith(".csv")
+    sheet_list: List[Tuple[str, List[Tuple]]] = []
+
+    if is_csv:
+        try:
+            rows = _load_csv_rows(xlsx_path)
+        except ReportError:
+            raise
+        except Exception as e:
+            raise ReportError(
+                f"방화벽 정책 CSV 파일 열기 실패: {xlsx_path} ({type(e).__name__}). "
+                "파일이 손상되었거나 접근 권한이 없습니다."
+            ) from e
+        sheet_list = [("csv", rows)]
+    else:
+        try:
+            wb = openpyxl.load_workbook(xlsx_path, data_only=True, read_only=True)
+        except Exception as e:
+            raise ReportError(
+                f"방화벽 정책 파일 열기 실패: {xlsx_path} ({type(e).__name__}). "
+                "Excel 파일이 손상되었거나 접근 권한이 없습니다."
+            ) from e
+        try:
+            for sname in wb.sheetnames:
+                if sname.strip().lower() in _SKIP_SHEETS:
+                    continue
+                ws = wb[sname]
+                sheet_list.append((sname, list(ws.iter_rows(values_only=True))))
+        finally:
+            wb.close()
 
     all_policies: List[Policy] = []
     detected_fmt: str = "unknown"
     sheet_names: List[str] = []
+    stats: Dict[str, int] = {
+        "rows_total": 0, "rows_parsed": 0, "rows_dropped": 0,
+        "unrecognized_action_count": 0,
+    }
 
-    try:
-        for sname in wb.sheetnames:
-            if sname.strip().lower() in _SKIP_SHEETS:
-                continue
-            ws = wb[sname]
-            rows = list(ws.iter_rows(values_only=True))
-            if not rows:
-                continue
-            # 비어있는 시트 스킵
-            if all(all(c is None for c in row) for row in rows[:3]):
-                continue
+    for sname, rows in sheet_list:
+        if not rows:
+            continue
+        # 비어있는 시트 스킵 (openpyxl None 셀 / csv 빈 문자열 셀 모두 처리)
+        if all(all(not c for c in row) for row in rows[:3]):
+            continue
 
-            # 포맷 탐지: 헤더 행 후보를 순서대로 시도
-            fmt = _detect_format_from_rows(rows)
-            if detected_fmt == "unknown" and fmt != "unknown":
-                detected_fmt = fmt
+        # 포맷 탐지: 헤더 행 후보를 순서대로 시도
+        fmt = _detect_format_from_rows(rows)
+        if detected_fmt == "unknown" and fmt != "unknown":
+            detected_fmt = fmt
 
-            policies = _parse_sheet(rows, fmt, sname)
-            if policies:
-                all_policies.extend(policies)
-                sheet_names.append(sname)
+        policies = _parse_sheet(rows, fmt, sname, stats)
+        stats["rows_total"] += max(len(rows) - 1, 0)
+        stats["rows_parsed"] += len(policies)
+        if policies:
+            all_policies.extend(policies)
+            sheet_names.append(sname)
 
-    finally:
-        wb.close()
+    stats["rows_dropped"] = max(stats["rows_total"] - stats["rows_parsed"], 0)
 
-    if not sheet_names and not all_policies:
-        raise ReportError(
-            f"방화벽 정책 파싱 실패: {xlsx_path} — 유효한 정책 시트가 없습니다."
-        )
+    # (C-1①) 거짓양호 봉쇄: 포맷은 sniff로 인식됐지만 전 시트 합산 정책이
+    # 0건이면 어댑터가 데이터 레이아웃을 못 읽은 것 — fmt를 유지한 채 emit하면
+    # capability 있는 항목이 "위반 0건 = 양호"로 나간다(침묵 거짓양호).
+    # 설계 원문("정책 0건 → unknown-context emit → 전 항목 판단보류")대로
+    # unknown으로 강등해 detect_for_iss의 기존 unknown 경로(전 항목 판단보류)를 태운다.
+    if not all_policies:
+        detected_fmt = "unknown"
 
     # compact JSON 직렬화 (단일 행 보장)
     policies_json = json.dumps(
@@ -105,10 +168,12 @@ def parse(
         ensure_ascii=False,
         separators=(",", ":"),
     )
+    stats_json = json.dumps(stats, ensure_ascii=False, separators=(",", ":"))
     context_str = (
         f"FW_FORMAT:{detected_fmt}\n"
         f"FW_SHEETS:{','.join(sheet_names)}\n"
         f"FW_POLICY_COUNT:{len(all_policies)}\n"
+        f"FW_PARSE_STATS_JSON:{stats_json}\n"
         f"FW_POLICIES_JSON:{policies_json}"
     )
 
@@ -139,6 +204,7 @@ def _parse_sheet(
     rows: List[Tuple],
     fmt: str,
     sheet_name: str,
+    stats: Optional[Dict[str, int]] = None,
 ) -> List[Policy]:
     if fmt == "secui":
         return _parse_secui(rows, sheet_name)
@@ -146,6 +212,8 @@ def _parse_sheet(
         return _parse_id70(rows, sheet_name)
     if fmt == "paloalto":
         return _parse_paloalto(rows, sheet_name)
+    if fmt == "krfw":
+        return _parse_krfw(rows, sheet_name, stats)
     return []  # unknown: 핸들러에서 판단보류 처리
 
 
@@ -499,6 +567,161 @@ def _parse_paloalto(rows: List[Tuple], sheet_name: str) -> List[Policy]:
             dst_ports=[dport] if dport else [],
             protocols=[proto] if proto else [],
             hit_count=hit_count,
+        ))
+
+    return policies
+
+
+# ─ krfw 어댑터 (한글 13열, P13/P14/P24/P25 실증) ──────────────────────────────
+#
+# 헤더: 룰 NUM / 출발지 / 목적지 / 서비스 / Protocol / inbound / 시간 /
+#       정책 / 로그 / session-limit / tcp / 활성화 / 설명
+# 컬럼 부재: 출발지 포트(→ src_ports 항상 ["any"]), Two-way, hit-count.
+
+_KRFW_ACTION_ALLOW: frozenset = frozenset({
+    "허용", "승인", "permit", "allow", "accept", "pass",
+})
+_KRFW_ACTION_DENY: frozenset = frozenset({
+    "차단", "거부", "deny", "drop", "reject",
+})
+_KRFW_ENABLED_TRUE: frozenset = frozenset({
+    "y", "yes", "사용", "활성", "enable", "enabled", "on", "1",
+})
+_KRFW_ENABLED_FALSE: frozenset = frozenset({
+    "n", "no", "미사용", "비활성", "disable", "disabled", "off", "0",
+})
+
+
+def _normalize_krfw_action(raw: str) -> Tuple[str, bool]:
+    """krfw '정책' 컬럼 값을 allow/deny로 관대 매핑(대소문자·공백 무시).
+
+    반환: (정규화된 action 문자열, 인식여부).
+    미인식 값은 원문 그대로 보존한다 — allow로 세지 않는 보수적 처리(거짓양호
+    봉쇄 가드의 근거 수치는 호출측이 stats로 누산).
+    """
+    token = raw.strip().lower()
+    if token in _KRFW_ACTION_ALLOW:
+        return "allow", True
+    if token in _KRFW_ACTION_DENY:
+        return "deny", True
+    return raw, False
+
+
+def _normalize_krfw_enabled(raw: str) -> bool:
+    """krfw '활성화' 컬럼 값을 bool로 관대 매핑. 미인식 값은 True(검사 포함이 안전)."""
+    token = raw.strip().lower()
+    if token in _KRFW_ENABLED_TRUE:
+        return True
+    if token in _KRFW_ENABLED_FALSE:
+        return False
+    return True
+
+
+def _build_krfw_col_map(header: List[str]) -> Dict[str, int]:
+    """krfw 13열 헤더에서 필드→컬럼 인덱스 맵 (고정 한글 라벨 매칭)."""
+    col_map: Dict[str, int] = {}
+    for i, h in enumerate(header):
+        key = h.strip()
+        low = key.lower()
+        if key.startswith("룰") and "num" in low:
+            col_map.setdefault("seq", i)
+        elif key == "출발지":
+            col_map.setdefault("src", i)
+        elif key == "목적지":
+            col_map.setdefault("dst", i)
+        elif key == "서비스":
+            col_map.setdefault("svc", i)
+        elif low == "protocol":
+            col_map.setdefault("proto", i)
+        elif key == "정책":
+            col_map.setdefault("action", i)
+        elif key == "활성화":
+            col_map.setdefault("enabled", i)
+        elif key == "설명":
+            col_map.setdefault("description", i)
+    return col_map
+
+
+def _parse_krfw(
+    rows: List[Tuple],
+    sheet_name: str,
+    stats: Optional[Dict[str, int]] = None,
+) -> List[Policy]:
+    """krfw(한글 13열) 포맷 파싱. 1행 = 1정책(연속행 없음).
+
+    stats: 선택적 통계 누산 dict — 제공되면 unrecognized_action_count를
+    가산한다(기본 None → 미집계, 기존 호출부 하위호환).
+
+    (C-1②) 헤더는 rows[0] 고정이 아니라 상단 10행(_detect_format_from_rows의
+    sniff 창과 동일)에서 탐색한다 — 제목행이 헤더 위에 있는 파일 대응.
+    """
+    if not rows:
+        return []
+
+    # 헤더 행 탐색: '출발지'+'목적지'가 모두 매핑되는 첫 행
+    col_map: Dict[str, int] = {}
+    data_start = -1
+    for row_idx, row in enumerate(rows[:10]):
+        candidate = _build_krfw_col_map([_cell(v) for v in row])
+        if "src" in candidate and "dst" in candidate:
+            col_map = candidate
+            data_start = row_idx + 1
+            break
+
+    if data_start < 0:
+        return []  # krfw 헤더 아님(호출측 parse()가 0건→unknown 강등)
+
+    seq_col   = col_map.get("seq", -1)
+    src_col   = col_map.get("src", -1)
+    dst_col   = col_map.get("dst", -1)
+    svc_col   = col_map.get("svc", -1)
+    proto_col = col_map.get("proto", -1)
+    act_col   = col_map.get("action", -1)
+    ena_col   = col_map.get("enabled", -1)
+    desc_col  = col_map.get("description", -1)
+
+    policies: List[Policy] = []
+    for row in rows[data_start:]:
+        if not any(row):
+            continue
+        seq_raw = _cell(row[seq_col] if seq_col >= 0 and len(row) > seq_col else None)
+        if not seq_raw:
+            continue  # 룰 NUM 없는 행은 스킵(krfw는 연속행 없이 1행=1정책)
+
+        seq: Optional[int] = None
+        m = re.match(r"^(\d+)", seq_raw)
+        if m:
+            seq = int(m.group(1))
+
+        src   = _cell(row[src_col]   if len(row) > src_col   else None)
+        dst   = _cell(row[dst_col]   if len(row) > dst_col   else None)
+        svc   = _cell(row[svc_col]   if svc_col   >= 0 and len(row) > svc_col   else None)
+        proto = _cell(row[proto_col] if proto_col >= 0 and len(row) > proto_col else None)
+        act_raw = _cell(row[act_col] if act_col >= 0 and len(row) > act_col else None)
+        ena_raw = _cell(row[ena_col] if ena_col >= 0 and len(row) > ena_col else None)
+        desc  = _cell(row[desc_col]  if desc_col  >= 0 and len(row) > desc_col  else None)
+
+        action, recognized = _normalize_krfw_action(act_raw)
+        if not recognized and stats is not None:
+            stats["unrecognized_action_count"] = (
+                stats.get("unrecognized_action_count", 0) + 1
+            )
+
+        enabled = _normalize_krfw_enabled(ena_raw)
+
+        policies.append(Policy(
+            seq=seq,
+            rule_id=None,
+            enabled=enabled,
+            action=action,
+            two_way=False,
+            src_ips=[src] if src else [],
+            dst_ips=[dst] if dst else [],
+            src_ports=["any"],  # 출발지 포트 컬럼 없음
+            dst_ports=[svc] if svc else [],
+            protocols=[proto] if proto else [],
+            hit_count=None,  # hit-count 컬럼 없음
+            description=desc,
         ))
 
     return policies

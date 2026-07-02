@@ -13,6 +13,7 @@ from judge_tool.fw_policy import (
     Policy,
     _CAPABILITY,
     _FORMAT_ID70,
+    _FORMAT_KRFW,
     _FORMAT_PALOALTO,
     _FORMAT_SECUI,
     _FORMAT_UNKNOWN,
@@ -80,6 +81,24 @@ def test_sniff_paloalto_hit_count():
 
 def test_sniff_paloalto_zone_application():
     assert sniff_format(["Zone", "Application", "Source"]) == "paloalto"
+
+
+def test_sniff_krfw_full_headers():
+    headers = ["룰 NUM", "출발지", "목적지", "서비스", "Protocol", "inbound",
+               "시간", "정책", "로그", "session-limit", "tcp", "활성화", "설명"]
+    assert sniff_format(headers) == "krfw"
+
+
+def test_sniff_krfw_rul_token_without_policy():
+    # "정책" 컬럼명이 없어도 "룰"+출발지+목적지면 krfw로 인식
+    assert sniff_format(["룰 NUM", "출발지", "목적지", "기타"]) == "krfw"
+
+
+def test_sniff_krfw_no_false_positive_on_secui():
+    # 기존 SECUI/ID70/PaloAlto 오식별 없어야 함(회귀 방지)
+    assert sniff_format(["Seq", "Enable", "Two-way", "ID", "Action"]) == "secui"
+    assert sniff_format(["PRIORITY", "ENABLED", "SVC SPEC", "ACTION"]) == "id70"
+    assert sniff_format(["Name", "Action", "Hit Count", "Zone"]) == "paloalto"
 
 
 def test_sniff_unknown():
@@ -479,6 +498,115 @@ def test_detect_for_iss_empty_policies_all_good():
                    "ISS-035", "ISS-036", "ISS-041"]:
         r = detect_for_iss(iss_id, [], _FORMAT_SECUI)
         assert r.verdict == "양호", f"{iss_id} with no policies should be 양호"
+
+
+# ─ detect_for_iss — krfw capability (B′-1) ───────────────────────────────────
+
+def test_detect_for_iss_033_krfw_no_capability():
+    p = _make(action="allow", two_way=True)
+    r = detect_for_iss("ISS-033", [p], _FORMAT_KRFW)
+    assert r.can_judge is False
+    assert r.verdict == "판단보류"
+
+
+def test_detect_for_iss_035_krfw_no_capability():
+    p = _make(action="allow", src_ports=["22"])
+    r = detect_for_iss("ISS-035", [p], _FORMAT_KRFW)
+    assert r.can_judge is False
+    assert r.verdict == "판단보류"
+
+
+def test_detect_for_iss_037_krfw_no_capability():
+    p = _make(action="allow", hit_count=0)
+    r = detect_for_iss("ISS-037", [p], _FORMAT_KRFW)
+    assert r.can_judge is False
+    assert r.verdict == "판단보류"
+
+
+@pytest.mark.parametrize("iss_id", ["ISS-030", "ISS-031", "ISS-032", "ISS-034",
+                                     "ISS-036", "ISS-041"])
+def test_detect_for_iss_krfw_capability_good(iss_id):
+    """krfw 포맷에서 양호 샘플 → 양호(극성 커버리지: good)."""
+    p = _make(action="deny", src_ips=["192.168.1.1"], dst_ips=["10.0.0.1"],
+              dst_ports=["443"])
+    r = detect_for_iss(iss_id, [p], _FORMAT_KRFW)
+    assert r.can_judge is True
+    assert r.verdict == "양호"
+
+
+def test_detect_for_iss_030_krfw_vuln():
+    p = _make(action="allow", src_ips=["any"], dst_ips=["any"])
+    r = detect_for_iss("ISS-030", [p], _FORMAT_KRFW)
+    assert r.can_judge is True
+    assert r.verdict == "취약"
+
+
+def test_detect_for_iss_031_krfw_vuln():
+    p = _make(action="allow", src_ips=["any"], dst_ports=["22"])
+    r = detect_for_iss("ISS-031", [p], _FORMAT_KRFW)
+    assert r.can_judge is True
+    assert r.verdict == "취약"
+
+
+def test_detect_for_iss_032_krfw_vuln():
+    p = _make(action="allow")
+    r = detect_for_iss("ISS-032", [p], _FORMAT_KRFW)
+    assert r.can_judge is True
+    assert r.verdict == "취약"
+
+
+def test_detect_for_iss_036_krfw_vuln():
+    p = _make(action="allow", dst_ports=["69"])
+    r = detect_for_iss("ISS-036", [p], _FORMAT_KRFW)
+    assert r.can_judge is True
+    assert r.verdict == "취약"
+
+
+def test_detect_for_iss_041_krfw_vuln():
+    p = _make(action="allow", src_ips=["any"], dst_ports=["445"])
+    r = detect_for_iss("ISS-041", [p], _FORMAT_KRFW)
+    assert r.can_judge is True
+    assert r.verdict == "취약"
+
+
+def test_detect_for_iss_034_krfw_vuln():
+    p1 = _make(action="allow", seq=1, src_ips=["any"], dst_ips=["any"])
+    p2 = _make(action="deny", seq=2, src_ips=["10.0.0.1"], dst_ips=["192.168.1.1"])
+    r = detect_for_iss("ISS-034", [p1, p2], _FORMAT_KRFW)
+    assert r.can_judge is True
+    assert r.verdict == "취약"
+
+
+# ─ detect_for_iss — 미인식 action 거짓양호 봉쇄 가드 ─────────────────────────
+
+def test_detect_for_iss_guard_downgrades_good_to_hold_when_unrecognized_actions():
+    """위반 0건인데 파일 내 미인식 action이 있으면 양호가 아니라 판단보류."""
+    p = _make(action="deny")  # 위반 0건 → 원래는 양호
+    r = detect_for_iss("ISS-030", [p], _FORMAT_KRFW, unrecognized_action_count=3)
+    assert r.can_judge is True
+    assert r.verdict == "판단보류"
+    assert "미인식" in r.rationale
+
+
+def test_detect_for_iss_guard_no_effect_when_no_unrecognized_actions():
+    """미인식 action이 0건이면 기존처럼 양호 유지(회귀 없음)."""
+    p = _make(action="deny")
+    r = detect_for_iss("ISS-030", [p], _FORMAT_KRFW, unrecognized_action_count=0)
+    assert r.verdict == "양호"
+
+
+def test_detect_for_iss_guard_does_not_override_violation():
+    """위반이 이미 1건 이상이면 미인식 action이 있어도 취약 유지."""
+    p = _make(action="allow", src_ips=["any"], dst_ips=["any"])
+    r = detect_for_iss("ISS-030", [p], _FORMAT_KRFW, unrecognized_action_count=5)
+    assert r.verdict == "취약"
+
+
+def test_detect_for_iss_guard_default_param_backward_compatible():
+    """unrecognized_action_count 인자를 넘기지 않는 기존 호출부는 그대로 동작."""
+    p = _make(action="deny")
+    r = detect_for_iss("ISS-030", [p], _FORMAT_SECUI)
+    assert r.verdict == "양호"
 
 
 # ─ policy_to_dict / policy_from_dict 왕복 직렬화 ─────────────────────────────

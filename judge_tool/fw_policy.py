@@ -8,6 +8,8 @@ LLM 없이 ipaddress(stdlib) + 집합연산으로 정확·전수 탐지.
   SECUI: ISS-030~036, 041 (hit-count 없어 ISS-037 불가)
   ID70 : ISS-030~037, 041 (DAILY/WEEKLY HIT COUNT 컬럼)
   PaloAlto: ISS-030~037, 041 (Hit Count 컬럼)
+  krfw (한글 13열, P13/P14/P24/P25 실증): ISS-030~032/034/036/041
+        (Two-way/출발지포트/hit-count 컬럼 없어 033/035/037 불가)
   unknown: 전 항목 판정불가 → 판단보류
 
 ISS-038/039는 --aux 자산목록/토폴로지 필요 → 전 포맷 판정불가.
@@ -42,17 +44,20 @@ class Policy:
 _FORMAT_SECUI    = "secui"
 _FORMAT_ID70     = "id70"
 _FORMAT_PALOALTO = "paloalto"
+_FORMAT_KRFW     = "krfw"
 _FORMAT_UNKNOWN  = "unknown"
 
 
 def sniff_format(
     headers: List[str],
-) -> Literal["secui", "id70", "paloalto", "unknown"]:
+) -> Literal["secui", "id70", "paloalto", "krfw", "unknown"]:
     """첫 헤더 행 리스트로 포맷 식별.
 
     SECUI: 'Font Color:' 범례 행이거나 ('Seq' + 'Two-way' + 'Action') 조합.
     ID70 : 'PRIORITY' + 'SVC SPEC' (또는 SRC TYPE) 존재.
     PaloAlto: 'Hit Count' 또는 ('Zone' + 'Application') 존재.
+    krfw : 한글 13열 포맷 — '출발지' + '목적지' + ('정책' 또는 '룰'*) 조합
+           (P13/P14/P24/P25 실증, 기존 3포맷 오식별 방지 위해 마지막에 검사).
     미지: unknown.
 
     대소문자·공백 정규화 후 부분 문자열 매칭.
@@ -87,6 +92,13 @@ def sniff_format(
     has_app = any("application" in tok for tok in flat)
     if has_zone and has_app:
         return _FORMAT_PALOALTO
+    # krfw: 한글 13열 포맷 — 출발지 + 목적지 + (정책 또는 룰*) 조합.
+    # 기존 3포맷 검사 뒤에 배치해 오식별 방지(영문 헤더와 겹칠 여지 없음).
+    has_src_kr = "출발지" in flat
+    has_dst_kr = "목적지" in flat
+    has_policy_or_rule_kr = ("정책" in flat) or any("룰" in tok for tok in flat)
+    if has_src_kr and has_dst_kr and has_policy_or_rule_kr:
+        return _FORMAT_KRFW
     return _FORMAT_UNKNOWN
 
 
@@ -211,19 +223,21 @@ def _is_allow_action(action: str) -> bool:
 # ─ 포맷별 capability 맵 ───────────────────────────────────────────────────────
 
 # {iss_id: {format: can_judge}}
+# krfw(한글 13열, P13/P14/P24/P25 실증): Two-way/출발지포트/hit-count 컬럼이
+# 없어 ISS-033/035/037은 False(사유는 _NO_CAPABILITY_REASON_BY_FORMAT).
 _CAPABILITY: Dict[str, Dict[str, bool]] = {
-    "ISS-030": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True},
-    "ISS-031": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True},
-    "ISS-032": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True},
-    "ISS-033": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True},
-    "ISS-034": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True},
-    "ISS-035": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True},
-    "ISS-036": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True},
-    "ISS-037": {_FORMAT_SECUI: False, _FORMAT_ID70: True,  _FORMAT_PALOALTO: True},
-    "ISS-038": {_FORMAT_SECUI: False, _FORMAT_ID70: False, _FORMAT_PALOALTO: False},
-    "ISS-039": {_FORMAT_SECUI: False, _FORMAT_ID70: False, _FORMAT_PALOALTO: False},
-    "ISS-040": {_FORMAT_SECUI: False, _FORMAT_ID70: False, _FORMAT_PALOALTO: False},
-    "ISS-041": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True},
+    "ISS-030": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True,  _FORMAT_KRFW: True},
+    "ISS-031": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True,  _FORMAT_KRFW: True},
+    "ISS-032": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True,  _FORMAT_KRFW: True},
+    "ISS-033": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True,  _FORMAT_KRFW: False},
+    "ISS-034": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True,  _FORMAT_KRFW: True},
+    "ISS-035": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True,  _FORMAT_KRFW: False},
+    "ISS-036": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True,  _FORMAT_KRFW: True},
+    "ISS-037": {_FORMAT_SECUI: False, _FORMAT_ID70: True,  _FORMAT_PALOALTO: True,  _FORMAT_KRFW: False},
+    "ISS-038": {_FORMAT_SECUI: False, _FORMAT_ID70: False, _FORMAT_PALOALTO: False, _FORMAT_KRFW: False},
+    "ISS-039": {_FORMAT_SECUI: False, _FORMAT_ID70: False, _FORMAT_PALOALTO: False, _FORMAT_KRFW: False},
+    "ISS-040": {_FORMAT_SECUI: False, _FORMAT_ID70: False, _FORMAT_PALOALTO: False, _FORMAT_KRFW: False},
+    "ISS-041": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True,  _FORMAT_KRFW: True},
 }
 
 _NO_CAPABILITY_REASON: Dict[str, str] = {
@@ -242,6 +256,23 @@ _NO_CAPABILITY_REASON: Dict[str, str] = {
     "ISS-040": (
         "ISS-040은 방화벽 정책이 아닌 계정·로깅 설정 항목으로, "
         "현재 자동판정 범위 외입니다. 담당자 인터뷰로 확인하세요."
+    ),
+}
+
+# 포맷 조건부 사유(동일 iss_id라도 포맷별로 부재 이유가 다른 경우).
+# detect_for_iss가 (iss_id, fmt) 우선 조회 → 없으면 _NO_CAPABILITY_REASON 폴백.
+_NO_CAPABILITY_REASON_BY_FORMAT: Dict[Tuple[str, str], str] = {
+    ("ISS-033", _FORMAT_KRFW): (
+        "krfw(한글 13열) 포맷은 Two-way(양방향) 상당 컬럼이 없어 "
+        "자동 탐지가 불가능합니다. 담당자 인터뷰로 확인하세요."
+    ),
+    ("ISS-035", _FORMAT_KRFW): (
+        "krfw(한글 13열) 포맷은 출발지 포트 컬럼이 없어 "
+        "자동 탐지가 불가능합니다. 담당자 인터뷰로 확인하세요."
+    ),
+    ("ISS-037", _FORMAT_KRFW): (
+        "krfw(한글 13열) 포맷은 hit-count(세션/사용이력) 컬럼이 없어 "
+        "미사용 정책 자동 탐지가 불가능합니다. 담당자 인터뷰로 확인하세요."
     ),
 }
 
@@ -455,13 +486,19 @@ def detect_for_iss(
     iss_id: str,
     policies: List[Policy],
     fmt: str,
+    unrecognized_action_count: int = 0,
 ) -> DetectResult:
     """ISS 항목 ID별 탐지 결과 반환. 항상 needs_review=True.
 
     Args:
         iss_id: "ISS-030" 등 정규화된 항목 ID.
         policies: 정규화된 Policy 리스트.
-        fmt: 포맷 키("secui"/"id70"/"paloalto"/"unknown").
+        fmt: 포맷 키("secui"/"id70"/"paloalto"/"krfw"/"unknown").
+        unrecognized_action_count: 파일 전체에서 관대매핑으로도 인식 못한
+            action 값 건수(기본 0, 기존 호출부 하위호환). krfw 등에서
+            parse_stats로 계측됨. >0이면 거짓양호 봉쇄 가드가 발동해
+            위반 0건인 항목의 "양호"를 "판단보류"로 강등한다(위반 1건 이상은
+            그대로 취약 유지 — 미인식은 추가 미탐 가능성만 부기).
     """
     cap_map = _CAPABILITY.get(iss_id, {})
     can_judge = cap_map.get(fmt, False)
@@ -469,9 +506,12 @@ def detect_for_iss(
         can_judge = False
 
     if not can_judge:
-        reason = _NO_CAPABILITY_REASON.get(
-            iss_id,
-            f"포맷={fmt} 에서 항목 {iss_id} 탐지에 필요한 정보가 없거나 미지원 포맷입니다.",
+        reason = _NO_CAPABILITY_REASON_BY_FORMAT.get(
+            (iss_id, fmt),
+            _NO_CAPABILITY_REASON.get(
+                iss_id,
+                f"포맷={fmt} 에서 항목 {iss_id} 탐지에 필요한 정보가 없거나 미지원 포맷입니다.",
+            ),
         )
         return DetectResult(
             can_judge=False, violations=[], needs_review=True,
@@ -536,8 +576,25 @@ def detect_for_iss(
             f"활성 정책 {active_total}개 중 {count}개 위반 탐지. "
             "정책 정당성(업무 필요성)은 담당자 확인 필요."
         )
+        if unrecognized_action_count > 0:
+            rationale += (
+                f" (참고: 미인식 정책 액션 {unrecognized_action_count}건 존재 — "
+                "추가 미탐 가능성 있으나 이미 탐지된 위반은 유효.)"
+            )
         verdict = "취약"
         confidence = 0.9
+    elif unrecognized_action_count > 0:
+        # 거짓양호 봉쇄 가드(핵심 계약): 위반 0건이라도 파일 내 미인식 action이
+        # 있으면 "양호"를 단정할 수 없다 — 그 action이 실은 allow였다면
+        # 탐지 로직이 놓쳤을 수 있으므로 판단보류로 강등한다.
+        rationale = (
+            f"[FW 결정론 탐지] {detect_label} — "
+            f"활성 정책 {active_total}개 전수 검사, 해당 이상 없음. "
+            f"단, 미인식 정책 액션 {unrecognized_action_count}건 → "
+            "양호 단정 불가(판단보류)."
+        )
+        verdict = "판단보류"
+        confidence = 0.0
     else:
         rationale = (
             f"[FW 결정론 탐지] {detect_label} — "

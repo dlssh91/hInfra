@@ -2,6 +2,7 @@
 
 합성 openpyxl xlsx 픽스처로 실데이터 없이 실행한다.
 """
+import csv
 import json
 
 import openpyxl
@@ -14,6 +15,7 @@ from judge_tool.parsers.fw_policy_xlsx import (
     _ISS_FW_IDS,
     _detect_format_from_rows,
     _parse_id70,
+    _parse_krfw,
     _parse_paloalto,
     _parse_secui,
 )
@@ -77,6 +79,19 @@ def _paloalto_rows():
     ]
 
 
+def _krfw_rows():
+    """최소 krfw(한글 13열) 시트 rows (헤더 + 2개 정책). 더미IP만 사용."""
+    header = ["룰 NUM", "출발지", "목적지", "서비스", "Protocol", "inbound",
+              "시간", "정책", "로그", "session-limit", "tcp", "활성화", "설명"]
+    return [
+        header,
+        ["1\n", "10.0.0.1", "192.168.1.1", "443", "tcp", None, None,
+         "허용", "Enable", None, None, "Enable", "테스트 규칙1"],
+        ["2", "any", "any", None, "icmp", None, None,
+         "차단", "Enable", None, None, "off", "테스트 규칙2"],
+    ]
+
+
 # ─ _detect_format_from_rows ───────────────────────────────────────────────────
 
 def test_detect_format_secui():
@@ -102,6 +117,12 @@ def test_detect_format_paloalto():
 def test_detect_format_all_empty():
     fmt = _detect_format_from_rows([(None, None, None)] * 10)
     assert fmt == "unknown"
+
+
+def test_detect_format_krfw():
+    rows_as_tuples = [tuple(r) for r in _krfw_rows()]
+    fmt = _detect_format_from_rows(rows_as_tuples)
+    assert fmt == "krfw"
 
 
 # ─ _parse_id70 단위 ───────────────────────────────────────────────────────────
@@ -198,6 +219,118 @@ def test_parse_paloalto_skip_empty_action():
     assert len(policies) == 1
 
 
+# ─ _parse_krfw 단위 ────────────────────────────────────────────────────────────
+
+def test_parse_krfw_policies_count():
+    rows = [tuple(r) for r in _krfw_rows()]
+    policies = _parse_krfw(rows, "test")
+    assert len(policies) == 2
+
+
+def test_parse_krfw_field_mapping():
+    rows = [tuple(r) for r in _krfw_rows()]
+    policies = _parse_krfw(rows, "test")
+    p0 = policies[0]
+    assert p0.seq == 1
+    assert p0.src_ips == ["10.0.0.1"]
+    assert p0.dst_ips == ["192.168.1.1"]
+    assert p0.dst_ports == ["443"]
+    assert p0.protocols == ["tcp"]
+    assert p0.description == "테스트 규칙1"
+
+
+def test_parse_krfw_src_ports_always_any():
+    """krfw는 출발지 포트 컬럼이 없어 src_ports는 항상 ['any']."""
+    rows = [tuple(r) for r in _krfw_rows()]
+    policies = _parse_krfw(rows, "test")
+    for p in policies:
+        assert p.src_ports == ["any"]
+
+
+def test_parse_krfw_action_mapping_allow_deny():
+    rows = [tuple(r) for r in _krfw_rows()]
+    policies = _parse_krfw(rows, "test")
+    assert policies[0].action == "allow"  # "허용" → allow
+    assert policies[1].action == "deny"   # "차단" → deny
+
+
+def test_parse_krfw_enabled_mapping():
+    rows = [tuple(r) for r in _krfw_rows()]
+    policies = _parse_krfw(rows, "test")
+    assert policies[0].enabled is True   # "Enable" → True
+    assert policies[1].enabled is False  # "off" → False
+
+
+def test_parse_krfw_action_case_and_space_insensitive():
+    header = _krfw_rows()[0]
+    rows = [
+        header,
+        ["1", "any", "any", None, "tcp", None, None, "  PERMIT  ", "Enable",
+         None, None, "Y", None],
+        ["2", "any", "any", None, "tcp", None, None, "DENY", "Enable",
+         None, None, "N", None],
+    ]
+    policies = _parse_krfw([tuple(r) for r in rows], "test")
+    assert policies[0].action == "allow"
+    assert policies[0].enabled is True
+    assert policies[1].action == "deny"
+    assert policies[1].enabled is False
+
+
+def test_parse_krfw_unrecognized_action_tracked_in_stats():
+    header = _krfw_rows()[0]
+    rows = [
+        header,
+        ["1", "any", "any", None, "tcp", None, None, "이상한값", "Enable",
+         None, None, "Enable", None],
+        ["2", "any", "any", None, "tcp", None, None, "허용", "Enable",
+         None, None, "Enable", None],
+    ]
+    stats = {}
+    policies = _parse_krfw([tuple(r) for r in rows], "test", stats)
+    assert len(policies) == 2
+    assert stats.get("unrecognized_action_count") == 1
+    # 미인식 값은 allow로 세지 않는다(원문 보존, allow로 취급 안 함)
+    assert policies[0].action == "이상한값"
+
+
+def test_parse_krfw_enabled_unrecognized_defaults_true():
+    header = _krfw_rows()[0]
+    rows = [
+        header,
+        ["1", "any", "any", None, "tcp", None, None, "허용", "Enable",
+         None, None, "미확인값", None],
+    ]
+    policies = _parse_krfw([tuple(r) for r in rows], "test")
+    assert policies[0].enabled is True
+
+
+def test_parse_krfw_empty_rows():
+    assert _parse_krfw([], "test") == []
+
+
+def test_parse_krfw_wrong_headers_returns_empty():
+    rows = [("Name", "Action", "Source"), ("rule1", "allow", "any")]
+    assert _parse_krfw([tuple(r) for r in rows], "test") == []
+
+
+def test_parse_krfw_header_not_first_row():
+    """(C-1②) 제목행 등으로 헤더가 rows[0]이 아니어도 상단 수 행에서 탐색."""
+    title = ["방화벽 정책 현황"] + [None] * 12
+    rows = [title] + _krfw_rows()
+    policies = _parse_krfw([tuple(r) for r in rows], "test")
+    assert len(policies) == 2
+    assert policies[0].src_ips == ["10.0.0.1"]
+    assert policies[0].action == "allow"
+
+
+def test_parse_krfw_header_beyond_scan_window_returns_empty():
+    """헤더가 탐색 창(상단 10행)을 벗어나면 파싱 0건(→ parse()가 unknown 강등)."""
+    filler = [["필러"] + [None] * 12 for _ in range(12)]
+    rows = filler + _krfw_rows()
+    assert _parse_krfw([tuple(r) for r in rows], "test") == []
+
+
 # ─ parse() — 통합 ──────────────────────────────────────────────────────────────
 
 def test_parse_returns_12_tuples_secui(tmp_path):
@@ -278,16 +411,155 @@ def test_parse_skip_sheets_meta(tmp_path):
     assert "점검대상" not in ctx.split("FW_SHEETS:")[1].split("\n")[0]
 
 
-def test_parse_no_valid_sheet_raises(tmp_path):
-    """빈 시트만 있으면 ReportError 발생."""
+def test_parse_no_valid_sheet_downgrades_to_unknown(tmp_path):
+    """빈 시트만 있으면 (B'-1) 크래시 대신 unknown+판단보류로 강등된다.
+
+    이전 동작(ReportError raise)은 P13/P14/P24/P25 실증에서 크래시를
+    유발했음이 확인되어(설계문서 §Phase A) 방어적 강등으로 교체됨.
+    파일 자체를 열 수 없는 경우(별도 테스트)는 여전히 ReportError.
+    """
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "빈시트"
     # 아무 내용 없음
     p = str(tmp_path / "empty.xlsx")
     wb.save(p)
+    result = parse(p)
+    assert len(result) == 12
+    ctx = result[0][2]
+    assert "FW_FORMAT:unknown" in ctx
+    assert "FW_POLICY_COUNT:0" in ctx
+
+
+def test_parse_unrecognized_format_no_crash(tmp_path):
+    """헤더가 4개 포맷 중 어느 것과도 매칭되지 않으면 크래시 없이 unknown emit."""
+    rows = [
+        ["PolicyName", "Status", "Port", "Owner"],
+        ["r1", "active", "80", "teamA"],
+    ]
+    p = str(tmp_path / "unknown_fmt.xlsx")
+    _write_xlsx(p, "정책", rows)
+    result = parse(p)
+    assert len(result) == 12
+    ctx = result[0][2]
+    assert "FW_FORMAT:unknown" in ctx
+    assert "FW_POLICY_COUNT:0" in ctx
+
+
+def test_parse_sniffed_format_but_zero_policies_downgrades_to_unknown(tmp_path):
+    """(C-1①) sniff는 krfw로 인식했지만 파싱 결과 정책 0건 → unknown 강등.
+
+    거짓양호 봉쇄: fmt가 유지되면 capability 있는 항목이 '정책 0건=양호'로
+    나가므로, 전 시트 합산 0건이면 unknown으로 강등해 전 항목 판단보류.
+    """
+    # krfw 헤더만 있고 데이터 행 없음 → sniff=krfw, 정책 0건
+    rows = [_krfw_rows()[0]]
+    p = str(tmp_path / "krfw_headeronly.xlsx")
+    _write_xlsx(p, "Detail", rows)
+    result = parse(p)
+    assert len(result) == 12
+    ctx = result[0][2]
+    assert "FW_FORMAT:unknown" in ctx
+    assert "FW_POLICY_COUNT:0" in ctx
+
+
+def test_parse_title_row_krfw_file_parses_normally(tmp_path):
+    """(C-1②) 1행 제목 + 2행 krfw 헤더 + 3행 정책 → 정상 파싱(0건 강등 아님)."""
+    title = ["방화벽 정책 현황"] + [None] * 12
+    rows = [title] + _krfw_rows()
+    p = str(tmp_path / "krfw_title.xlsx")
+    _write_xlsx(p, "Detail", rows)
+    result = parse(p)
+    ctx = result[0][2]
+    assert "FW_FORMAT:krfw" in ctx
+    assert "FW_POLICY_COUNT:2" in ctx
+
+
+def test_parse_krfw_file_full_pipeline(tmp_path):
+    p = str(tmp_path / "krfw.xlsx")
+    _write_xlsx(p, "Detail", _krfw_rows())
+    result = parse(p)
+    ctx = result[0][2]
+    assert "FW_FORMAT:krfw" in ctx
+    assert "FW_POLICY_COUNT:2" in ctx
+    json_part = ctx.split("FW_POLICIES_JSON:", 1)[1]
+    policies = json.loads(json_part)
+    assert len(policies) == 2
+
+
+# ─ parse_stats 계측 ────────────────────────────────────────────────────────────
+
+def test_parse_context_includes_parse_stats(tmp_path):
+    p = str(tmp_path / "stats.xlsx")
+    _write_xlsx(p, "Detail", _krfw_rows())
+    result = parse(p)
+    ctx = result[0][2]
+    assert "FW_PARSE_STATS_JSON:" in ctx
+    stats_part = ctx.split("FW_PARSE_STATS_JSON:", 1)[1].split("\nFW_POLICIES_JSON:", 1)[0]
+    stats = json.loads(stats_part)
+    for key in ("rows_total", "rows_parsed", "rows_dropped", "unrecognized_action_count"):
+        assert key in stats
+
+
+def test_parse_stats_unrecognized_action_count_propagated(tmp_path):
+    header = _krfw_rows()[0]
+    rows = [
+        header,
+        ["1", "any", "any", None, "tcp", None, None, "이상한값", "Enable",
+         None, None, "Enable", None],
+    ]
+    p = str(tmp_path / "stats_unrecog.xlsx")
+    _write_xlsx(p, "Detail", rows)
+    result = parse(p)
+    ctx = result[0][2]
+    stats_part = ctx.split("FW_PARSE_STATS_JSON:", 1)[1].split("\nFW_POLICIES_JSON:", 1)[0]
+    stats = json.loads(stats_part)
+    assert stats["unrecognized_action_count"] == 1
+
+
+# ─ CSV 분기 ────────────────────────────────────────────────────────────────────
+
+def test_parse_csv_krfw_loads(tmp_path):
+    p = tmp_path / "P99_정책.csv"
+    with open(p, "w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        for row in _krfw_rows():
+            writer.writerow(["" if v is None else v for v in row])
+    result = parse(str(p))
+    assert len(result) == 12
+    ctx = result[0][2]
+    assert "FW_FORMAT:krfw" in ctx
+    assert "FW_POLICY_COUNT:2" in ctx
+
+
+def test_parse_csv_cp949_fallback(tmp_path):
+    p = tmp_path / "cp949.csv"
+    lines = [",".join(str(v) if v is not None else "" for v in row)
+             for row in _krfw_rows()]
+    content = "\n".join(lines)
+    with open(p, "w", encoding="cp949", newline="") as f:
+        f.write(content)
+    result = parse(str(p))
+    assert len(result) == 12
+    ctx = result[0][2]
+    assert "FW_FORMAT:krfw" in ctx
+
+
+def test_parse_csv_unknown_format_no_crash(tmp_path):
+    p = tmp_path / "P15_정책.csv"
+    with open(p, "w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["?", "??", "???"])
+        writer.writerow(["1", "a", "b"])
+    result = parse(str(p))
+    assert len(result) == 12
+    ctx = result[0][2]
+    assert "FW_FORMAT:unknown" in ctx
+
+
+def test_parse_invalid_csv_path_raises():
     with pytest.raises(ReportError):
-        parse(p)
+        parse("/nonexistent/path/file.csv")
 
 
 def test_parse_invalid_path_raises():

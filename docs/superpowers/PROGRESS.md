@@ -1,6 +1,6 @@
 # 작업 재개 노트 (RESUME)
 
-> 마지막 업데이트: 2026-06-19 (**상태저장. ★다음 착수=방화벽(FW) 결정론 검증·갭메우기 — A(ref/FW 실정책 P02~P34 실검증)→B(그룹객체 확장 등 갭). fw_policy.py(ISS-030~041) 이미 구현·실데이터 정확작동 확인.**). **"다음에 진행해줘"/"개발진행해" → 아래 ★다음 착수(방화벽)부터.**
+> 마지막 업데이트: 2026-07-02 오후 (**FW B′-1 구현+Opus 리뷰 SHIP 완료(1901 passed, 미커밋 작업트리). ★다음 착수=B′-1 simplify 마무리(선택, 사용자 중단으로 미실시) → B′-2 SECUI src_port 거짓양호 봉쇄**. 설계=`docs/superpowers/specs/2026-07-02-fw-implementation-design.md` §Phase B′. 잔여도메인 설계=`...remaining-domains-design.md`.) **"다음에 진행해줘"/"개발진행해" → 아래 ★B′-1 SHIP 블록의 "다음 착수" 항목부터.**
 > (한 작업단위 종료 시마다 이 파일을 갱신해 인계. 이 파일이 단일 진실원천.
 >  재개 트리거: "개발진행해"/"개발해줘"/"이어서 진행"/"다음 작업"/**"다음에 진행해"** → 아래 TL;DR ★다음 착수부터.)
 
@@ -20,13 +20,31 @@
 - **★다음 착수 = 방화벽(FW) 결정론 검증·갭메우기**
 
   ### 🔥 방화벽 즉시 시작점 (다음 세션 여기부터)
+
+  **✅ 2026-07-02 오후 — B′-1 구현 SHIP (Sonnet 구현 → Opus 리뷰 "수정 후 SHIP" → C-1/M-1 수정 → Opus 재리뷰 "SHIP", 1901 passed / 95 skipped / 0 failed, ⚠️미커밋 작업트리)**:
+  - **구현 내용**: ① 미지원 포맷 크래시 제거(전 시트 정책 0건 → `detected_fmt="unknown"` 강등 → 전 항목 판단보류), ② 한글 13열 포맷 **krfw 어댑터** 신규(`_parse_krfw`, 헤더 상단 10행 탐색, action/enabled 관대매핑, capability: 030/031/032/034/036/041=T·033/035/037=F), ③ `.csv` 분기(utf-8-sig→cp949), ④ `parse_stats` 계측(`FW_PARSE_STATS_JSON` context 라인) + **거짓양호 봉쇄 가드**(미인식 action>0 ∧ 위반0 → 판단보류; stats 라인 소실 시에도 fail-closed로 양호→판단보류), ⑤ `scripts/fw_batch_validate.py`(숫자만 출력, 대외비 준수).
+  - **실검증**: 배치 20/20 무크래시(이전 15/20). krfw 4파일(P13/P14/P24/P25) 정책수 81/26/42/158 파싱·판정(미인식 action 49/12/2/6건 → 가드로 해당 항목 판단보류). P15 csv=unknown(헤더 손상)→판단보류. SECUI 15파일 분포 회귀 0.
+  - **다음 착수**: ① (선택) B′-1 simplify 정리 — 사용자 중단으로 미실시, 코드는 SHIP 상태라 생략 가능 → ② **B′-2 SECUI src_port**(SECUI 서브헤더에서 출발지포트 컬럼 매핑 시도, 부재 확정 시 ISS-035 SECUI capability=False 강등 — 어느 쪽이든 현행 "영구 양호" 제거) → ③ B′-3 그룹객체 확장(dst 우선) → ④ B′-4 정밀도(H-4 IP대시범위/M-1 광역임계/M-2 그림자 포트 비대칭).
+  - **후속 트랙(Opus 리뷰 도출, 비차단)**: (a) **B′-1.1 ISS-033 krfw capability 승격** — krfw 미인식 토큰 실측 결과 전량 "pass+bi-direction 계열"(deny 0%) = 방향성이 '정책' 컬럼 값에 인코딩됨 → bi 계열을 `(action=allow, two_way=True)`로 매핑하면 ISS-033 결정론 판정 + 미인식 카운트 0화(판단보류 4파일 실판정 복귀) 이중 효과. 위험방향 회귀 없음(보수 방향). (b) M-2: 미인식 action 계측을 SECUI/ID70/PaloAlto 3포맷으로 확장(가드 인프라 완성됨, 배선만). (c) M-3: 다중 시트 중 일부 시트만 파싱 0건인 경우 시트 단위 이상 가드. (d) Low: krfw 유사헤더 오매핑(작위적, 관찰만).
+  - **🎯 역할 계약 재확인(사용자 강조)**: 런타임 판정자 = 결정론 엔진 + **로컬 qwen3-coder:30b**([[local-llm-only]]). Claude(Fable/Sonnet/Opus)는 빌드타임(설계/구현/리뷰) 전용 — 운영 판정에 무관여. FW에서 qwen3 활용 확장 지점 = B′-5 미지 포맷 헤더매핑 폴백(unknown을 버리지 않고 qwen3가 헤더→필드 매핑) — **우선순위 상향 여부 사용자 결정 대기**(현재 B′-3 뒤).
+  - **💡 신규 아이디어(사용자, 2026-07-02 — 네트워크 도메인)**: Cisco 등 네트워크 장비는 버전이 많고 공홈에 버전별 안내서 원문 존재 → 점검자 개별 검색 부담. **prep 단계에서 안내서를 정제해 버전계열×항목 기준선(`net_baseline.yaml`류, as_of+출처URL, eol.yaml 패턴)** 구축 + 기계적 항목은 det, 맥락 항목은 정제 발췌를 qwen3 프롬프트 주입으로 판정하는 방향. 주의: 실수집 샘플의 버전 분포 인벤토리 후 상위 빈도만 정제(전수 금지), 버전 미식별→generic 폴백+판단보류, 분기별 as_of 갱신. → 잔여도메인 설계 §5와 연계, 네트워크 착수 시 반영.
+
+  **✅ 2026-07-02 Phase A 실검증(Opus) + FW/잔여도메인 설계 SHIP — (당일 오전 기록)**:
+  - 🔒 **대외비 경계(사용자 지시)**: ref/FW 전 파일 = **헤더 1행(필요시 2행)만 열람 가능**, 데이터 행·산출물(out-dir 판정파일) 열람 금지. 검증은 "스크립트 내부계산→건수·비율 숫자만 출력" 패턴. 메모리 [[fw-data-confidential-header-only]].
+  - **기준 파일 정정**: `--criteria`는 `ref/전자금융기반시설 보안 취약점 평가기준(제2026-1호) 평가자용_2603개정.xlsx`(정보보호시스템 장비 시트). ref/FW의 `22년_...방화벽 정책_...xlsx`는 기준이 **아니라** 정책 데이터(P001~P219 시트, 대외비).
+  - **실검증 결과**: 20파일 중 **성공 15**(전부 SECUI, 37/37 판정, ISS-037만 보류=설계대로) / **실패 5**(한글 13열 포맷 P13/P14/P24/P25=파서 ReportError 크래시, P15 CSV=openpyxl 미지원). ID70/PaloAlto 어댑터 실데이터 실행 0회(합성 픽스처만=실증 공백). **그룹객체 미파싱**: src 2.8% / **dst 35.5%(파일 최대 96.9%)** / svc 0%.
+  - **Opus 코드리뷰 발견**: [H-1] SECUI 파서 src_ports 항상 "any"(수집코드 부재)→**ISS-035 전면 거짓양호** / [H-2] 미지원 포맷=판단보류 아닌 크래시 / [H-4] IP 대시범위(`a-b`) 미파싱→광역·그림자 미탐 / [M-1] 광역임계 /8 과관대(/12~/16 미탐) / [M-2] `_policy_covers` 포트 비대칭(lower 전포트+upper 제한→거짓 그림자, 오탐방향) / [M-3] 넓은 src범위(1024-65535) 지정 미탐. 직렬화 왕복 무결.
+  - **★B′ 구현 순서**(설계 `docs/superpowers/specs/2026-07-02-fw-implementation-design.md` §Phase B′): **B′-1** 미지원포맷 크래시→판단보류 강등 + 한글13열 어댑터 + CSV 분기 → **B′-2** SECUI src_port(파싱 추가 or ISS-035 capability 강등) → **B′-3** 그룹객체 확장(dst 주소객체 우선, 객체정의 시트 헤더 확인 선행) → **B′-4** 정밀도(H-4/M-1/M-2).
+  - **⏳ 사용자 결정 대기(코어 Opus 리뷰 High, FW와 독립)**: DBM-003(4엔진)·SRV-074 = label B(인터뷰) 의도인데 `judgment_method: det_common` 우선으로 자동판정(활성 의심계정→양호 방향, needs_review로만 완화). 선택지 (a) detect-then-hold 편입(후보→판단보류) vs (b) judgment_method 제거(인터뷰 복귀). + cov 계약테스트 handled=False skip 관용→fail 승격 권고, db_cov_contract DBM-003 note 정정 필요.
+  - 잔여 도메인(서버/웹WAS/컨테이너/OS가상화/네트워크/비FW) 설계: `docs/superpowers/specs/2026-07-02-remaining-domains-design.md` (우선순위: FW → 컨테이너 normalize_id+kind → 서버/웹WAS 도커 자가수집 → 네트워크 수집기 협의 → OS가상화/비FW 샘플 대기).
+
   **현황**: `judge_tool/fw_policy.py`에 **ISS-030~041 방화벽 이상정책 결정론 탐지 이미 구현**(2026-06-12, 486 tests). LLM 없이 ipaddress(stdlib)+집합연산으로 전수 탐지(=결정론, 정당성=사람, needs_review=True). 프로파일 `iss`(FW, fw_policy_xlsx 파서)/`iss_device`(비-FW iss_xml).
   - **실데이터 위치**: `ref/FW/`(untracked·아카이브 미포함·로컬만) — `22년...방화벽 정책...xlsx` + `보안장비 결과/P02~P34_정책.xlsx`(실 정책 export). **P02 실행 확인됨**: 37/37 판정, ISS-030/032/033/034/036 취약·031/035/041 양호 등 정확.
   - **실행법**: `python3 -m judge_tool.main --report "ref/FW/보안장비 결과/P02_정책.xlsx" --criteria <기준.xlsx> --profile iss --out-dir /tmp/fwX --skip-preflight` (out-dir는 ref/FW 밖으로).
   - **항목 라우팅**: ISS-030~037·041 = `fw_policy`(결정론, **LLM 역할 0**). ISS-038/039(--aux 자산목록·토폴로지 필요)·040(비정책 계정·로깅) = label C 판단보류. ISS-043 = label A(LLM, 보통 증거미수집→보류).
   - **포맷 capability**: SECUI(030~036,041) / ID70·PaloAlto(030~037,041, hit-count 보유). unknown→판단보류.
 
-  **★ A 먼저 (실검증)**: ref/FW의 P02~P34 전 정책파일 일괄 판정 → 포맷별(SECUI/ID70/PaloAlto) 동작·이상 확인(DB/서버 실검증 패턴, Docker 불필요).
+  **~~★ A 먼저 (실검증)~~ ✅ 2026-07-02 완료(위 결과 참조)**: ref/FW의 P02~P34 전 정책파일 일괄 판정 → 포맷별(SECUI/ID70/PaloAlto) 동작·이상 확인(DB/서버 실검증 패턴, Docker 불필요).
   **★ B 갭메우기 (검증 후)**:
   - **그룹객체 확장(최우선 갭)**: `detect_shadow_policies`/`_policy_covers`가 **주소/서비스 그룹 named object 미확장→스킵**(보수처리). 실 정책은 그룹 다용 → ISS-034(그림자)·032·036·041 **미탐(거짓양호 아님, 미탐방향)**. A에서 스킵 빈도 정량화 후 그룹 확장 구현.
   - ISS-034 한계: 완전포함+action상이만 탐지(부분겹침 correlation 미탐, 동일action redundancy 의도적 제외).

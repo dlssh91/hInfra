@@ -296,6 +296,7 @@ def _fw_policy_handler(crit, item, ctx: "JudgeContext") -> Optional[Judgment]:
         FW_FORMAT:<fmt>
         FW_SHEETS:<s1,...>
         FW_POLICY_COUNT:<n>
+        FW_PARSE_STATS_JSON:<compact_json>
         FW_POLICIES_JSON:<compact_json>
 
     reconcile의 '빈 증거 → 판단보류 강제' 가드를 통과시키기 위해
@@ -314,11 +315,24 @@ def _fw_policy_handler(crit, item, ctx: "JudgeContext") -> Optional[Judgment]:
         )
 
     # context 파싱
+    # parse_stats=None은 "통계 소실"(라인 부재/JSON 손상)을 뜻하며 dict와
+    # 구분된다 — M-1: 소실 시 fail-open(가드 침묵 해제) 대신 fail-closed
+    # (위반 0건 항목을 양호 대신 판단보류)로 처리한다.
     fmt = "unknown"
     policies_json: Optional[str] = None
+    parse_stats: Optional[Dict] = None
     for line in context.splitlines():
         if line.startswith("FW_FORMAT:"):
             fmt = line[len("FW_FORMAT:"):].strip()
+        elif line.startswith("FW_PARSE_STATS_JSON:"):
+            stats_json = line[len("FW_PARSE_STATS_JSON:"):].strip()
+            try:
+                loaded = _json.loads(stats_json)
+                parse_stats = loaded if isinstance(loaded, dict) else None
+            except Exception:  # noqa: BLE001 - 손상 = 소실로 취급(None 유지)
+                log.warning("FW parse_stats JSON 손상 item=%s — fail-closed 가드 적용",
+                            crit.item_id)
+                parse_stats = None
         elif line.startswith("FW_POLICIES_JSON:"):
             policies_json = line[len("FW_POLICIES_JSON:"):].strip()
 
@@ -348,7 +362,23 @@ def _fw_policy_handler(crit, item, ctx: "JudgeContext") -> Optional[Judgment]:
         j.label = crit.label
         return j
 
-    result = detect_for_iss(crit.item_id, policies, fmt)
+    result = detect_for_iss(
+        crit.item_id, policies, fmt,
+        unrecognized_action_count=(parse_stats or {}).get(
+            "unrecognized_action_count", 0),
+    )
+
+    # M-1 fail-closed: 파싱 통계가 소실된 상태에서는 미인식 액션 존재 여부를
+    # 확인할 수 없으므로, 위반 0건의 "양호"를 단정할 수 없다 → 판단보류 강등.
+    # (위반 1건 이상 "취약"과 capability 부재 "판단보류"는 그대로 유지 —
+    #  FW_POLICIES_JSON 손상 시 판단보류인 것과 대칭.)
+    if parse_stats is None and result.verdict == "양호":
+        result.verdict = "판단보류"
+        result.confidence = 0.0
+        result.rationale += (
+            " 단, 파싱 통계 소실(FW_PARSE_STATS_JSON 부재/손상) → "
+            "미인식 정책 액션 여부 확인 불가 → 양호 단정 불가(판단보류)."
+        )
 
     # 탐지 결과를 ResourceEvidence로 래핑 →
     # reconcile의 '빈 증거 → 판단보류 강제' 가드 우회
