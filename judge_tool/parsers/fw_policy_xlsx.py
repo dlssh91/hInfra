@@ -45,6 +45,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import openpyxl
 
 from judge_tool.errors import ReportError
+from judge_tool.fw_objects import ObjectTable
 from judge_tool.fw_policy import Policy, policy_to_dict, resolve_policies, sniff_format
 from judge_tool.models import ResourceEvidence
 
@@ -84,6 +85,7 @@ def _load_csv_rows(path: str) -> List[Tuple]:
 
 def parse(
     xlsx_path: str,
+    aux_table: Optional[ObjectTable] = None,
 ) -> List[Tuple[str, List[ResourceEvidence], Optional[str]]]:
     """방화벽 정책 XLSX/CSV → ISS-030~041 12개 3-튜플 emit.
 
@@ -93,6 +95,10 @@ def parse(
 
     포맷 미인식(unknown) 또는 정책 0건이어도 예외를 던지지 않는다(B'-1) —
     파일을 아예 열 수 없는 경우만 ReportError.
+
+    aux_table: `--aux-objects`로 로드한 ObjectTable(B′-3b). 주입되면
+    resolve_policies가 미해석 그룹객체 토큰을 실치환 시도한다. 미지정(기본
+    None)이면 기존 B′-3a 분류 전용 동작과 완전 동일(회귀 없음).
     """
     is_csv = xlsx_path.lower().endswith(".csv")
     sheet_list: List[Tuple[str, List[Tuple]]] = []
@@ -162,12 +168,13 @@ def parse(
     if not all_policies:
         detected_fmt = "unknown"
 
-    # (B′-3a) 해석 패스: IP/포트로 파싱 불가한 토큰(named 객체/그룹 후보)을
-    # src_ips/dst_ips/dst_ports/protocols에서 unresolved_src/dst/svc로 이동.
-    # 파서 자체는 셀 값을 그대로 필드에 적재할 뿐 토큰 유효성 검사를 하지
-    # 않으므로(각 _parse_* 어댑터 확인 — 이중 필터링 없음) 여기 1회 호출로
-    # 전 포맷 공통 분류를 완결한다. table=None → 분류만(치환은 B′-3b).
-    all_policies = resolve_policies(all_policies)
+    # (B′-3a/B′-3b) 해석 패스: IP/포트로 파싱 불가한 토큰(named 객체/그룹
+    # 후보)을 src_ips/dst_ips/dst_ports/protocols에서 unresolved_src/dst/svc로
+    # 이동. 파서 자체는 셀 값을 그대로 필드에 적재할 뿐 토큰 유효성 검사를
+    # 하지 않으므로(각 _parse_* 어댑터 확인 — 이중 필터링 없음) 여기 1회
+    # 호출로 전 포맷 공통 분류를 완결한다. aux_table=None(기본) → 분류만
+    # (B′-3a와 동일, 회귀 없음). aux_table 주입 시 → 그룹→멤버 실치환(B′-3b).
+    all_policies = resolve_policies(all_policies, table=aux_table)
 
     # compact JSON 직렬화 (단일 행 보장)
     policies_json = json.dumps(

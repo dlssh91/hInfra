@@ -9,6 +9,7 @@ import openpyxl
 import pytest
 
 from judge_tool.errors import ReportError
+from judge_tool.fw_objects import ObjectTable
 from judge_tool.parsers.fw_policy_xlsx import (
     detect_variant,
     parse,
@@ -648,3 +649,44 @@ def test_parse_id70_named_svc_spec_moves_to_unresolved_svc(tmp_path):
     assert len(policies) == 1
     assert policies[0]["protocols"] == []
     assert policies[0]["unresolved_svc"] == ["HTTPS_SVC_GRP"]
+
+
+# ─ parse(aux_table=...) — B′-3b 그룹객체 실치환 배선 ─────────────────────────
+
+def test_parse_aux_table_none_default_unchanged(tmp_path):
+    """aux_table 미지정(기본값)이면 기존 B′-3a 동작과 완전 동일(회귀 없음)."""
+    header = _krfw_rows()[0]
+    rows = [
+        header,
+        ["1", "10.0.0.1", "WEB_SERVERS_GRP", "443", "tcp", None, None,
+         "허용", "Enable", None, None, "Enable", "테스트"],
+    ]
+    p = str(tmp_path / "krfw_named_default.xlsx")
+    _write_xlsx(p, "Detail", rows)
+    result_no_kw = parse(p)
+    result_explicit_none = parse(p, aux_table=None)
+    assert result_no_kw == result_explicit_none
+    ctx = result_no_kw[0][2]
+    policies = json.loads(ctx.split("FW_POLICIES_JSON:", 1)[1])
+    pol = _find_policy_by_seq(policies, 1)
+    assert pol["dst_ips"] == []
+    assert pol["unresolved_dst"] == ["WEB_SERVERS_GRP"]
+
+
+def test_parse_aux_table_resolves_named_dst_group(tmp_path):
+    """aux_table 주입 시 krfw named dst 그룹이 실치환되어 dst_ips로 복귀."""
+    header = _krfw_rows()[0]
+    rows = [
+        header,
+        ["1", "10.0.0.1", "WEB_SERVERS_GRP", "443", "tcp", None, None,
+         "허용", "Enable", None, None, "Enable", "테스트"],
+    ]
+    p = str(tmp_path / "krfw_named_aux.xlsx")
+    _write_xlsx(p, "Detail", rows)
+    table = ObjectTable(address={"WEB_SERVERS_GRP": ["10.0.5.0/24"]})
+    result = parse(p, aux_table=table)
+    ctx = result[0][2]
+    policies = json.loads(ctx.split("FW_POLICIES_JSON:", 1)[1])
+    pol = _find_policy_by_seq(policies, 1)
+    assert pol["dst_ips"] == ["10.0.5.0/24"]
+    assert pol["unresolved_dst"] == []

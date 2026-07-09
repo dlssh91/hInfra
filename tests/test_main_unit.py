@@ -153,6 +153,164 @@ def test_main_cli_missing_required_arg():
 
 
 # --------------------------------------------------------------------------
+# B′-3b: --aux-objects CLI 배선 (FW ObjectTable 실치환) E2E
+# --------------------------------------------------------------------------
+
+_KRFW_AUX_HEADER = ["룰 NUM", "출발지", "목적지", "서비스", "Protocol", "inbound",
+                    "시간", "정책", "로그", "session-limit", "tcp", "활성화", "설명"]
+
+
+def _write_krfw_named_dst_xlsx(path):
+    """ISS-030(any-any) 판정용: dst가 named 그룹(ANY_GRP)인 단일 허용정책."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Detail"
+    rows = [
+        _KRFW_AUX_HEADER,
+        ["1", "any", "ANY_GRP", None, "tcp", None, None,
+         "허용", "Enable", None, None, "Enable", "테스트"],
+    ]
+    for r_idx, row in enumerate(rows, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws.cell(r_idx, c_idx, val)
+    wb.save(str(path))
+
+
+def _write_iss030_criteria_xlsx(path):
+    """ISS-030 단일 항목짜리 합성 '정보보호시스템 장비' 평가기준 xlsx."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "정보보호시스템 장비"
+    ws.cell(4, 2, "평가항목ID")
+    ws.cell(4, 7, "평가항목")
+    ws.cell(4, 8, "위험도")
+    ws.cell(4, 12, "평가대상(FW)")
+    ws.cell(4, 18, "판단기준")
+    ws.cell(4, 19, "판단방법")
+    ws.cell(5, 2, "ISS-030")
+    ws.cell(5, 7, "ISS-030 항목명")
+    ws.cell(5, 8, 5.0)
+    ws.cell(5, 12, "o")
+    ws.cell(5, 18, "* 양호 - any-any 허용정책 없음\n* 취약 - 존재")
+    ws.cell(5, 19, "정책 확인")
+    wb.save(str(path))
+
+
+def test_main_cli_parses_aux_objects_arg_and_threads_to_run(
+    tmp_path, tmp_path_factory, monkeypatch
+):
+    """--aux-objects 값이 argparse dest(aux_objects)를 거쳐 run()의
+    aux_objects_path 키워드 인자로 정확히 전달되는지 확인(배선 검증)."""
+    report_path = str(tmp_path / "P99_정책.xlsx")
+    _write_krfw_named_dst_xlsx(report_path)
+    criteria_path = str(tmp_path / "기준.xlsx")
+    _write_iss030_criteria_xlsx(criteria_path)
+    aux_path = str(tmp_path / "objects.yaml")
+    with open(aux_path, "w", encoding="utf-8") as f:
+        f.write("address:\n  ANY_GRP: [\"0.0.0.0/0\"]\n")
+    out_dir = tmp_path_factory.mktemp("aux_wire_out")
+
+    captured = {}
+
+    def _fake_run(*args, **kwargs):
+        captured.update(kwargs)
+        return {"judged": 0, "expected": 0, "missing": []}
+
+    monkeypatch.setattr(main_mod, "run", _fake_run)
+    main(["--report", report_path, "--criteria", criteria_path,
+          "--profile", "iss", "--out-dir", str(out_dir),
+          "--skip-preflight", "--aux-objects", aux_path])
+    assert captured.get("aux_objects_path") == aux_path
+
+
+def test_main_cli_aux_objects_omitted_threads_none(
+    tmp_path, tmp_path_factory, monkeypatch
+):
+    """--aux-objects 미지정 시 run()에 aux_objects_path=None이 전달된다."""
+    report_path = str(tmp_path / "P99_정책.xlsx")
+    _write_krfw_named_dst_xlsx(report_path)
+    criteria_path = str(tmp_path / "기준.xlsx")
+    _write_iss030_criteria_xlsx(criteria_path)
+    out_dir = tmp_path_factory.mktemp("aux_wire_out_none")
+
+    captured = {}
+
+    def _fake_run(*args, **kwargs):
+        captured.update(kwargs)
+        return {"judged": 0, "expected": 0, "missing": []}
+
+    monkeypatch.setattr(main_mod, "run", _fake_run)
+    main(["--report", report_path, "--criteria", criteria_path,
+          "--profile", "iss", "--out-dir", str(out_dir),
+          "--skip-preflight"])
+    assert captured.get("aux_objects_path") is None
+
+
+def test_fw_aux_objects_resolves_named_group_to_violation(
+    tmp_path, tmp_path_factory
+):
+    """--aux-objects 주입 시 named dst 그룹이 0.0.0.0/0으로 실치환되어
+    ISS-030(any-any 허용)이 '취약'로 실판정된다(미주입 시엔 판단보류)."""
+    report_path = str(tmp_path / "P99_정책.xlsx")
+    _write_krfw_named_dst_xlsx(report_path)
+    criteria_path = str(tmp_path / "기준.xlsx")
+    _write_iss030_criteria_xlsx(criteria_path)
+    aux_path = str(tmp_path / "objects.yaml")
+    with open(aux_path, "w", encoding="utf-8") as f:
+        f.write("address:\n  ANY_GRP: [\"0.0.0.0/0\"]\n")
+
+    out_dir_no_aux = tmp_path_factory.mktemp("out_no_aux")
+    main(["--report", report_path, "--criteria", criteria_path,
+          "--profile", "iss", "--out-dir", str(out_dir_no_aux),
+          "--skip-preflight"])
+    json_no_aux = out_dir_no_aux / "result_P99_정책.json"
+    with open(json_no_aux, encoding="utf-8") as f:
+        payload_no_aux = json.load(f)
+    verdict_no_aux = next(
+        j["verdict"] for j in payload_no_aux["judgments"]
+        if j["item_id"] == "ISS-030")
+    assert verdict_no_aux == "판단보류"
+
+    out_dir_aux = tmp_path_factory.mktemp("out_aux")
+    main(["--report", report_path, "--criteria", criteria_path,
+          "--profile", "iss", "--out-dir", str(out_dir_aux),
+          "--skip-preflight", "--aux-objects", aux_path])
+    json_aux = out_dir_aux / "result_P99_정책.json"
+    with open(json_aux, encoding="utf-8") as f:
+        payload_aux = json.load(f)
+    verdict_aux = next(
+        j["verdict"] for j in payload_aux["judgments"]
+        if j["item_id"] == "ISS-030")
+    assert verdict_aux == "취약"
+
+
+def test_fw_aux_objects_missing_file_raises_report_error(
+    tmp_path, tmp_path_factory
+):
+    """--aux-objects에 존재하지 않는 경로를 주면 ReportError로 깔끔히 안내
+    (fail-closed — 조용히 무시하고 기존 동작으로 폴백하지 않음)."""
+    report_path = str(tmp_path / "P99_정책.xlsx")
+    _write_krfw_named_dst_xlsx(report_path)
+    criteria_path = str(tmp_path / "기준.xlsx")
+    _write_iss030_criteria_xlsx(criteria_path)
+    out_dir = tmp_path_factory.mktemp("out_missing_aux")
+
+    with pytest.raises(SystemExit):
+        main(["--report", report_path, "--criteria", criteria_path,
+              "--profile", "iss", "--out-dir", str(out_dir),
+              "--skip-preflight",
+              "--aux-objects", str(tmp_path / "no_such_objects.yaml")])
+
+
+def test_run_aux_objects_path_none_default_noop():
+    """run()의 aux_objects_path 기본값 None → 시그니처 호출부(배치/단일 CLI)가
+    인자를 생략해도 기존 호출과 동일하게 동작(키워드 인자 하위호환)."""
+    import inspect
+    sig = inspect.signature(run)
+    assert sig.parameters["aux_objects_path"].default is None
+
+
+# --------------------------------------------------------------------------
 # I-3: CI 독립 결정적 run() (합성 입력)
 # --------------------------------------------------------------------------
 

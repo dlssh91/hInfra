@@ -16,6 +16,7 @@ from judge_tool.criteria_loader import load_criteria
 from judge_tool.errors import ReportError
 from judge_tool.judge import OllamaClient, judge_item, reconcile, summarize_item
 from judge_tool.eol import judge_eol, judge_patch
+from judge_tool.fw_objects import load_aux_objects
 from judge_tool.fw_policy import detect_for_iss, policy_from_dict
 from judge_tool.mapper import aggregate
 from judge_tool.models import EvidenceItem, Judgment, ResourceEvidence
@@ -753,10 +754,15 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
         json_out: str, xlsx_out: str, model_name: str,
         now: Optional[str] = None, variant_override: Optional[str] = None,
         skip_preflight: bool = False,
-        hashcat_opts: Optional[object] = None) -> Dict:
+        hashcat_opts: Optional[object] = None,
+        aux_objects_path: Optional[str] = None) -> Dict:
     """판정 실행 함수.
 
     hashcat_opts: HashcatOpts 또는 None (None → (a) 비활성, (b)-only 동작).
+    aux_objects_path: `--aux-objects` 경로(B′-3b, FW 전용). fw_policy_xlsx
+        파서에서만 사용 — 그 외 프로파일은 전달돼도 무시된다(no-op).
+        None(기본)이면 fw_policy_xlsx.parse()가 aux_table=None으로 호출되어
+        기존 B′-3a 동작과 완전 동일(회귀 없음).
     """
     # 잘못된 --profile 입력은 사용자 입력 오류이므로 ReportError로 변환해
     # main()에서 깔끔히 안내한다(raw KeyError 트레이스백 노출 방지).
@@ -840,7 +846,15 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
                     f"`ollama pull {model_name_for_hint}`."
                 ) from e
 
-    raw_checks = parser.parse(report_path)
+    # B′-3b: --aux-objects는 fw_policy_xlsx 파서 전용 확장 인자라 다른
+    # 파서의 parse(report_path) 단일인자 계약을 건드리지 않도록 profile.parser
+    # 로 분기한다(hasattr 대신 명시 문자열 비교 — fw_policy_xlsx.parse()의
+    # 새 aux_table kwarg는 이 파서에만 존재).
+    if profile.parser == "fw_policy_xlsx" and aux_objects_path:
+        aux_table = load_aux_objects(aux_objects_path)
+        raw_checks = parser.parse(report_path, aux_table=aux_table)
+    else:
+        raw_checks = parser.parse(report_path)
     items = aggregate(raw_checks, variant, profile)
 
     judgments = []
@@ -990,7 +1004,8 @@ def _run_batch(args) -> None:
             cov = run(path, args.criteria, profile_key, client,
                      json_out, xlsx_out, args.model,
                      skip_preflight=args.skip_preflight,
-                     hashcat_opts=hashcat_opts)
+                     hashcat_opts=hashcat_opts,
+                     aux_objects_path=args.aux_objects)
             rows.append((name, profile_key, "성공",
                         f"{cov['judged']}/{cov['expected']} 판정, "
                         f"미판정 {len(cov['missing'])}"))
@@ -1135,6 +1150,13 @@ def main(argv=None):
         "--hashcat-timeout", default=600, type=int, metavar="SEC",
         help="hashcat 단일 모드 실행 timeout(초). 기본 600.",
     )
+    # ── B′-3b: FW 그룹객체(named object) 해석 테이블 ──────────────────────────
+    ap.add_argument(
+        "--aux-objects", default=None, metavar="PATH",
+        help="FW 그룹객체(주소/서비스 그룹) 정의 YAML 경로(캐노니컬 포맷은 "
+             "judge_tool/fw_objects.py 참조). fw 프로파일에서만 사용 — "
+             "미지정 시 기존 동작과 동일(그룹 미해석 정책은 판단보류).",
+    )
     args = ap.parse_args(argv)
 
     # 위치인자와 --report를 동시에, 그것도 서로 다르게 지정하면 어느 하나가
@@ -1176,7 +1198,8 @@ def main(argv=None):
                   json_out, xlsx_out, args.model,
                   variant_override=args.variant,
                   skip_preflight=args.skip_preflight,
-                  hashcat_opts=hashcat_opts)
+                  hashcat_opts=hashcat_opts,
+                  aux_objects_path=args.aux_objects)
     except (ReportError, OSError) as e:
         # 사용자 입력 오류(손상 XML/파일 부재 등)만 깔끔히 안내한다.
         # ReportError 는 의도된 입력/보고서 문제, OSError(FileNotFoundError

@@ -5,6 +5,7 @@
 """
 import pytest
 
+from judge_tool.fw_objects import ObjectTable
 from judge_tool.fw_policy import (
     ADMIN_PORTS,
     VULN_PORTS,
@@ -980,3 +981,183 @@ def test_policy_from_dict_unresolved_fields_backward_compatible():
     assert p.unresolved_src == []
     assert p.unresolved_dst == []
     assert p.unresolved_svc == []
+
+
+# ═ B′-3b — ObjectTable 실치환 통합 테스트 (resolve_policies(table=...)) ═══════
+#
+# 합성 픽스처(더미 IP/그룹명) — 실 객체 export 데이터는 현 데이터셋에 없음
+# (2026-07-10 Fable 실사). fw_objects.resolve_name 단위 테스트는
+# tests/test_fw_objects.py, 여기는 fw_policy와의 통합(치환→탐지 재판정)만.
+
+# (a) 단순 확장: WEB_GRP→CIDR 복귀 → ISS-031/041 광역 검출(양극성: 좁은 CIDR 양호)
+
+def test_aux_simple_broad_group_detected_as_iss031_violation():
+    table = ObjectTable(address={"WEB_GRP": ["10.0.0.0/7"]})  # /7 <= /8 → 광역
+    p = _make(action="allow", dst_ips=["WEB_GRP"], dst_ports=["22"])
+    resolve_policies([p], table=table)
+    assert p.dst_ips == ["10.0.0.0/7"]
+    assert p.unresolved_dst == []
+    r = detect_for_iss("ISS-031", [p], _FORMAT_KRFW)
+    assert r.verdict == "취약"
+
+
+def test_aux_narrow_group_polarity_good_iss031():
+    """양극성: 그룹이 좁은 CIDR로 확장되면 광역 아님 → 양호."""
+    table = ObjectTable(address={"NARROW_GRP": ["10.0.0.0/24"]})
+    p = _make(action="allow", dst_ips=["NARROW_GRP"], dst_ports=["22"])
+    resolve_policies([p], table=table)
+    assert p.dst_ips == ["10.0.0.0/24"]
+    r = detect_for_iss("ISS-031", [p], _FORMAT_KRFW)
+    assert r.verdict == "양호"
+
+
+def test_aux_simple_broad_group_detected_as_iss041_violation():
+    table = ObjectTable(address={"DB_GRP": ["10.0.0.0/7"]})
+    p = _make(action="allow", dst_ips=["DB_GRP"], dst_ports=["3306"])
+    resolve_policies([p], table=table)
+    r = detect_for_iss("ISS-041", [p], _FORMAT_KRFW)
+    assert r.verdict == "취약"
+
+
+# (b) any 확장: 그룹이 0.0.0.0/0 포함 → ISS-030 취약
+
+def test_aux_any_group_detected_as_iss030_violation():
+    table = ObjectTable(address={"ANY_GRP": ["0.0.0.0/0"]})
+    p = _make(action="allow", src_ips=["ANY_GRP"], dst_ips=["ANY_GRP"])
+    resolve_policies([p], table=table)
+    assert p.src_ips == ["0.0.0.0/0"]
+    assert p.dst_ips == ["0.0.0.0/0"]
+    r = detect_for_iss("ISS-030", [p], _FORMAT_KRFW)
+    assert r.verdict == "취약"
+
+
+# (c) 중첩 2단 / 8단 경계(해석 성공) / 9단 초과(미해석→가드 판단보류)
+
+def test_aux_two_level_nested_group_resolves():
+    table = ObjectTable(address={
+        "WEB_GRP": ["DMZ_GRP"], "DMZ_GRP": ["10.0.1.0/24"],
+    })
+    p = _make(action="allow", src_ips=["10.9.9.9"], dst_ips=["WEB_GRP"])
+    resolve_policies([p], table=table)
+    assert p.dst_ips == ["10.0.1.0/24"]
+    assert p.unresolved_dst == []
+
+
+def test_aux_depth_boundary_8_resolves():
+    address = {f"G{i}": [f"G{i + 1}"] for i in range(7)}
+    address["G7"] = ["10.5.5.5"]
+    table = ObjectTable(address=address)
+    p = _make(action="allow", src_ips=["10.9.9.9"], dst_ips=["G0"])
+    resolve_policies([p], table=table)
+    assert p.dst_ips == ["10.5.5.5"]
+    assert p.unresolved_dst == []
+
+
+def test_aux_depth_9_exceeds_stays_unresolved_and_guard_holds():
+    address = {f"G{i}": [f"G{i + 1}"] for i in range(8)}
+    address["G8"] = ["10.5.5.5"]
+    table = ObjectTable(address=address)
+    p = _make(action="allow", src_ips=["10.9.9.9"], dst_ips=["G0"])
+    resolve_policies([p], table=table)
+    assert p.dst_ips == []
+    assert p.unresolved_dst == ["G0"]
+    r = detect_for_iss("ISS-030", [p], _FORMAT_KRFW)
+    assert r.verdict == "판단보류"
+    assert "미해석 객체 토큰 보유 정책 1건 → 양호 단정 불가" in r.rationale
+
+
+# (d) 순환(A→B→A) → 미해석 → 판단보류(무한루프 없음)
+
+def test_aux_cyclic_group_stays_unresolved_no_infinite_loop():
+    table = ObjectTable(address={"A": ["B"], "B": ["A"]})
+    p = _make(action="allow", src_ips=["10.9.9.9"], dst_ips=["A"])
+    resolve_policies([p], table=table)  # 종료해야 함(무한루프 없음)
+    assert p.dst_ips == []
+    assert p.unresolved_dst == ["A"]
+    r = detect_for_iss("ISS-030", [p], _FORMAT_KRFW)
+    assert r.verdict == "판단보류"
+
+
+# (e) 부분 확장(leaf 일부 미파싱) → 잔존 unresolved → 가드
+
+def test_aux_partial_expansion_leaves_unresolved_remainder():
+    table = ObjectTable(address={
+        "MIXED_GRP": ["10.0.1.0/24", "UNKNOWN_LEAF"],
+    })
+    p = _make(action="allow", src_ips=["any"], dst_ips=["MIXED_GRP"])
+    resolve_policies([p], table=table)
+    assert p.dst_ips == ["10.0.1.0/24"]
+    assert p.unresolved_dst == ["UNKNOWN_LEAF"]
+    r = detect_for_iss("ISS-030", [p], _FORMAT_KRFW)
+    assert r.verdict == "판단보류"
+    assert "미해석 객체 토큰 보유 정책 1건 → 양호 단정 불가" in r.rationale
+
+
+# (f) ISS-035: named src_port → 판단보류 / 테이블로 '5000' 치환 → 취약 /
+#     '1-65535' 치환 → 양호
+
+def test_aux_iss035_named_src_port_no_table_downgrades_to_hold():
+    p = _make(action="allow", src_ports=["WEB_SRC_PORT_GRP"])
+    resolve_policies([p])  # table=None — src_ports 미해석 그대로
+    r = detect_for_iss("ISS-035", [p], _FORMAT_ID70)
+    assert r.verdict == "판단보류"
+    assert "미해석 출발지포트 토큰 보유 정책 1건 → 양호 단정 불가" in r.rationale
+
+
+def test_aux_iss035_named_src_port_table_substitutes_concrete_port_violation():
+    table = ObjectTable(service={"WEB_SRC_PORT_GRP": ["5000"]})
+    p = _make(action="allow", src_ports=["WEB_SRC_PORT_GRP"])
+    resolve_policies([p], table=table)
+    assert p.src_ports == ["5000"]
+    r = detect_for_iss("ISS-035", [p], _FORMAT_ID70)
+    assert r.verdict == "취약"
+
+
+def test_aux_iss035_named_src_port_table_substitutes_any_notation_good():
+    table = ObjectTable(service={"WEB_SRC_PORT_GRP": ["1-65535"]})
+    p = _make(action="allow", src_ports=["WEB_SRC_PORT_GRP"])
+    resolve_policies([p], table=table)
+    assert p.src_ports == ["1-65535"]
+    r = detect_for_iss("ISS-035", [p], _FORMAT_ID70)
+    assert r.verdict == "양호"
+
+
+def test_aux_iss035_src_port_not_in_table_stays_unresolved_in_place():
+    """src_ports 토큰이 table.service에 없으면 리스트에서 제거되지 않고
+    그 자리에 원문 그대로 남는다(빈 리스트 함정 회피 확인)."""
+    table = ObjectTable(service={"OTHER_SVC": ["80"]})
+    p = _make(action="allow", src_ports=["UNKNOWN_SRC_PORT_GRP"])
+    resolve_policies([p], table=table)
+    assert p.src_ports == ["UNKNOWN_SRC_PORT_GRP"]
+    r = detect_for_iss("ISS-035", [p], _FORMAT_ID70)
+    assert r.verdict == "판단보류"
+
+
+def test_aux_iss035_src_port_cyclic_group_stays_as_is():
+    table = ObjectTable(service={"P1": ["P2"], "P2": ["P1"]})
+    p = _make(action="allow", src_ports=["P1"])
+    resolve_policies([p], table=table)  # 무한루프 없이 원 토큰 그대로 유지
+    assert p.src_ports == ["P1"]
+
+
+# (h) aux 미지정 회귀: table 생략/None 동치 + 기존 전체 fw 스위트 무변(별도
+#     확인은 pytest 전체 실행 — 이 파일의 기존 218건이 그대로 통과함이 곧
+#     이번 태스크의 no-op 회귀 계약).
+
+def test_aux_no_table_arg_equivalent_to_explicit_none():
+    p1 = _make(action="allow", dst_ips=["WEB_GRP"])
+    p2 = _make(action="allow", dst_ips=["WEB_GRP"])
+    resolve_policies([p1])
+    resolve_policies([p2], table=None)
+    assert p1.dst_ips == p2.dst_ips == []
+    assert p1.unresolved_dst == p2.unresolved_dst == ["WEB_GRP"]
+
+
+def test_aux_table_given_but_token_absent_from_table_same_as_no_table():
+    """테이블은 주입됐지만 그 토큰 자체가 테이블에 없으면 table=None과
+    동일하게 미해석 유지(치환 시도 자체를 하지 않음)."""
+    table = ObjectTable(address={"OTHER_GRP": ["10.0.0.0/24"]})
+    p = _make(action="allow", dst_ips=["NOT_IN_TABLE_GRP"])
+    resolve_policies([p], table=table)
+    assert p.dst_ips == []
+    assert p.unresolved_dst == ["NOT_IN_TABLE_GRP"]

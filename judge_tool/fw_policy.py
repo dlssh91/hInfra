@@ -20,6 +20,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, FrozenSet, List, Literal, Optional, Set, Tuple
 
+from judge_tool.fw_objects import UnresolvableError, resolve_name
+
 # ─ 정규화 Policy 모델 ──────────────────────────────────────────────────────────
 
 @dataclass
@@ -273,19 +275,90 @@ def _is_resolvable_protocol_token(token: str) -> bool:
     return _is_resolvable_port_token(token)
 
 
+def _resolve_unresolved_tokens(
+    tokens: List[str],
+    section: Dict[str, List[str]],
+    table: Any,
+    kind: str,
+    is_resolvable_fn: Any,
+) -> Tuple[List[str], List[str]]:
+    """unresolved_* 리스트의 각 토큰을 table의 kind 섹션으로 실해석 시도.
+
+    토큰이 section에 없으면(테이블에 정의되지 않음) 원 토큰 그대로 보존.
+    있으면 fw_objects.resolve_name으로 재귀 해석(중첩까지 leaf로 펼침) —
+    순환/깊이초과(UnresolvableError)면 역시 원 토큰 그대로 보존(부분 결과
+    반환 금지, 전체를 미해석으로). 해석된 leaf 중 IP/포트로 파싱 가능한
+    것은 resolved_out으로, 파싱 불가능한 것(leaf 자체가 또 다른 미지 토큰)은
+    new_unresolved로 분류한다.
+
+    반환: (resolved_out, new_unresolved).
+    """
+    resolved_out: List[str] = []
+    new_unresolved: List[str] = []
+    for tok in tokens:
+        if tok not in section:
+            new_unresolved.append(tok)
+            continue
+        try:
+            leaves = resolve_name(table, kind, tok)
+        except UnresolvableError:
+            new_unresolved.append(tok)
+            continue
+        for leaf in leaves:
+            if is_resolvable_fn(leaf):
+                resolved_out.append(leaf)
+            else:
+                new_unresolved.append(leaf)
+    return resolved_out, new_unresolved
+
+
+def _resolve_src_ports_inplace(p: "Policy", table: Any) -> None:
+    """src_ports의 named(파싱불가) 토큰을 table.service로 **제자리 치환**.
+
+    src_ports는 unresolved_* 필드로 옮기지 않는다(B′-3a-fix의 "빈 리스트
+    함정" — src_ips/dst_ips/dst_ports가 미해석 토큰만 있어 빈 리스트가 되면
+    각 detect_* 함수가 "전체(any)"로 오분류하던 버그의 회피책 — 같은 함정을
+    src_ports에도 만들지 않기 위해 리스트에서 아예 제거하지 않고 그 자리에서
+    치환한다). 해석 성공 시 원 토큰 위치에 확장된 leaf들을 삽입하고, 테이블에
+    없거나 순환/깊이초과로 실패하면 원 토큰을 그대로 둔다(=여전히 미해석 —
+    ISS-035 갭 가드가 이를 감지해 판단보류로 강등한다).
+    """
+    new_src_ports: List[str] = []
+    for tok in p.src_ports:
+        if not tok or _is_any_port(tok) or _parse_port_range(tok):
+            new_src_ports.append(tok)
+            continue
+        if tok not in table.service:
+            new_src_ports.append(tok)  # 테이블에 없음 — 그대로 미해석 유지
+            continue
+        try:
+            leaves = resolve_name(table, "service", tok)
+        except UnresolvableError:
+            new_src_ports.append(tok)  # 순환/깊이초과 — 원 토큰 그대로(미해석)
+            continue
+        new_src_ports.extend(leaves)  # 제자리 치환(파싱가능 여부 무관하게 삽입)
+    p.src_ports = new_src_ports
+
+
 def resolve_policies(
     policies: List[Policy],
     table: Any = None,
 ) -> List[Policy]:
-    """정책 목록의 IP/포트 토큰을 해석 가능/불가능으로 분류(1회 패스).
+    """정책 목록의 IP/포트 토큰을 해석하고(1회 분류 패스 + table 주입 시 실치환).
 
-    파싱 가능한 토큰은 원래 필드(src_ips/dst_ips/dst_ports/protocols)에
-    그대로 유지하고, 불가능한 토큰(=named 객체/그룹 후보)은 해당 필드에서
-    제거해 unresolved_src/unresolved_dst/unresolved_svc로 옮긴다
-    (dst_ports·protocols의 미해석 토큰은 모두 unresolved_svc로 합류).
+    1단계(분류, table 무관): 파싱 가능한 토큰은 원래 필드(src_ips/dst_ips/
+    dst_ports/protocols)에 그대로 유지하고, 불가능한 토큰(=named 객체/그룹
+    후보)은 해당 필드에서 제거해 unresolved_src/unresolved_dst/unresolved_svc로
+    옮긴다(dst_ports·protocols의 미해석 토큰은 모두 unresolved_svc로 합류).
 
-    table: 후속 B′-3b에서 ObjectTable을 주입해 그룹→멤버 실치환에 쓰일
-    자리다. 현재는 None만 지원하며, 분류만 수행하고 치환은 하지 않는다.
+    2단계(실치환, table 주입 시만 — B′-3b): unresolved_src/dst 토큰이
+    table.address에 있으면 fw_objects.resolve_name으로 재귀 해석해 leaf 중
+    IP파싱 가능한 것을 src_ips/dst_ips로 복귀시키고, 파싱불가 leaf는
+    unresolved_*에 잔존시킨다. unresolved_svc는 table.service로 해석해
+    dst_ports로 복귀. src_ports는 named 토큰이 table.service에 있으면
+    제자리 치환(unresolved_* 필드로 옮기지 않음).
+
+    table=None(기본)이면 1단계 분류만 수행(B′-3a와 완전 동일 — 회귀 0).
     """
     for p in policies:
         resolved_src: List[str] = []
@@ -319,6 +392,28 @@ def resolve_policies(
             else:
                 p.unresolved_svc.append(tok)
         p.protocols = resolved_proto
+
+    if table is not None:
+        for p in policies:
+            add_src, p.unresolved_src = _resolve_unresolved_tokens(
+                p.unresolved_src, table.address, table, "address",
+                _is_resolvable_ip_token,
+            )
+            p.src_ips = p.src_ips + add_src
+
+            add_dst, p.unresolved_dst = _resolve_unresolved_tokens(
+                p.unresolved_dst, table.address, table, "address",
+                _is_resolvable_ip_token,
+            )
+            p.dst_ips = p.dst_ips + add_dst
+
+            add_svc, p.unresolved_svc = _resolve_unresolved_tokens(
+                p.unresolved_svc, table.service, table, "service",
+                _is_resolvable_port_token,
+            )
+            p.dst_ports = p.dst_ports + add_svc
+
+            _resolve_src_ports_inplace(p, table)
 
     return policies
 
@@ -419,6 +514,30 @@ def _count_unresolved_policies(iss_id: str, policies: List[Policy]) -> int:
         if not p.enabled:
             continue
         if any(getattr(p, f) for f in fields):
+            count += 1
+    return count
+
+
+# ISS-035 전용 미해석 출발지포트 갭 가드(B′-3b, 최종 브랜치리뷰 Low-2).
+#
+# src_ports는 unresolved_* 인프라를 타지 않으므로(B′-3a-fix "빈 리스트 함정"
+# 회피 — 위 _resolve_src_ports_inplace 참조) _UNRESOLVED_GUARD_FIELDS/
+# _count_unresolved_policies 메커니즘이 감지하지 못한다. named 출발지포트
+# 토큰(_is_any_port도 아니고 _parse_port_range도 실패하는 토큰)이 --aux-objects
+# 없이(또는 테이블에 없어) 그대로 남아 있으면 detect_source_port_usage의
+# 파싱 실패 루프가 조용히 스킵해 위반 0건 = "양호"로 나가는 거짓양호 벡터가
+# 있었다 — 이 함수가 그 갭을 별도로 카운트해 detect_for_iss의 ISS-035
+# 분기에서 양호→판단보류 강등 근거로 쓰인다.
+def _count_unresolved_src_port_policies(policies: List[Policy]) -> int:
+    """enabled+allow 정책 중 src_ports에 미해석(named) 토큰을 가진 정책 수."""
+    count = 0
+    for p in policies:
+        if not p.enabled or not _is_allow_action(p.action):
+            continue
+        if any(
+            ps for ps in p.src_ports
+            if ps and not _is_any_port(ps) and not _parse_port_range(ps)
+        ):
             count += 1
     return count
 
@@ -746,6 +865,12 @@ def detect_for_iss(
     # (unrecognized_action_count, 위 docstring)와 독립적으로 판정한다 —
     # 서로 다른 근거(액션 미인식 vs. 토큰 미해석)라 순서 간섭 없이 병기 가능.
     unresolved_count = _count_unresolved_policies(iss_id, policies)
+    # ISS-035 전용 갭 가드(B′-3b): src_ports는 unresolved_* 인프라 밖이라
+    # 위 unresolved_count로는 잡히지 않는다. 다른 항목에는 무영향.
+    src_port_unresolved_count = (
+        _count_unresolved_src_port_policies(policies)
+        if iss_id == "ISS-035" else 0
+    )
 
     if count > 0:
         rationale = (
@@ -765,10 +890,12 @@ def detect_for_iss(
             )
         verdict = "취약"
         confidence = 0.9
-    elif unresolved_count > 0 or unrecognized_action_count > 0:
+    elif (unresolved_count > 0 or unrecognized_action_count > 0
+          or src_port_unresolved_count > 0):
         # 거짓양호 봉쇄 가드(핵심 계약): 위반 0건이라도 (a) 파일 내 미인식
         # action이 있거나 (b) 판정 관련 필드에 미해석 객체 토큰을 가진
-        # enabled 정책이 있으면 "양호"를 단정할 수 없다 — 어느 쪽이든 탐지
+        # enabled 정책이 있거나 (c, ISS-035 전용) 미해석 출발지포트 토큰을
+        # 가진 정책이 있으면 "양호"를 단정할 수 없다 — 어느 쪽이든 탐지
         # 로직이 실제 위반을 놓쳤을 가능성이 있으므로 판단보류로 강등한다.
         hold_reasons: List[str] = []
         if unresolved_count > 0:
@@ -778,6 +905,11 @@ def detect_for_iss(
         if unrecognized_action_count > 0:
             hold_reasons.append(
                 f"미인식 정책 액션 {unrecognized_action_count}건 → 양호 단정 불가"
+            )
+        if src_port_unresolved_count > 0:
+            hold_reasons.append(
+                f"미해석 출발지포트 토큰 보유 정책 {src_port_unresolved_count}건 "
+                "→ 양호 단정 불가"
             )
         rationale = (
             f"[FW 결정론 탐지] {detect_label} — "
