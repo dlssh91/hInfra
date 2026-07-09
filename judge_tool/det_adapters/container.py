@@ -64,6 +64,44 @@ _RE_CONTAINER_CMD = re.compile(
 # 구분선/구분자 패턴 (-----로 5자 이상 또는 ### 구분자)
 _RE_SEPARATOR = re.compile(r"-{5,}|#{3,}")
 
+# ── F8 오류출력 가드 패턴 (2026-07-03-falsegood-audit.md §1 F8 + §2 F8) ──────
+# _has_collection_evidence는 수집 실행 흔적(# Command 등)만 보므로,
+# "명령은 찍혔지만 실패한 출력"(예: error: Unauthorized)이 가드를 통과 →
+# autoAnalysis 취약패턴 부재 → result "N" → 양호(거짓양호). 이 패턴에 매치되면
+# 자동판정 불가로 보고 handled=False(LLM/판단보류 폴백)로 강등한다.
+#
+# 보수적 최소셋(설계 초안 토큰). 대소문자는 실제 도구 오류 표기 기준 —
+# 무차별 IGNORECASE 금지: 설정 덤프 내 일반 단어(예: 'errors: 0',
+# 'deny-unauthorized-traffic', 'forbidden-sysctls') 오매치 방지.
+#   행 시작 앵커형((?m)^\s*):
+#     - "error: ..."               kubectl/oc 공통 오류 프리픽스
+#     - "Error from server (...)"  API 서버 거부(401/403/404)
+#     - "Unable to connect ..."    연결 실패
+#   어디서든(비앵커) — 설정 덤프 어휘와 충돌하지 않는 고정 표기만:
+#     - "command not found"                bash/sh
+#     - "Permission denied"/"permission denied"  cat·ls / docker daemon
+#     - "Unauthorized"/"Forbidden"         HTTP 401/403 대문자 단독 표기
+#     - "connection refused"               dial tcp ... connect: connection refused
+#     - "No such file or directory"        ls/cat/stat
+#
+# 과트리거 0 검증(SHIP 조건): collected/container 실샘플 전 항목 + 합성 정상
+# 픽스처에서 오매치 0건(tests/test_det_adapters_container.py
+# TestErrorGuardNoOvertrigger). "No result"는 오류가 아님(PRCC-018 취약 증거 —
+# _has_collection_evidence docstring 참조) — 토큰에 포함 금지.
+_RE_ERROR_OUTPUT = re.compile(
+    r"(?m)"
+    r"^\s*error:"
+    r"|^\s*Error from server"
+    r"|^\s*Unable to connect"
+    r"|command not found"
+    r"|Permission denied"
+    r"|permission denied"
+    r"|Unauthorized"
+    r"|Forbidden"
+    r"|connection refused"
+    r"|No such file or directory"
+)
+
 
 def _has_collection_evidence(raw_output: str) -> bool:
     """raw_output에 컨테이너 점검 수집이 실제로 이루어진 증거가 있는지 판정.
@@ -116,6 +154,7 @@ def judge(
 
     §18.1 C1: gate() 선확인 — DET/DET-PARTIAL이 아니면 즉시 handled=False.
     §3.4: 증거 부재 가드 — 빈출력/수집실패는 디폴트-N 거짓양호 위험 → handled=False.
+    F8: 오류출력 가드 — 명령은 찍혔지만 실패한 출력(_RE_ERROR_OUTPUT) → handled=False.
     §3.1: autoAnalysis 단일함수 호출 → result 매핑.
     §7: raw_output 누출 방지 — point 문자열만 citation으로 사용.
     """
@@ -134,6 +173,25 @@ def judge(
             rationale=(
                 "[증거 부재: 컨테이너 수집 출력이 비어있거나 수집 실패 — 자동 양호 불가]"
                 f" (item={item_id}, variant={variant})"
+            ),
+            citations=[],
+            ev_status="review",
+            handled=False,
+        )
+
+    # ── F8 오류출력 가드 (autoAnalysis 호출 전) ─────────────────────────────────
+    # 수집 흔적(# Command 등)이 있어도 명령이 실패한 출력(error:/Unauthorized 등)이면
+    # autoAnalysis 취약패턴 부재 → result "N" → 양호 거짓양호. handled=False로
+    # LLM/판단보류 폴백 강등(§3.4 증거부재 가드와 동일 반환 형태, rationale만 구별).
+    err_match = _RE_ERROR_OUTPUT.search(raw_output)
+    if err_match is not None:
+        return ForcedVerdict(
+            verdict="판단보류",
+            confidence=0.0,
+            rationale=(
+                "[수집 명령 오류 출력 감지 — 자동판정 불가]"
+                f" (item={item_id}, variant={variant},"
+                f" 매치토큰={err_match.group(0).strip()!r})"
             ),
             citations=[],
             ev_status="review",
