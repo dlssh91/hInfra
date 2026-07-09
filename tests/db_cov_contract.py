@@ -177,12 +177,17 @@ _MYSQL = {
         "vuln_verdict": "취약",
     },
 
-    # DBM-025: EOL — label D, det_common에서 canned_message로 처리 → 판단보류
-    # 모든 입력에서 판단보류(EOL 기준 판단 불가)
-    # RESULT에 데이터가 있어도 det_common 어댑터가 canned 경로로 빠짐
+    # DBM-025: EOL — label D. F2(2026-07): item_configs에 judgment_method가
+    # 없으므로 classify_method가 'det'를 도출 → main._defer_or_eol → judge_eol
+    # (eol.yaml as_of/staleness 권위경로)로 라우팅되며, 이 det_adapters/db.py
+    # judge() 테스트 하네스(DET_SOURCE 기반)는 우회한다. DET_SOURCE도 이중방어로
+    # STUB 처리되어 gate()가 항상 handled=False+판단보류를 반환 — RESULT
+    # 내용과 무관해 결정론 양극성(양호/취약) 자체가 성립하지 않는다.
     "DBM-025": {
         "uncovered": True,
-        "uncovered_reason": "label D EOL: canned_message 판단보류 고정. 결정론 양극성(양호/취약) 없음.",
+        "uncovered_reason": "label D EOL: judgment_method='det'로 judge_eol(eol.yaml) "
+                             "권위경로 라우팅 — det_adapters STUB(이중방어)이라 이 "
+                             "하네스에서는 판단보류 고정, 결정론 양극성(양호/취약) 없음.",
     },
 
     # DBM-026: umask — output 필드
@@ -515,10 +520,14 @@ _ORACLE = {
         "vuln_verdict": "취약",
     },
 
-    # DBM-025: EOL — label D
+    # DBM-025: EOL — label D. F2(2026-07): judgment_method 미지정 →
+    # classify_method='det' → judge_eol(eol.yaml) 권위경로. 이 하네스는
+    # det_adapters STUB(이중방어)로 gate 차단 — 양극성 성립 안 함.
     "DBM-025": {
         "uncovered": True,
-        "uncovered_reason": "label D EOL: canned_message 판단보류 고정.",
+        "uncovered_reason": "label D EOL: judgment_method='det'로 judge_eol(eol.yaml) "
+                             "권위경로 라우팅 — det_adapters STUB(이중방어)이라 이 "
+                             "하네스에서는 판단보류 고정, 결정론 양극성 없음.",
     },
 
     "DBM-026": {
@@ -671,10 +680,14 @@ _MSSQL = {
         "vuln_verdict": "취약",
     },
 
-    # DBM-025: EOL — label D
+    # DBM-025: EOL — label D. F2(2026-07): judgment_method 미지정 →
+    # classify_method='det' → judge_eol(eol.yaml) 권위경로. 이 하네스는
+    # det_adapters STUB(이중방어)로 gate 차단 — 양극성 성립 안 함.
     "DBM-025": {
         "uncovered": True,
-        "uncovered_reason": "label D EOL: canned_message 판단보류 고정.",
+        "uncovered_reason": "label D EOL: judgment_method='det'로 judge_eol(eol.yaml) "
+                             "권위경로 라우팅 — det_adapters STUB(이중방어)이라 이 "
+                             "하네스에서는 판단보류 고정, 결정론 양극성 없음.",
     },
 
     # DBM-031: SA 계정 정책 — is_disabled=0 AND is_policy_checked=0 → 취약
@@ -798,10 +811,14 @@ _POSTGRESQL = {
         "vuln_verdict": "취약",
     },
 
-    # DBM-025: EOL — label D
+    # DBM-025: EOL — label D. F2(2026-07): judgment_method 미지정 →
+    # classify_method='det' → judge_eol(eol.yaml) 권위경로. 이 하네스는
+    # det_adapters STUB(이중방어)로 gate 차단 — 양극성 성립 안 함.
     "DBM-025": {
         "uncovered": True,
-        "uncovered_reason": "label D EOL: canned_message 판단보류 고정.",
+        "uncovered_reason": "label D EOL: judgment_method='det'로 judge_eol(eol.yaml) "
+                             "권위경로 라우팅 — det_adapters STUB(이중방어)이라 이 "
+                             "하네스에서는 판단보류 고정, 결정론 양극성 없음.",
     },
 
     "DBM-026": {

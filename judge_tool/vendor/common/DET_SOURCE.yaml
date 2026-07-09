@@ -658,11 +658,14 @@ items:
 
   DBM-025:                          # EOL
     variants:
-      mysql: DET
-      oracle: DET
-      mssql: DET
+      # F2: label D + eol_check → item_configs가 judgment_method(det_common)를
+      # 더 이상 지정하지 않아 이 어댑터 경로 자체가 미도달이나, 이중방어로
+      # native 4엔진 전부 STUB 처리(노후지식 기반 det 자동판정 재유입 차단).
+      mysql: STUB
+      oracle: STUB
+      mssql: STUB
       mariadb: STUB
-      pg: DET
+      pg: STUB
       # 클라우드 변형 (Phase 4b)
       # mysql cloud: dbm_025 메서드 없음(run()에 미호출) → ABSENT
       mysql_rds: ABSENT

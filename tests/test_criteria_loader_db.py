@@ -1,6 +1,6 @@
 import openpyxl
 from judge_tool.criteria_loader import load_criteria
-from judge_tool.profile import DB_MYSQL, DB_MSSQL, DB_POSTGRESQL
+from judge_tool.profile import DB_MYSQL, DB_ORACLE, DB_MSSQL, DB_POSTGRESQL
 
 
 def _make_db_xlsx(path):
@@ -48,3 +48,29 @@ def test_pg_native_dbm007_override_a(criteria_xlsx_path):
     assert pg[("DBM-007", "pg_native")].label == "A"
     # 클라우드 변형은 여전히 C(오버라이드 영향 없음).
     assert pg[("DBM-007", "pg_rds")].label == "C"
+
+
+# ── F2. DBM-025(EoS) det_common 자동판정 제거 — eol.yaml 권위경로 회귀 ───────
+
+def test_native_dbm025_classify_as_det_not_det_common(criteria_xlsx_path):
+    """DBM-025(EoS DB 사용)는 label D이므로 item_configs가 judgment_method를
+    지정하지 않으면 classify_method가 'det'를 도출해야 한다(_defer_or_eol →
+    judge_eol의 eol.yaml as_of/staleness 권위경로). 노후 지식 기반
+    'det_common' 자동판정(예: oracle 룰이 '12'만 EoS로 알아 12.1/12.2/18c를
+    거짓양호 처리)으로 새지 않는지 4개 native 엔진 전부에서 고정한다.
+    mariadb는 이미 이 형태(judgment_method 미지정)이다."""
+    cases = [
+        (DB_MYSQL, "db_mysql", "mysql_native"),
+        (DB_ORACLE, "db_oracle", "oracle_native"),
+        (DB_MSSQL, "db_mssql", "mssql_native"),
+        (DB_POSTGRESQL, "db_postgresql", "pg_native"),
+    ]
+    for profile, key, variant in cases:
+        crit = load_criteria(criteria_xlsx_path, profile, profile_key=key)
+        c = crit[("DBM-025", variant)]
+        assert c.judgment_method == "det", (
+            f"{key}/{variant} DBM-025: judgment_method={c.judgment_method!r} "
+            f"(기대: 'det' — det_common 노후지식 자동판정이 아닌 eol.yaml 권위경로)"
+        )
+        assert c.judgment_method != "det_common"
+        assert c.label == "D"

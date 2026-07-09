@@ -130,7 +130,6 @@ DBM-024:
   summary_instruction: IS_GRANTABLE=YES 권한을 계정별로 집계하여 요약. 각 계정과 GRANT OPTION 보유 권한
     목록 나열. 빈 결과면 'GRANT OPTION 없음 확인됨' 으로 요약. 판정하지 말 것.
 DBM-025:
-  judgment_method: det_common
   needs_review: true
   label: D
   eol_check: true
