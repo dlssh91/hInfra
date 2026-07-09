@@ -390,6 +390,15 @@ _MODE_J_ITEMS: dict = {
             for x in r if isinstance(x, dict)
         ),
     },
+    "DBM-005": None,  # F7(T7): mssql_rds 'sample is not None' — 0행(샘플쿼리 실패)과
+                       # 샘플없음(실제 컬럼값 없음=양호)을 구분 못 해 0행→양호였음. 계정/
+                       # 컬럼 샘플 행은 수집되면 항상 존재 → 0행-only 가드로 충분.
+    "DBM-006": None,  # F6(T7): 실패잠금(mysql/mariadb/oracle/mssql det_common) — 계정/
+                       # 프로파일 RESULT 0행은 현실적으로 불가능(수집실패)인데 위반0→양호였음.
+                       # pg_native는 모드B(구조적취약)가 gate DET 이전에 선처리해 이 가드에
+                       # 도달하지 않음(간섭 없음, T7 회귀테스트로 고정).
+    "DBM-007": None,  # F6(T7): 비밀번호 복잡도(mysql/mariadb/oracle/mssql det_common) —
+                       # DBM-006과 동일 결함. pg_native는 모드B가 선처리(무간섭).
 }
 
 # 엔진별 "기대 변수 존재 여부" 검사 함수.

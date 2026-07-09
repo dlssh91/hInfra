@@ -327,9 +327,13 @@ class TestResultMapping:
         """양호 ForcedVerdict 구조.
 
         DBM-003은 모드A2(classify-then-hold)로 항상 판단보류이므로 이 구조
-        테스트에는 부적합 — DBM-006(빈 RESULT → 양호)으로 교체.
+        테스트에는 부적합 — DBM-006(유효행 보유, 위반0 → 양호)으로 교체.
+        F6(T7): DBM-006이 모드J(0행 가드)에 등록된 후 빈 RESULT는 판단보류가
+        되므로, 이 구조 테스트에는 유효행(USER_ATTRIBUTES=3, 임계 이내)을 사용한다.
         """
-        raw = _make_raw_ev({"DBM-006": {"RESULT": []}})
+        raw = _make_raw_ev({"DBM-006": {"RESULT": [
+            {"USER": "app_user", "HOST": "%", "USER_ATTRIBUTES": "3"}
+        ]}})
         fv = judge("DBM-006", raw, "mysql_native", {})
         if fv.handled:
             assert fv.verdict in ("양호", "취약"), f"알 수 없는 verdict: {fv.verdict}"
@@ -472,17 +476,21 @@ class TestR3FalsePositiveBlock:
         """정상 입력(예외 없음) → 빈 위반 → 양호 불변 (R3 무간섭).
 
         DBM-003은 모드A2로 항상 판단보류(빈 RESULT는 미수집 보류)이므로
-        이 R3 무간섭 검증에는 DBM-006(빈 RESULT → 양호 유지 항목)을 사용한다.
+        이 R3 무간섭 검증에는 DBM-006(유효행 보유, 위반0 → 양호 유지 항목)을 사용한다.
+        F6(T7): DBM-006이 모드J(0행 가드)에 등록된 후 빈 RESULT는 판단보류가 되므로
+        유효행(USER_ATTRIBUTES=3, 임계 이내) 픽스처로 교체한다.
         """
         import judge_tool.det_adapters.db as _db
         _db._RUN_CACHE.clear()
 
-        data = {"DBM-006": {"RESULT": []}}
+        data = {"DBM-006": {"RESULT": [
+            {"USER": "app_user", "HOST": "%", "USER_ATTRIBUTES": "3"}
+        ]}}
         fv = judge("DBM-006", json.dumps(data), "mysql_native", {})
         # 예외 없으므로 exc_keys=frozenset() → R3 차단 미진입 → 양호
         if fv.handled:
             assert fv.verdict == "양호", (
-                f"정상 빈 RESULT인데 양호가 아님: verdict={fv.verdict}"
+                f"정상 유효행(위반0)인데 양호가 아님: verdict={fv.verdict}"
             )
             assert fv.confidence == 0.9
 
@@ -5758,3 +5766,308 @@ class TestF1Dbm008VendorDataKey:
         fv = judge("DBM-008", raw, "oracle_native", {})
         assert fv.verdict == "판단보류", f"0행 → {fv.verdict} (기대: 판단보류)"
         assert fv.handled is True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T7 (F6+F7, 2026-07-10): DBM-006/007(실패잠금·복잡도, 4엔진) + DBM-005(mssql_rds
+# 암호화) 모드J 등록 — 0행(계정/프로파일/샘플 미수집)을 양호로 단정하던 거짓양호 제거.
+# 설계: docs/superpowers/specs/2026-07-03-falsegood-audit.md §1 F6/F7.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestModeJRegistryF6F7Keys:
+    """모드J 테이블에 DBM-005/006/007 키가 등록돼 있어야 함(F6/F7, T7)."""
+
+    def test_registry_has_dbm005_006_007(self):
+        for k in ("DBM-005", "DBM-006", "DBM-007"):
+            assert k in _MODE_J_ITEMS, f"{k} 모드J 테이블 미등록"
+            assert _MODE_J_ITEMS[k] is None, (
+                f"{k}: 이번 태스크는 0행 가드만 등록 — checker 테이블이면 안 됨"
+            )
+
+
+class TestModeJDbm006Hold:
+    """F6: DBM-006(실패잠금) 모드J 가드 — mysql/mariadb/oracle/mssql 4엔진.
+
+    각 엔진 × (0행→판단보류 / 유효행 good→양호 / vuln→취약).
+    """
+
+    def test_mysql_empty_result_hold(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-006": {"RESULT": []}})
+        fv = judge("DBM-006", raw, "mysql_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "판단보류", f"mysql DBM-006 0행 → {fv.verdict} (기대: 판단보류)"
+
+    def test_mysql_valid_row_good(self):
+        """회귀: USER_ATTRIBUTES=3(임계5 이내) 유효행 → 양호 유지(과교정 아님)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-006": {"RESULT": [
+            {"USER": "app_user", "HOST": "%", "USER_ATTRIBUTES": "3"}
+        ]}})
+        fv = judge("DBM-006", raw, "mysql_native", {})
+        assert fv.verdict == "양호", f"유효행+위반0 → {fv.verdict} (기대: 양호, 회귀)"
+
+    def test_mysql_violation_vuln(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-006": {"RESULT": [
+            {"USER": "app_user", "HOST": "localhost", "USER_ATTRIBUTES": ""}
+        ]}})
+        fv = judge("DBM-006", raw, "mysql_native", {})
+        assert fv.verdict == "취약", f"위반 → {fv.verdict} (기대: 취약, 모드J 미개입)"
+
+    def test_mysql_int_value_error_absorbed_by_r3(self):
+        """회귀: USER_ATTRIBUTES가 숫자아닌 문자열 → int() ValueError → R3가 흡수(모드J 무관).
+
+        F6 감사 기록(mysql006 int() ValueError는 R3 예외가드가 흡수)의 회귀 고정.
+        모드J는 R3보다 뒤에 있어(코드 순서상) 이 경로에 개입하지 않는다 —
+        handled=False(LLM 폴백)이면 충분, 거짓양호(verdict=='양호')만 없으면 된다.
+        """
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-006": {"RESULT": [
+            {"USER": "app_user", "HOST": "%", "USER_ATTRIBUTES": "not_a_number"}
+        ]}})
+        fv = judge("DBM-006", raw, "mysql_native", {})
+        assert fv.verdict != "양호", f"[거짓양호] int() ValueError 흡수 후 양호 판정: {fv}"
+
+    def test_mariadb_empty_result_hold(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-006": {"RESULT": []}})
+        fv = judge("DBM-006", raw, "mariadb_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "판단보류", f"mariadb DBM-006 0행 → {fv.verdict} (기대: 판단보류)"
+
+    def test_mariadb_valid_row_good(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-006": {"RESULT": [
+            {"VARIABLE_NAME": "MAX_PASSWORD_ERRORS", "VARIABLE_VALUE": "3"}
+        ]}})
+        fv = judge("DBM-006", raw, "mariadb_native", {})
+        assert fv.verdict == "양호", f"유효행+위반0 → {fv.verdict} (기대: 양호, 회귀)"
+
+    def test_mariadb_violation_vuln(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-006": {"RESULT": [
+            {"VARIABLE_NAME": "MAX_PASSWORD_ERRORS", "VARIABLE_VALUE": "10"}
+        ]}})
+        fv = judge("DBM-006", raw, "mariadb_native", {})
+        assert fv.verdict == "취약"
+
+    def test_oracle_empty_result_hold(self):
+        """현재 거짓양호 재현 케이스: oracle DBM-006 빈RESULT는 수정 전 '양호'였음."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-006": {"RESULT": []}})
+        fv = judge("DBM-006", raw, "oracle_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "판단보류", f"oracle DBM-006 0행 → {fv.verdict} (기대: 판단보류, 거짓양호 수정)"
+
+    def test_oracle_valid_row_good(self):
+        """회귀: limit='5'(UNLIMITED 아님) 유효행 → 양호 유지(과교정 아님)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-006": {"RESULT": [
+            {"profile": "DEFAULT", "resource_name": "FAILED_LOGIN_ATTEMPTS", "limit": "5"}
+        ]}})
+        fv = judge("DBM-006", raw, "oracle_native", {})
+        assert fv.verdict == "양호", f"유효행+위반0 → {fv.verdict} (기대: 양호, 회귀)"
+
+    def test_oracle_violation_vuln(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-006": {"RESULT": [
+            {"profile": "DEFAULT", "resource_name": "FAILED_LOGIN_ATTEMPTS", "limit": "UNLIMITED"}
+        ]}})
+        fv = judge("DBM-006", raw, "oracle_native", {})
+        assert fv.verdict == "취약"
+
+    def test_mssql_empty_result_hold(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-006": {"RESULT": []}})
+        fv = judge("DBM-006", raw, "mssql_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "판단보류", f"mssql DBM-006 0행 → {fv.verdict} (기대: 판단보류)"
+
+    def test_mssql_valid_row_good(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-006": {"RESULT": [
+            {"is_policy_checked": "1", "name": "sa"}
+        ]}})
+        fv = judge("DBM-006", raw, "mssql_native", {})
+        assert fv.verdict == "양호", f"유효행+위반0 → {fv.verdict} (기대: 양호, 회귀)"
+
+    def test_mssql_violation_vuln(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-006": {"RESULT": [
+            {"is_policy_checked": "0", "name": "sa"}
+        ]}})
+        fv = judge("DBM-006", raw, "mssql_native", {})
+        assert fv.verdict == "취약"
+
+
+class TestModeJDbm007Hold:
+    """F6: DBM-007(비밀번호 복잡도) 모드J 가드 — mysql/mariadb/oracle/mssql 4엔진.
+
+    oracle DBM-007_1은 exception config가 기본 빈 리스트라 유효행이 있으면
+    항상 위반으로 집계되는 구조적 특성 때문에 "유효행 good" 케이스가 없다 —
+    good_verdict 자체가 판단보류(빈 RESULT를 모드J가 정정)로 재정의됨(cov_contract 동일).
+    """
+
+    def test_mysql_empty_result_hold(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-007": {"RESULT": []}})
+        fv = judge("DBM-007", raw, "mysql_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "판단보류", f"mysql DBM-007 0행 → {fv.verdict} (기대: 판단보류)"
+
+    def test_mysql_valid_row_good(self):
+        """회귀: validate_password.policy=STRONG 유효행 → 양호 유지(과교정 아님)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-007": {"RESULT": [
+            {"VARIABLE_NAME": "validate_password.policy", "VARIABLE_VALUE": "STRONG"}
+        ]}})
+        fv = judge("DBM-007", raw, "mysql_native", {})
+        assert fv.verdict == "양호", f"유효행+위반0 → {fv.verdict} (기대: 양호, 회귀)"
+
+    def test_mysql_violation_vuln(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-007": {"RESULT": ["validate_password.so plugin is not loaded!"]}})
+        fv = judge("DBM-007", raw, "mysql_native", {})
+        assert fv.verdict == "취약"
+
+    def test_mariadb_empty_result_hold(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-007": {"RESULT": []}})
+        fv = judge("DBM-007", raw, "mariadb_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "판단보류", f"mariadb DBM-007 0행 → {fv.verdict} (기대: 판단보류)"
+
+    def test_mariadb_valid_row_good(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-007": {"RESULT": [
+            {"VARIABLE_NAME": "SIMPLE_PASSWORD_CHECK_MINIMAL_LENGTH", "VARIABLE_VALUE": "12"}
+        ]}})
+        fv = judge("DBM-007", raw, "mariadb_native", {})
+        assert fv.verdict == "양호", f"유효행+위반0 → {fv.verdict} (기대: 양호, 회귀)"
+
+    def test_mariadb_violation_vuln(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-007": {"RESULT": [
+            {"VARIABLE_NAME": "SIMPLE_PASSWORD_CHECK_MINIMAL_LENGTH", "VARIABLE_VALUE": "4"}
+        ]}})
+        fv = judge("DBM-007", raw, "mariadb_native", {})
+        assert fv.verdict == "취약"
+
+    def test_oracle_empty_result_hold(self):
+        """현재 거짓양호 재현 케이스: oracle DBM-007 빈RESULT는 수정 전 '양호'였음.
+
+        oracle DBM-007_1은 exception config 기본값이 빈 리스트라 데이터로 "유효행
+        보유 양호"를 구성할 수 없는 구조적 특성(F6/F7 감사 기록) — 0행일 때 항상
+        판단보류가 기대값이다(수정 전엔 거짓양호로 새던 케이스).
+        """
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-007_1": {"RESULT": []}})
+        fv = judge("DBM-007", raw, "oracle_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "판단보류", f"oracle DBM-007 0행 → {fv.verdict} (기대: 판단보류, 거짓양호 수정)"
+
+    def test_oracle_violation_vuln(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-007_1": {"RESULT": [
+            {"profile": "DEFAULT", "limit": "UNLIMITED"}
+        ]}})
+        fv = judge("DBM-007", raw, "oracle_native", {})
+        assert fv.verdict == "취약"
+
+    def test_mssql_empty_result_hold(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-007": {"RESULT": []}})
+        fv = judge("DBM-007", raw, "mssql_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "판단보류", f"mssql DBM-007 0행 → {fv.verdict} (기대: 판단보류)"
+
+    def test_mssql_valid_row_good(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-007": {"RESULT": [
+            {"is_policy_checked": "1", "name": "sa"}
+        ]}})
+        fv = judge("DBM-007", raw, "mssql_native", {})
+        assert fv.verdict == "양호", f"유효행+위반0 → {fv.verdict} (기대: 양호, 회귀)"
+
+    def test_mssql_violation_vuln(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-007": {"RESULT": [
+            {"is_policy_checked": "0", "name": "sa"}
+        ]}})
+        fv = judge("DBM-007", raw, "mssql_native", {})
+        assert fv.verdict == "취약"
+
+
+class TestModeJDbm005Hold:
+    """F7: DBM-005(중요정보 암호화) 모드J 가드 — mssql_rds(실제 det_common 라우팅 variant).
+
+    실증(classify() 직접 호출로 확인, 2026-07-10):
+      classify("DBM-005", "mssql_native") == "STUB" (gate 차단, LLM 폴백 — 자동취약 아님)
+      classify("DBM-005", "mssql_rds")    == "DET"  (cloud_analysis: sample is not None)
+    F7 결함은 mssql_rds에서만 재현되므로 이 클래스는 mssql_rds로 테스트한다.
+    """
+
+    def test_variant_routing_confirmed(self):
+        """회귀: mssql_native=STUB, mssql_rds=DET 라우팅이 바뀌지 않았는지 고정."""
+        reload_det_source()
+        assert classify("DBM-005", "mssql_native") == "STUB"
+        assert classify("DBM-005", "mssql_rds") == "DET"
+
+    def test_mssql_rds_empty_result_hold(self):
+        """F7 핵심 재현: 0행(샘플쿼리 실패)은 수정 전 '양호'였음 — 이제 판단보류."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-005": {"RESULT": []}})
+        fv = judge("DBM-005", raw, "mssql_rds", {})
+        assert fv.handled is True
+        assert fv.verdict == "판단보류", (
+            f"mssql_rds DBM-005 0행 → {fv.verdict} (기대: 판단보류, F7 거짓양호 수정)"
+        )
+
+    def test_mssql_rds_sample_null_valid_row_good(self):
+        """회귀: sample=None(컬럼 수집됐고 평문 샘플 없음) 유효행 → 양호 유지(과교정 아님)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-005": {"RESULT": [
+            {"column_name": "email", "sample": None}
+        ]}})
+        fv = judge("DBM-005", raw, "mssql_rds", {})
+        assert fv.verdict == "양호", f"유효행(sample=None)+위반0 → {fv.verdict} (기대: 양호, 회귀)"
+
+    def test_mssql_rds_sample_present_vuln(self):
+        """sample에 값 존재(평문 데이터 샘플 확인됨) → 취약."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-005": {"RESULT": [
+            {"column_name": "credit_card", "sample": "1234-5678-9012-3456"}
+        ]}})
+        fv = judge("DBM-005", raw, "mssql_rds", {})
+        assert fv.verdict == "취약", f"sample 존재 → {fv.verdict} (기대: 취약)"
+
+
+class TestF6F7PgModeBNonInterference:
+    """간섭 검증(T7 필수): pg_native DBM-006/007은 모드B(구조적취약)가 gate DET 이전에
+    선처리한다 — 모드J(F6/F7에서 DBM-006/007 등록)가 이 경로를 가로채면 안 된다.
+
+    핵심: data_key를 정확히 base('DBM-006'/'DBM-007')와 일치시켜 RESULT를 0행으로 주고도
+    여전히 '취약'(모드B)이 나와야 모드J 무간섭이 확정된다(0행이면 모드J는 판단보류를
+    반환하므로, 만약 모드B가 먼저 개입하지 않았다면 이 테스트가 '판단보류'로 실패했을 것).
+    """
+
+    def test_dbm006_pg_native_real_key_zero_rows_still_vuln(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-006": {"RESULT": []}})
+        fv = judge("DBM-006", raw, "pg_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "취약", (
+            f"pg_native DBM-006: 모드B가 모드J보다 우선해야 하는데 {fv.verdict} "
+            f"(모드J 간섭 의심 — 0행이면 모드J는 판단보류를 반환함)"
+        )
+
+    def test_dbm007_pg_native_real_key_zero_rows_still_vuln(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-007": {"RESULT": []}})
+        fv = judge("DBM-007", raw, "pg_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "취약", (
+            f"pg_native DBM-007: 모드B가 모드J보다 우선해야 하는데 {fv.verdict} "
+            f"(모드J 간섭 의심)"
+        )

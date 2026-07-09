@@ -67,15 +67,20 @@ _MYSQL = {
     },
 
     # DBM-006: 로그인 실패 제한 — USER_ATTRIBUTES 필드
-    # good: 빈 RESULT → 양호(실패잠금 설정 OK 또는 계정 없음)
+    # F6(T7): 빈 RESULT는 모드J가 판단보류로 가로챈다(계정 미수집 가능성) — good은
+    # 유효행(임계 5 이내 숫자값) 보유 실제 양호로 교체(양호 유지, 거짓양호 아님 확인).
     # vuln: USER_ATTRIBUTES=="" → 잠금 미설정 계정 존재 → 취약
     "DBM-006": {
-        "good": {"DBM-006": {"RESULT": []}},
+        "good": {"DBM-006": {"RESULT": [
+            {"USER": "app_user", "HOST": "%", "USER_ATTRIBUTES": "3"}
+        ]}},
         "vuln": {"DBM-006": {"RESULT": [
             {"USER": "app_user", "HOST": "localhost", "USER_ATTRIBUTES": ""}
         ]}},
         "good_verdict": "양호",
         "vuln_verdict": "취약",
+        "note": "F6: good은 USER_ATTRIBUTES=3(임계5 이내) 유효행 — 모드J 0행가드와 무관하게 "
+                "정당 양호 유지 확인. 0행→판단보류는 별도 test_det_adapters_db.py 커버.",
     },
 
     # DBM-007: 비밀번호 복잡도 — validate_password_policy
@@ -280,15 +285,33 @@ _MARIADB = {
     # DBM-006: mariadb는 MAX_PASSWORD_ERRORS 변수로 실패잠금 판정
     # config rules: VARIABLE_NAME=['MAX_PASSWORD_ERRORS'], VARIABLE_VALUE=['5']
     # vuln: MAX_PASSWORD_ERRORS=10 (5 초과) → 취약
-    # good: 빈 RESULT 또는 MAX_PASSWORD_ERRORS <= 5 → 위반 없음 → 양호
+    # F6(T7): good은 MAX_PASSWORD_ERRORS<=5 유효행(빈 RESULT는 모드J가 판단보류로 가로챔).
     "DBM-006": {
-        "good": {"DBM-006": {"RESULT": []}},
+        "good": {"DBM-006": {"RESULT": [
+            {"VARIABLE_NAME": "MAX_PASSWORD_ERRORS", "VARIABLE_VALUE": "3"}
+        ]}},
         "vuln": {"DBM-006": {"RESULT": [
             {"VARIABLE_NAME": "MAX_PASSWORD_ERRORS", "VARIABLE_VALUE": "10"}
         ]}},
         "good_verdict": "양호",
         "vuln_verdict": "취약",
-        "note": "mariadb: VARIABLE_NAME=MAX_PASSWORD_ERRORS, VARIABLE_VALUE>5 → 취약",
+        "note": "mariadb: VARIABLE_NAME=MAX_PASSWORD_ERRORS, VARIABLE_VALUE>5 → 취약. "
+                "F6: good=3(임계 이내) 유효행으로 교체(0행→판단보류는 모드J 별도 커버).",
+    },
+
+    # DBM-007: mariadb는 mariadb_native variant override로 det_common(F6 감사 대상 포함).
+    # config rules: SIMPLE_PASSWORD_CHECK_MINIMAL_LENGTH=['8'] 등 4개 변수, 값 미달 시 취약.
+    "DBM-007": {
+        "good": {"DBM-007": {"RESULT": [
+            {"VARIABLE_NAME": "SIMPLE_PASSWORD_CHECK_MINIMAL_LENGTH", "VARIABLE_VALUE": "12"}
+        ]}},
+        "vuln": {"DBM-007": {"RESULT": [
+            {"VARIABLE_NAME": "SIMPLE_PASSWORD_CHECK_MINIMAL_LENGTH", "VARIABLE_VALUE": "4"}
+        ]}},
+        "good_verdict": "양호",
+        "vuln_verdict": "취약",
+        "note": "F6(T7): mariadb_native variant override로 det_common. "
+                "good=12(임계8 이상) 유효행, vuln=4(임계 미달) → 취약.",
     },
 
     # DBM-008: mariadb는 DEFAULT_PASSWORD_LIFETIME 변수로 판정 (>90일 또는 0=영구)
@@ -428,23 +451,37 @@ _ORACLE = {
     },
 
     # DBM-006: FAILED_LOGIN_ATTEMPTS/IDLE_TIME
+    # F6(T7): good은 limit이 UNLIMITED가 아닌 유효행으로 교체(빈 RESULT는 모드J 판단보류).
     "DBM-006": {
-        "good": {"DBM-006": {"RESULT": []}},
+        "good": {"DBM-006": {"RESULT": [
+            {"profile": "DEFAULT", "resource_name": "FAILED_LOGIN_ATTEMPTS", "limit": "5"}
+        ]}},
         "vuln": {"DBM-006": {"RESULT": [
             {"profile": "DEFAULT", "resource_name": "FAILED_LOGIN_ATTEMPTS", "limit": "UNLIMITED"}
         ]}},
         "good_verdict": "양호",
         "vuln_verdict": "취약",
+        "note": "F6: good=limit '5'(UNLIMITED 아님) 유효행 — 0행→판단보류는 모드J 별도 커버.",
     },
 
     # DBM-007: 비밀번호 복잡도 — profile/limit
+    # F6/F7 감사(2026-07-03): oracle DBM-007_1 exception config(limit/profile)가 기본값
+    # 빈 리스트라 `not in []`이 항상 True(진배제 없음) — 즉 이 data_key에 행이 존재하면
+    # (기본 config 기준) 어떤 값이든 무조건 위반으로 집계된다(진짜 "유효행 보유 양호"를
+    # 데이터만으로 구성할 방법이 없음, 구조적 한계). 그래서 "빈 RESULT"만이 유일하게
+    # 위반0을 만들 수 있었는데, 이는 (a) 정말 프로파일 전부가 복잡도 강제 중(양호)인지
+    # (b) 쿼리 실패로 미수집인지 구분 불가 — F6/모드J가 여기 개입해 판단보류로
+    # 정정한다(수정 전: 빈 RESULT → 거짓양호). good_verdict를 양호→판단보류로 변경.
     "DBM-007": {
         "good": {"DBM-007_1": {"RESULT": []}},
         "vuln": {"DBM-007_1": {"RESULT": [
             {"profile": "DEFAULT", "limit": "UNLIMITED"}
         ]}},
-        "good_verdict": "양호",
+        "good_verdict": "판단보류",
         "vuln_verdict": "취약",
+        "note": "F6/F7 정정: exception config가 기본 빈 리스트라 이 data_key는 행이 있으면 "
+                "항상 위반으로 집계됨(구조적) — '유효행 보유 양호' 픽스처를 데이터만으로 "
+                "구성 불가. 빈 RESULT는 모드J가 판단보류로 가로챔(수정 전 거짓양호였음).",
     },
 
     # DBM-008: 비밀번호 주기변경 — ptime 필드 (oracle '%d-%b-%y' 포맷)
@@ -612,34 +649,47 @@ _MSSQL = {
         "note": "모드A",
     },
 
-    # DBM-005: mssql native는 label A + det_common, DET_SOURCE=DET(sample is not None)
-    # good: sample=null → 위반 없음
-    # vuln: sample='some_data' → 취약
-    # NOTE: mssql native dbm_005: datum['sample'] is not None → 위반. sample=null/None → 양호.
+    # DBM-005: F7(T7) 정정 — DET_SOURCE.yaml 실확인 결과 mssql_native는 실제로 STUB
+    # (gate 차단, LLM 폴백)이고 det_common으로 실검사되는 variant는 mssql_rds뿐
+    # (cloud_analysis.py: datum['sample'] is not None). 이 cov_contract 딕셔너리는
+    # ENGINE_TO_VARIANT로 엔진당 native variant 1개만 매핑하므로 mssql_rds를 여기서
+    # 커버할 구조가 없다 — mssql_native 기준으로는 여전히 uncovered(STUB)가 맞다.
+    # F7 실제 커버(0행→판단보류/유효행good→양호/vuln→취약)는
+    # tests/test_det_adapters_db.py::TestModeJDbm005Hold(variant=mssql_rds)에서 수행.
     "DBM-005": {
         "uncovered": True,
-        "uncovered_reason": "DET_SOURCE mssql native=DET지만 config rules['DBM-005']['permission_name']=[] "
-                            "구조 불명확. 수집 포맷 미확인. 빈 RESULT → 양호 확인에 충분.",
+        "uncovered_reason": "mssql_native DBM-005=DET_SOURCE STUB(gate 차단→LLM 폴백) — "
+                            "이 계약은 native variant만 매핑해 여기선 커버 불가. 실 det_common "
+                            "라우팅은 mssql_rds(cloud_analysis 'sample is not None')뿐이며 "
+                            "F7 커버는 test_det_adapters_db.py::TestModeJDbm005Hold 참조.",
     },
 
     # DBM-006: is_policy_checked=0 → 취약
+    # F6(T7): good은 is_policy_checked='1'(정책 체크됨) 유효행으로 교체.
     "DBM-006": {
-        "good": {"DBM-006": {"RESULT": []}},
+        "good": {"DBM-006": {"RESULT": [
+            {"is_policy_checked": "1", "name": "sa"}
+        ]}},
         "vuln": {"DBM-006": {"RESULT": [
             {"is_policy_checked": "0", "name": "sa"}
         ]}},
         "good_verdict": "양호",
         "vuln_verdict": "취약",
+        "note": "F6: good=is_policy_checked '1' 유효행 — 0행→판단보류는 모드J 별도 커버.",
     },
 
     # DBM-007: is_policy_checked=0 → 취약
+    # F6(T7): good은 is_policy_checked='1'(정책 체크됨) 유효행으로 교체.
     "DBM-007": {
-        "good": {"DBM-007": {"RESULT": []}},
+        "good": {"DBM-007": {"RESULT": [
+            {"is_policy_checked": "1", "name": "sa"}
+        ]}},
         "vuln": {"DBM-007": {"RESULT": [
             {"is_policy_checked": "0", "name": "sa"}
         ]}},
         "good_verdict": "양호",
         "vuln_verdict": "취약",
+        "note": "F6: good=is_policy_checked '1' 유효행 — 0행→판단보류는 모드J 별도 커버.",
     },
 
     # DBM-008: days_after_changed > 90
