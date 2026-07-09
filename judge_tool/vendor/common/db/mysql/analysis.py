@@ -172,13 +172,27 @@ class MySQLAnalysis:
         # 기준 분기별(90일)
         self.dbm_result[result_key] = []
         current_date = datetime.now()
-        
+
         self.dbm_process_data(result_key, 'DBM-008', [
             lambda datum: datum['HOST'] not in self.exception[result_key]['HOST'],
             lambda datum: datum['USER'] not in self.exception[result_key]['USER'],
             lambda datum: current_date > datetime.strptime(datum['PASSWORD_LAST_CHANGED'], '%Y-%m-%d') + timedelta(days=int(self.rules[result_key]['DAY'][0]))
         ])
-        
+
+        # VENDOR-EDIT(bug): R-MY008 — 실수집 data_key가 'DBM-008'이 아니라
+        # 'DBM-008_1'로 오는 경우가 있어(수집 스크립트/버전 편차) 기존 'DBM-008'
+        # 처리만으로는 dbm_process_data가 data_key 부재로 조용히 skip → 위반0 →
+        # 거짓양호가 발생한다(2026-07-03 감사 §F1 실증). 'DBM-008' 처리는 유지하고
+        # 동일 조건으로 'DBM-008_1'도 처리한다.
+        # ⚠️ mysql collector에 USER/HOST 컬럼스왑 이슈가 별도로 있으나(R-MY013 참고
+        # 문맥), 여기서는 data_key 추가만 하고 컬럼 스왑 정규화는 시도하지 않는다
+        # (설계서 §F1 명시 — 별도 트랙).
+        self.dbm_process_data(result_key, 'DBM-008_1', [
+            lambda datum: datum['HOST'] not in self.exception[result_key]['HOST'],
+            lambda datum: datum['USER'] not in self.exception[result_key]['USER'],
+            lambda datum: current_date > datetime.strptime(datum['PASSWORD_LAST_CHANGED'], '%Y-%m-%d') + timedelta(days=int(self.rules[result_key]['DAY'][0]))
+        ])
+
     def dbm_009(self, result_key='DBM-009'):
         # 사용되지 않는 세션 종료 미흡
         # 기준 900초 -> 15분

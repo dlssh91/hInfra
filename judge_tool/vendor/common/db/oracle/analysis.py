@@ -234,11 +234,19 @@ class OracleAnalysis:
             lambda datum: datum['name'] not in self.exception[result_key]['name'],
             lambda datum: limit_modify_date > datetime.strptime(str(datum['ptime']), '%d-%b-%y')
         ])
-        # self.dbm_process_data(result_key, 'DBM-008_2', [
-        #     lambda datum: datum['profile'] not in self.exception['DBM-008']['profile'],
-        #     lambda datum: datum['limit'] in self.rules['DBM-008']['limit']
-        # ])
-        
+        # VENDOR-EDIT(bug): R-OR008 — 실수집에서 'DBM-008_2'(profile PASSWORD_LIFE_TIME
+        # 행)가 오는데 기존 코드는 이 블록이 통째로 주석처리돼 있어 조용히 skip →
+        # 위반0 → 거짓양호(2026-07-03 감사 §F1 실증: PASSWORD_LIFE_TIME=UNLIMITED,
+        # 실제 취약인데 양호로 판정됨). resource_name=='PASSWORD_LIFE_TIME' 조건을
+        # 추가 복원 — profile.resource_name이 여러 종류(PASSWORD_LIFE_TIME,
+        # PASSWORD_GRACE_TIME 등) 섞여 오므로 이 조건이 없으면 PASSWORD_GRACE_TIME
+        # 행까지 오탐할 위험이 있다(설계서 명시 배제 조건).
+        self.dbm_process_data(result_key, 'DBM-008_2', [
+            lambda datum: datum['resource_name'] == 'PASSWORD_LIFE_TIME',
+            lambda datum: datum['profile'] not in self.exception[result_key]['profile'],
+            lambda datum: datum['limit'] in self.rules[result_key]['limit']
+        ])
+
     def dbm_009(self, result_key='DBM-009'):
         self.dbm_result[result_key] = []
         self.dbm_process_data(result_key, 'DBM-009', [

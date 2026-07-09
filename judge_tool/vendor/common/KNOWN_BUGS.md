@@ -779,6 +779,96 @@ vuln_pattern = re.compile(r"(.*)?Options.*?(?<!NO)\bINDEX\b.*", re.IGNORECASE)
 - 테스트: `tests/test_web_cov_fixtures.py::test_web_det_polarity[webtob-WST-031-good]` PASS (구 xfail→pass)
 
 
+## R-MY008. mysql dbm_008 data_key 불일치 — 'DBM-008_1' 조용히 skip (VENDOR-EDIT(bug) 완료, 2026-07-03)
+
+**id**: `R-MY008`
+**위치**: `judge_tool/vendor/common/db/mysql/analysis.py` `dbm_008`
+**상태**: VENDOR-EDIT(bug) 완료 (2026-07-03, F1)
+
+### 증상
+`dbm_008`은 `dbm_process_data(result_key, 'DBM-008', [...])`만 호출한다. 그런데 실수집
+데이터의 data_key가 `'DBM-008'`이 아니라 **`'DBM-008_1'`**로 오는 경우가 있다(수집
+스크립트/버전 편차). `dbm_process_data`는 `data_key in self.data`가 False면 조용히
+skip하므로 위반0(빈 리스트) 반환 → 어댑터가 위반0=양호로 매핑 → **거짓양호**.
+
+재현(수정 전):
+```python
+data = {"DBM-008_1": {"RESULT": [
+    {"HOST": "%", "USER": "app", "PASSWORD_LAST_CHANGED": "2020-01-01"}  # 5년 전, 실제 취약
+]}}
+# dbm_008(): 'DBM-008' data_key 없음 → dbm_process_data skip → dbm_result['DBM-008']=[] → 양호(거짓양호!)
+```
+
+### Corrected 동작 (VENDOR-EDIT(bug))
+기존 `'DBM-008'` 처리는 유지하고, 동일 조건으로 `'DBM-008_1'` data_key도 처리한다.
+
+```python
+# 수정 후 (VENDOR-EDIT(bug): R-MY008)
+self.dbm_process_data(result_key, 'DBM-008_1', [
+    lambda datum: datum['HOST'] not in self.exception[result_key]['HOST'],
+    lambda datum: datum['USER'] not in self.exception[result_key]['USER'],
+    lambda datum: current_date > datetime.strptime(datum['PASSWORD_LAST_CHANGED'], '%Y-%m-%d') + timedelta(days=int(self.rules[result_key]['DAY'][0]))
+])
+```
+
+⚠️ mysql collector에 별도의 USER/HOST 컬럼스왑 이슈가 있는 것으로 알려져 있으나, 이번
+수정 범위는 **data_key 추가만**이며 컬럼 스왑 정규화는 시도하지 않는다(설계서 §F1 명시
+— 별도 트랙에서 다룰 문제).
+
+### 회귀테스트 핀
+- `{"DBM-008_1": {"RESULT": [{"HOST":"%","USER":"app","PASSWORD_LAST_CHANGED":"<90일 초과 과거>"}]}}` → **취약** (핵심: 수정 전 거짓양호 케이스)
+- `{"DBM-008": {"RESULT": [{"HOST":"%","USER":"app","PASSWORD_LAST_CHANGED":"<최근>"}]}}` → 양호 (회귀 불변, 기존 data_key)
+- `{"DBM-008_1": {"RESULT": [{"HOST":"%","USER":"app","PASSWORD_LAST_CHANGED":"<최근>"}]}}` → 양호 (신규 data_key, 최근 변경은 양호)
+- 0행/data_key 부재 → 판단보류(모드J, checker=None)
+
+---
+
+## R-OR008. oracle dbm_008 'DBM-008_2'(PASSWORD_LIFE_TIME) 블록 주석처리 — 거짓양호 (VENDOR-EDIT(bug) 완료, 2026-07-03)
+
+**id**: `R-OR008`
+**위치**: `judge_tool/vendor/common/db/oracle/analysis.py` `dbm_008`
+**상태**: VENDOR-EDIT(bug) 완료 (2026-07-03, F1)
+
+### 증상
+`dbm_008`은 `'DBM-008_1'`(ptime 기반) 처리만 활성화돼 있고, `'DBM-008_2'` 처리 블록은
+통째로 주석처리(dead code)돼 있었다. 실수집 데이터가 `'DBM-008_2'`
+(`profile`/`resource_name`/`limit` 형태, 예: `resource_name=PASSWORD_LIFE_TIME`,
+`limit=UNLIMITED` — 실제 취약)로 오면 `dbm_process_data`가 data_key 자체를 찾지 못해
+조용히 skip → 위반0 → **거짓양호**(2026-07-03 감사 §F1 실증).
+
+재현(수정 전):
+```python
+data = {"DBM-008_2": {"RESULT": [
+    {"profile": "DEFAULT", "resource_name": "PASSWORD_LIFE_TIME", "limit": "UNLIMITED"}  # 실제 취약(무기한)
+]}}
+# dbm_008(): 'DBM-008_2' 처리 블록 주석처리 → 조용히 skip → dbm_result['DBM-008']=[] → 양호(거짓양호!)
+```
+
+### Corrected 동작 (VENDOR-EDIT(bug))
+`'DBM-008_2'` 처리를 복원하되, 기존 주석 코드에 없던 `resource_name` 조건을 추가한다
+(원본은 `resource_name` 비교 없이 `profile`/`limit`만 봐서 `PASSWORD_GRACE_TIME` 등
+다른 resource_name 행까지 오탐할 위험이 있었다):
+
+```python
+# 수정 후 (VENDOR-EDIT(bug): R-OR008)
+self.dbm_process_data(result_key, 'DBM-008_2', [
+    lambda datum: datum['resource_name'] == 'PASSWORD_LIFE_TIME',
+    lambda datum: datum['profile'] not in self.exception[result_key]['profile'],
+    lambda datum: datum['limit'] in self.rules[result_key]['limit']
+])
+```
+
+`self.rules['DBM-008']['limit'] == ['UNLIMITED']`(oracle-config.json), `exception.profile`은
+기본 빈 배열이므로 별도 프로파일 예외가 설정되지 않는 한 모든 profile이 대상이 된다.
+
+### 회귀테스트 핀
+- `{"DBM-008_2": {"RESULT": [{"profile":"DEFAULT","resource_name":"PASSWORD_LIFE_TIME","limit":"UNLIMITED"}]}}` → **취약** (핵심: 수정 전 거짓양호 케이스)
+- `{"DBM-008_2": {"RESULT": [{"profile":"DEFAULT","resource_name":"PASSWORD_GRACE_TIME","limit":"UNLIMITED"}]}}` → 위반 아님(첫 조건 `resource_name` 비교에서 자연 배제, 오탐 방지 고정)
+- `{"DBM-008_1": {"RESULT": [...]}}` (ptime 기반) → 기존 동작 불변 (회귀)
+- 0행/data_key 부재 → 판단보류(모드J, checker=None)
+
+---
+
 ## WST-102-webtob-min (Opus 재리뷰 추가 정정, 2026-06-19)
 - 1차 수정이 `"min" in tokens_val → 양호`로 두어 Min/Minimal/Minor(전체버전 Apache/2.4.x 노출)를 거짓양호로 신규 유입.
 - 정정: ServerTokens 안전값은 **Prod(ProductOnly)뿐** → `tokens_val == "prod"`만 양호, os/full/min/minimal/minor/major 전부 취약(Apache WST-102 및 함수 자기 메시지와 정합).

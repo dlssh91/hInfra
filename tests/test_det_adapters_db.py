@@ -5454,3 +5454,110 @@ class TestModeJNoInterventionOnViolation:
         ]}})
         fv = judge("DBM-009", raw, "mysql_native", {})
         assert fv.verdict == "취약", f"위반>0인데 모드J 개입: {fv.verdict}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# F1 (T3): DBM-008 vendor data_key 정합 (R-MY008/R-OR008) 회귀 — 2026-07-03 감사
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestF1Dbm008VendorDataKey:
+    """R-MY008(mysql 'DBM-008_1' 신규처리) + R-OR008(oracle 'DBM-008_2' 복원) 회귀핀.
+
+    배경: mysql analysis는 'DBM-008' data_key만, oracle analysis는 'DBM-008_1'만
+    처리했었다. 실수집 data_key가 각각 'DBM-008_1'(mysql), 'DBM-008_2'(oracle)로
+    오면 dbm_process_data가 조용히 skip → 위반0 → 거짓양호(설계서 §F1 실증).
+    """
+
+    def _old_date(self, days=200):
+        from datetime import datetime, timedelta
+        return (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+
+    def _recent_date(self, days=5):
+        from datetime import datetime, timedelta
+        return (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+
+    def _recent_ptime(self, days=5):
+        from datetime import datetime, timedelta
+        return (datetime.now() - timedelta(days=days)).strftime('%d-%b-%y')
+
+    # (a) mysql 'DBM-008_1' 키 + 오래된 password_last_changed → 취약
+    #     (수정 전: 'DBM-008_1' data_key는 조용히 skip되어 양호로 새던 케이스)
+    def test_mysql_dbm008_1_key_old_password_is_vuln(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-008_1": {"RESULT": [
+            {"HOST": "10.0.0.5", "USER": "app_user", "PASSWORD_LAST_CHANGED": self._old_date()}
+        ]}})
+        fv = judge("DBM-008", raw, "mysql_native", {})
+        assert fv.verdict == "취약", (
+            f"'DBM-008_1' 키 + 90일 초과 변경 → {fv.verdict} (기대: 취약, R-MY008 핵심 케이스)"
+        )
+
+    # (d) mysql 'DBM-008_1' 키 + 최근 변경(정상) → 양호 회귀 유지
+    def test_mysql_dbm008_1_key_recent_password_is_good(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-008_1": {"RESULT": [
+            {"HOST": "10.0.0.5", "USER": "app_user", "PASSWORD_LAST_CHANGED": self._recent_date()}
+        ]}})
+        fv = judge("DBM-008", raw, "mysql_native", {})
+        assert fv.verdict == "양호", (
+            f"'DBM-008_1' 키 + 최근 변경 → {fv.verdict} (기대: 양호, 회귀 불변)"
+        )
+
+    # (d) mysql 기존 'DBM-008' 키 + 최근 변경 → 양호 (기존 data_key 회귀 불변)
+    def test_mysql_dbm008_key_recent_password_is_good_regression(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-008": {"RESULT": [
+            {"HOST": "10.0.0.5", "USER": "app_user", "PASSWORD_LAST_CHANGED": self._recent_date()}
+        ]}})
+        fv = judge("DBM-008", raw, "mysql_native", {})
+        assert fv.verdict == "양호", (
+            f"기존 'DBM-008' 키 + 최근 변경 → {fv.verdict} (기대: 양호, 회귀 불변)"
+        )
+
+    # (c) 0행 → 판단보류 (모드J, checker=None)
+    def test_mysql_dbm008_empty_result_hold(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-008": {"RESULT": []}})
+        fv = judge("DBM-008", raw, "mysql_native", {})
+        assert fv.verdict == "판단보류", f"0행 → {fv.verdict} (기대: 판단보류)"
+        assert fv.handled is True
+
+    # (b) oracle 'DBM-008_2' PASSWORD_LIFE_TIME=UNLIMITED → 취약
+    #     (수정 전: 'DBM-008_2' 처리블록이 주석처리돼 조용히 skip → 양호로 새던 케이스)
+    def test_oracle_dbm008_2_password_life_time_unlimited_is_vuln(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-008_2": {"RESULT": [
+            {"profile": "DEFAULT", "resource_name": "PASSWORD_LIFE_TIME", "limit": "UNLIMITED"}
+        ]}})
+        fv = judge("DBM-008", raw, "oracle_native", {})
+        assert fv.verdict == "취약", (
+            f"'DBM-008_2' PASSWORD_LIFE_TIME=UNLIMITED → {fv.verdict} (기대: 취약, R-OR008 핵심 케이스)"
+        )
+
+    # (e) oracle PASSWORD_GRACE_TIME 행만 있는 경우 → 위반 아님(첫 조건에서 자연 배제, 오탐 방지 고정)
+    def test_oracle_dbm008_2_password_grace_time_not_a_violation(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-008_2": {"RESULT": [
+            {"profile": "DEFAULT", "resource_name": "PASSWORD_GRACE_TIME", "limit": "UNLIMITED"}
+        ]}})
+        fv = judge("DBM-008", raw, "oracle_native", {})
+        assert fv.verdict == "양호", (
+            f"PASSWORD_GRACE_TIME 행 → {fv.verdict} (기대: 양호, resource_name 조건에서 자연배제)"
+        )
+
+    # (d) oracle 'DBM-008_1'(ptime 기반) 회귀 불변 — R-OR008 복원이 기존 처리를 깨지 않아야 함
+    def test_oracle_dbm008_1_ptime_regression_unchanged(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-008_1": {"RESULT": [
+            {"name": "app_user", "ptime": self._recent_ptime()}
+        ]}})
+        fv = judge("DBM-008", raw, "oracle_native", {})
+        assert fv.verdict == "양호", f"최근 ptime → {fv.verdict} (기대: 양호, 회귀 불변)"
+
+    # (c) oracle 0행 → 판단보류 (모드J, checker=None)
+    def test_oracle_dbm008_empty_result_hold(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-008_1": {"RESULT": []}})
+        fv = judge("DBM-008", raw, "oracle_native", {})
+        assert fv.verdict == "판단보류", f"0행 → {fv.verdict} (기대: 판단보류)"
+        assert fv.handled is True
