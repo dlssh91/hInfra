@@ -473,6 +473,70 @@ class TestErrorOutputGuard:
         assert _RE_ERROR_OUTPUT.search(benign) is None
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# (T8 리뷰 Medium 수정) F8 가드 항목별 기대신호 면제
+#   autoAnalysis.py:595-598 PRCC-013 eks_master —
+#   "forbidden" in vulOutput 은 anonymous API 접속이 차단됨을 뜻하는 **양호 신호**.
+#   F8 가드가 이를 오류로 오인해 판단보류로 강등하면 결정론 자동판정 손실.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestErrorGuardExemptTokens:
+    """PRCC-013 eks_master: Forbidden/Error from server는 기대 신호 — 가드 면제."""
+
+    def _raw_forbidden_only(self):
+        """eks_master의 정상(양호) 출력 — anonymous API 접속이 Forbidden으로 차단됨."""
+        return (
+            "F_PRC_C_013 : eks_master\n"
+            "# Command : kubectl get --raw /api\n"
+            'Error from server (Forbidden): pods is forbidden: '
+            'User "system:anonymous" cannot list resource "pods"\n'
+        )
+
+    def test_prcc013_eks_master_forbidden_guard_not_triggered(self):
+        """(a) 브리프: PRCC-013 eks_master의 Forbidden 출력 → 가드 미발동
+        → autoAnalysis 양호(N) 판정 복원(handled=True, verdict=양호)."""
+        fv = judge("PRCC-013", self._raw_forbidden_only(), "eks_master", {})
+        assert fv.handled is True, (
+            f"면제 미적용 — F8 가드가 PRCC-013 eks_master 정상 출력을 오류로 오인: {fv}"
+        )
+        assert fv.verdict == "양호"
+        assert fv.ev_status == "good"
+
+    def test_prcc013_eks_master_real_error_still_guarded(self):
+        """(b) 같은 출력에 진짜(비면제) 오류 토큰이 섞이면 → 가드는 여전히 발동."""
+        raw = self._raw_forbidden_only() + "bash: kubectl: command not found\n"
+        fv = judge("PRCC-013", raw, "eks_master", {})
+        assert fv.handled is False, (
+            "비면제 오류 토큰(command not found)이 섞였는데 가드가 발동하지 않음"
+        )
+        assert fv.verdict == "판단보류"
+
+    def test_other_item_forbidden_still_guarded(self):
+        """(c) 다른 항목(PRCC-001)의 Forbidden → 면제는 (item,variant) 한정 —
+        여전히 가드 발동(기존 TestErrorOutputGuard 케이스와 동일 취지 재확인)."""
+        raw = _raw_with_error(
+            'Error from server (Forbidden): pods is forbidden: '
+            'User "system:anonymous" cannot list resource "pods"'
+        )
+        fv = judge("PRCC-001", raw, "k8s_master", {})
+        assert fv.handled is False
+        assert fv.verdict == "판단보류"
+
+    def test_other_variant_same_item_still_guarded(self):
+        """(c) 확장: 같은 항목이라도 variant가 다르면(eks_master가 아니면) 면제 미적용."""
+        raw = (
+            "F_PRC_C_013 : k8s_master\n"
+            "# Command : kubectl get --raw /api\n"
+            'Error from server (Forbidden): pods is forbidden: '
+            'User "system:anonymous" cannot list resource "pods"\n'
+        )
+        fv = judge("PRCC-013", raw, "k8s_master", {})
+        assert fv.handled is False, (
+            "eks_master 전용 면제가 다른 variant(k8s_master)에도 잘못 적용됨"
+        )
+        assert fv.verdict == "판단보류"
+
+
 class TestErrorGuardNoOvertrigger:
     """F8 SHIP 조건: 리포지토리 내 컨테이너 실샘플 corpus 과트리거 0 검증."""
 

@@ -22,7 +22,7 @@ main.py에서 `import judge_tool.det_adapters.container` 로 부작용 임포트
 """
 import logging
 import re
-from typing import Optional
+from typing import Dict, Optional, Tuple
 
 from judge_tool.det_adapters.base import ForcedVerdict, _DET_ADAPTERS, gate
 
@@ -101,6 +101,27 @@ _RE_ERROR_OUTPUT = re.compile(
     r"|connection refused"
     r"|No such file or directory"
 )
+
+# ── F8 가드 예외 테이블 — 항목별 "기대 신호" 면제 (T8 Opus 리뷰 Medium 수정) ──
+# autoAnalysis.py:595-598 (PRCC-013 eks_master):
+#     if "forbidden" not in vulOutput:
+#         autoResult["result"] = "Y"   # anonymous 접속 허용 → 취약
+#   → vulOutput에 "forbidden"이 있으면 result는 초기값 "N"(양호)로 남는다.
+#     즉 anonymous API 접속이 Forbidden으로 **차단됨 = 정상(양호) 신호**다.
+# kubectl의 실제 정상 응답은 보통
+#   "Error from server (Forbidden): pods is forbidden: ..." 형태이고,
+# 여기 포함된 "Forbidden"/"Error from server" 토큰이 F8 가드(_RE_ERROR_OUTPUT)에
+# 매치되어 이 항목의 양호 출력을 오류로 오인 → handled=False(판단보류) 강등
+# → 결정론 자동판정 손실이 발생한다(방향은 안전: 양호→보류, 그러나 불필요한 손실).
+# 아래 테이블에 등록된 (item_id, variant)에서, 등록된 토큰만 매치된 경우는
+# 오류가 아니라 "기대 신호"로 보아 F8 가드를 발동시키지 않는다. 등록되지 않은
+# (비면제) 오류 토큰이 함께 매치되면 가드는 그대로 발동한다(TDD (b) 케이스).
+# 다른 (item_id, variant) 조합에는 영향 없음(TDD (c) 케이스) — 전수 grep
+# 확인 결과 container 도메인에서 forbidden/unauthorized/denied류를 양호 신호로
+# 쓰는 곳은 autoAnalysis.py:595-598(PRCC-013 eks_master) 1건뿐이었다.
+_ERROR_GUARD_EXEMPT_TOKENS: Dict[Tuple[str, str], frozenset] = {
+    ("PRCC-013", "eks_master"): frozenset({"Forbidden", "Error from server"}),
+}
 
 
 def _has_collection_evidence(raw_output: str) -> bool:
@@ -183,15 +204,25 @@ def judge(
     # 수집 흔적(# Command 등)이 있어도 명령이 실패한 출력(error:/Unauthorized 등)이면
     # autoAnalysis 취약패턴 부재 → result "N" → 양호 거짓양호. handled=False로
     # LLM/판단보류 폴백 강등(§3.4 증거부재 가드와 동일 반환 형태, rationale만 구별).
-    err_match = _RE_ERROR_OUTPUT.search(raw_output)
-    if err_match is not None:
+    #
+    # 예외: _ERROR_GUARD_EXEMPT_TOKENS에 등록된 (item_id, variant)에서는 등록된
+    # 토큰만 매치된 경우 오류가 아니라 "기대 신호"이므로 가드를 발동시키지 않는다
+    # (예: PRCC-013 eks_master의 Forbidden — autoAnalysis.py:595-598 참조).
+    # 등록되지 않은(비면제) 오류 토큰이 하나라도 매치되면 가드는 그대로 발동한다.
+    exempt_tokens = _ERROR_GUARD_EXEMPT_TOKENS.get((item_id, variant), frozenset())
+    non_exempt_match = None
+    for m in _RE_ERROR_OUTPUT.finditer(raw_output):
+        if m.group(0).strip() not in exempt_tokens:
+            non_exempt_match = m
+            break
+    if non_exempt_match is not None:
         return ForcedVerdict(
             verdict="판단보류",
             confidence=0.0,
             rationale=(
                 "[수집 명령 오류 출력 감지 — 자동판정 불가]"
                 f" (item={item_id}, variant={variant},"
-                f" 매치토큰={err_match.group(0).strip()!r})"
+                f" 매치토큰={non_exempt_match.group(0).strip()!r})"
             ),
             citations=[],
             ev_status="review",
