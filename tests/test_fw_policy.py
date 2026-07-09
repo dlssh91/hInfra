@@ -883,6 +883,74 @@ def test_detect_for_iss_unresolved_guard_independent_of_unrecognized_action_guar
     assert "미인식 정책 액션 2건 → 양호 단정 불가" in r.rationale
 
 
+# ─ Opus 리뷰 재현 4케이스 (B′-3a-fix): 빈 리스트=any 오분류 → 판단보류 귀속 ───
+#
+# resolve_policies가 named 토큰을 빼내 src_ips/dst_ips/dst_ports가 비면, 기존
+# 탐지함수의 "빈 리스트=전체(any/all)" 관례가 그 정책을 가짜 위반(취약)으로
+# 집계해버려 "위반0→판단보류" 가드를 건너뛰던 버그. 미해석 유래 빈 필드는
+# any가 아니라 불확정이므로 위반판정에서 제외되고 판단보류 가드로 귀속돼야 한다.
+
+def test_detect_for_iss_030_both_sides_named_only_not_any_any_violation():
+    """재현①: src/dst 모두 named 객체만 있어 빈 리스트가 됐을 뿐인데 기존
+    관례가 '전체(any-any)' 위반으로 오탐지 → 판단보류가 되어야 한다."""
+    p = _make(action="allow")
+    p.unresolved_src = ["SRC_GRP"]
+    p.unresolved_dst = ["DST_GRP"]
+    r = detect_for_iss("ISS-030", [p], _FORMAT_KRFW)
+    assert r.verdict == "판단보류"
+    assert "미해석 객체 토큰 보유 정책 1건 → 양호 단정 불가" in r.rationale
+    # 진짜 any-any(반대극)는 여전히 취약 유지 — 양극성 회귀 가드.
+    p_real_any = _make(action="allow", src_ips=["any"], dst_ips=["any"])
+    r_real = detect_for_iss("ISS-030", [p_real_any], _FORMAT_KRFW)
+    assert r_real.verdict == "취약"
+
+
+def test_detect_for_iss_032_named_svc_only_not_all_port_violation():
+    """재현②: dst_ports가 named 서비스객체만 있어 비었을 뿐인데 '전포트 허용'
+    으로 오탐지 → 판단보류가 되어야 한다."""
+    p = _make(action="allow")
+    p.unresolved_svc = ["SVC_GRP"]
+    r = detect_for_iss("ISS-032", [p], _FORMAT_KRFW)
+    assert r.verdict == "판단보류"
+    assert "미해석 객체 토큰 보유 정책 1건 → 양호 단정 불가" in r.rationale
+    # 반대극(진짜 ALL 포트)은 여전히 취약 유지.
+    p_real_all = _make(action="allow", dst_ports=["any"])
+    r_real = detect_for_iss("ISS-032", [p_real_all], _FORMAT_KRFW)
+    assert r_real.verdict == "취약"
+
+
+def test_detect_for_iss_036_named_svc_only_not_vuln_remote_violation():
+    """재현③: dst_ports가 named 서비스객체만 있어 비었을 뿐인데 취약 원격
+    서비스(r-services/TFTP) 허용으로 오탐지 → 판단보류가 되어야 한다."""
+    p = _make(action="allow")
+    p.unresolved_svc = ["SVC_GRP"]
+    r = detect_for_iss("ISS-036", [p], _FORMAT_KRFW)
+    assert r.verdict == "판단보류"
+    assert "미해석 객체 토큰 보유 정책 1건 → 양호 단정 불가" in r.rationale
+    # 반대극(진짜 취약 원격포트 허용)은 여전히 취약 유지.
+    p_real_vuln = _make(action="allow", dst_ports=["69"])
+    r_real = detect_for_iss("ISS-036", [p_real_vuln], _FORMAT_KRFW)
+    assert r_real.verdict == "취약"
+
+
+def test_detect_for_iss_034_upper_named_src_only_not_shadow_violation():
+    """재현④: 상위 정책의 src가 named 객체만 있어 빈 리스트가 됐을 뿐인데
+    '상위가 전체를 포함'으로 오탐지 → 그림자쌍 제외 + 판단보류가 되어야 한다."""
+    upper = _make(action="allow", dst_ips=["0.0.0.0/0"], seq=1)
+    upper.unresolved_src = ["SRC_GRP"]
+    lower = _make(action="deny", src_ips=["10.0.0.5"], dst_ips=["10.0.0.5"], seq=2)
+    r = detect_for_iss("ISS-034", [upper, lower], _FORMAT_KRFW)
+    assert r.verdict == "판단보류"
+    assert "미해석 객체 토큰 보유 정책 1건 → 양호 단정 불가" in r.rationale
+    # 반대극(진짜 상위가 전체 포함 + action 상이)은 여전히 그림자 취약 유지.
+    upper_real = _make(action="allow", src_ips=["any"], dst_ips=["any"], seq=1)
+    lower_real = _make(
+        action="deny", src_ips=["10.0.0.5"], dst_ips=["10.0.0.5"], seq=2
+    )
+    r_real = detect_for_iss("ISS-034", [upper_real, lower_real], _FORMAT_KRFW)
+    assert r_real.verdict == "취약"
+
+
 # ─ policy_to_dict / policy_from_dict — unresolved 필드 왕복 (B′-3a) ──────────
 
 def test_policy_roundtrip_unresolved_fields():

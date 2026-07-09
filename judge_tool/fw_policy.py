@@ -431,8 +431,17 @@ def detect_any_any_allow(policies: List[Policy]) -> List[Policy]:
     for p in policies:
         if not p.enabled or not _is_allow_action(p.action):
             continue
-        src_any = (not p.src_ips) or all(_is_any(ip) for ip in p.src_ips)
-        dst_any = (not p.dst_ips) or all(_is_any(ip) for ip in p.dst_ips)
+        # 미해석(named 객체) 토큰이 유일한 값이라 빈 리스트가 된 경우는
+        # "전체(any)"가 아니라 불확정 — any-any 위반으로 오분류하지 않는다
+        # (B′-3a-fix Opus 리뷰 High: 위반0→판단보류 가드 우회 버그 수정).
+        src_any = (
+            (not p.src_ips and not p.unresolved_src)
+            or (bool(p.src_ips) and all(_is_any(ip) for ip in p.src_ips))
+        )
+        dst_any = (
+            (not p.dst_ips and not p.unresolved_dst)
+            or (bool(p.dst_ips) and all(_is_any(ip) for ip in p.dst_ips))
+        )
         if src_any and dst_any:
             result.append(p)
     return result
@@ -462,10 +471,12 @@ def detect_all_port_allow(policies: List[Policy]) -> List[Policy]:
     for p in policies:
         if not p.enabled or not _is_allow_action(p.action):
             continue
-        # dst_ports 없음 = 전포트, 또는 any 표현
+        # dst_ports 없음 = 전포트, 또는 any 표현. 단 미해석(named 서비스객체)
+        # 토큰이 유일한 값이라 비었을 뿐이면 불확정 — 전포트 위반으로
+        # 오분류하지 않는다(B′-3a-fix).
         all_ports = (
-            not p.dst_ports
-            or all(_is_any_port(ps) for ps in p.dst_ports)
+            (not p.dst_ports and not p.unresolved_svc)
+            or (bool(p.dst_ports) and all(_is_any_port(ps) for ps in p.dst_ports))
         )
         if all_ports:
             result.append(p)
@@ -514,6 +525,10 @@ def detect_vuln_remote_service(policies: List[Policy]) -> List[Policy]:
     for p in policies:
         if not p.enabled or not _is_allow_action(p.action):
             continue
+        # 미해석(named 서비스객체) 토큰이 유일한 값이라 dst_ports가 비었을
+        # 뿐이면 불확정 — 취약 원격포트 위반으로 오분류하지 않는다(B′-3a-fix).
+        if not p.dst_ports and p.unresolved_svc:
+            continue
         # dst 포트가 취약 원격 포트와 교집합
         if not p.dst_ports or _ports_intersect(p.dst_ports, VULN_REMOTE_PORTS):
             # dst_ports 없으면 전포트 허용이므로 취약 포트 포함
@@ -555,6 +570,14 @@ def detect_shadow_policies(
 
 def _policy_covers(upper: Policy, lower: Policy) -> bool:
     """upper가 lower를 IP+포트 면에서 완전 포함하는지."""
+    # upper의 src/dst가 named 객체(미해석 토큰)만 있어 빈 리스트가 됐을
+    # 뿐이면 "전체 포함"이 아니라 불확정 — 그림자 페어 후보에서 제외한다
+    # (B′-3a-fix: 기존 _ips_cover의 "빈 리스트=any" 관례가 upper 커버리지를
+    # 오분류하던 버그 수정).
+    if (not upper.src_ips and upper.unresolved_src) or (
+        not upper.dst_ips and upper.unresolved_dst
+    ):
+        return False
     if not _ips_cover(upper.src_ips, lower.src_ips):
         return False
     if not _ips_cover(upper.dst_ips, lower.dst_ips):
