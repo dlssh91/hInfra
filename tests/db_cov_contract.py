@@ -463,8 +463,13 @@ _ORACLE = {
     },
 
     # DBM-009: 세션 종료 — IDLE_TIME
+    # 모드J(F3, 2026-07-10): good을 빈RESULT(거짓양호 실인코딩)에서 IDLE_TIME 유효행
+    # (limit=UNLIMITED 아님 → 위반0)으로 교체. resource_name=IDLE_TIME 행 존재 →
+    # 모드J checker 통과 → 위반0 그대로 양호(회귀 없음).
     "DBM-009": {
-        "good": {"DBM-009": {"RESULT": []}},
+        "good": {"DBM-009": {"RESULT": [
+            {"profile": "DEFAULT", "resource_name": "IDLE_TIME", "limit": "900"}
+        ]}},
         "vuln": {"DBM-009": {"RESULT": [
             {"profile": "DEFAULT", "resource_name": "IDLE_TIME", "limit": "UNLIMITED"}
         ]}},
@@ -486,14 +491,19 @@ _ORACLE = {
     },
 
     # DBM-014: oracle 전용 파라미터
+    # 모드J(F4, 2026-07-10): good을 빈RESULT(거짓양호 실인코딩)에서
+    # os_roles/remote_os_roles FALSE 행(위반0 유지)으로 교체.
     "DBM-014": {
-        "good": {"DBM-014": {"RESULT": []}},
+        "good": {"DBM-014": {"RESULT": [
+            {"name": "os_roles", "value": "FALSE"},
+            {"name": "remote_os_roles", "value": "FALSE"},
+        ]}},
         "vuln": {"DBM-014": {"RESULT": [
             {"name": "some_param", "value": "TRUE"}
         ]}},
         "good_verdict": "양호",
         "vuln_verdict": "취약",
-        "note": "oracle 전용. config rules에 따라 판정. 빈 RESULT → 양호.",
+        "note": "oracle 전용. config rules에 따라 판정. 모드J: os_roles/remote_os_roles FALSE 행 필요.",
     },
 
     # DBM-019: 비밀번호 재사용 — PASSWORD_REUSE_TIME/MAX

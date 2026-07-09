@@ -345,6 +345,52 @@ _EMPTY_RESULT_HOLD: frozenset = frozenset({"DBM-019", "DBM-029", "DBM-031"})
 _XCMDSHELL_GUARD: frozenset = frozenset({"DBM-035"})
 _XREG_GUARD: frozenset = frozenset({"DBM-036"})
 
+# ── 모드 J: 테이블 주도 fail-closed 미수집 가드 (공통 뿌리 수정) ────────────────
+# 배경(2026-07-03 감사): 벤더 analysis는 (a) RESULT가 빈 배열이면 위반 0으로 조용히
+# 통과, (b) 기대 data_key 자체가 없어도 조용히 skip한다 — "수집 실패"와 "진짜 양호"를
+# 구분 못 해 거짓양호를 만든다(DBM-009/014 실증). 모드 J는 항목별 테이블로 위반0일
+# 때만 개입해 (a) base(+base_*) RESULT 전부가 0행 → 판단보류, (b) 엔진별 checker가
+# 등록돼 있는데 기대 변수행이 하나도 없음 → 판단보류로 강등한다.
+# checker=None(DBM-008/013)은 이번 태스크(F3/F4)에서는 0행 가드만 적용 — 엔진별
+# checker는 후속 태스크(T3/T4)에서 채운다(키만 선등록, 회귀 없음 — 기존 good
+# 픽스처는 전부 RESULT 비어있지 않음).
+def _base_result_rows(base: str, data: dict) -> list:
+    """base 및 base_* data_key의 RESULT를 전부 concat(모드J 전용, 순서 보존)."""
+    rows: list = []
+    for k, v in data.items():
+        if (k == base or k.startswith(base + "_")) and isinstance(v, dict) and isinstance(v.get("RESULT"), list):
+            rows.extend(v["RESULT"])
+    return rows
+
+
+_MODE_J_ITEMS: dict = {
+    "DBM-008": None,  # T3에서 엔진별 checker 활성화 예정 — 이번 태스크는 키 등록 + 0행 가드만
+    "DBM-009": {
+        "mysql": lambda r: any(
+            str(x.get("VARIABLE_NAME", "")).lower() == "wait_timeout"
+            for x in r if isinstance(x, dict)
+        ),
+        "mariadb": lambda r: any(
+            str(x.get("VARIABLE_NAME", "")).upper() in ("WAIT_TIMEOUT", "INTERACTIVE_TIMEOUT")
+            for x in r if isinstance(x, dict)
+        ),
+        "oracle": lambda r: any(
+            x.get("resource_name") == "IDLE_TIME" for x in r if isinstance(x, dict)
+        ),
+        "postgresql": lambda r: any(
+            x.get("setting_name") == "idle_in_transaction_session_timeout"
+            for x in r if isinstance(x, dict)
+        ),
+    },
+    "DBM-013": None,  # T4에서 엔진별 checker 활성화 예정 — 이번 태스크는 키 등록만
+    "DBM-014": {
+        "oracle": lambda r: any(
+            x.get("name") in ("os_roles", "remote_os_roles", "remote_os_authent")
+            for x in r if isinstance(x, dict)
+        ),
+    },
+}
+
 # 엔진별 "기대 변수 존재 여부" 검사 함수.
 # 각 함수는 RESULT 행(list) 전체를 받아, 기대 변수가 **하나라도** 존재하면 True 반환.
 # 매핑 없는 엔진은 기존 0행-only 가드만 동작(None 처리).
@@ -1535,6 +1581,48 @@ def judge(
                     f"[xp_reg 권한 미수집 → 판단보류] "
                     f"RESULT가 빈 배열(0행) — "
                     f"xp_reg* 확장프로시저 권한 수집이 이루어지지 않아 자동 양호 판정 불가 "
+                    f"(engine={engine}, item={base})"
+                ),
+                citations=[],
+                ev_status="review",
+                handled=True,
+            )
+
+    # ── 모드 J: 테이블 주도 fail-closed 미수집 가드 (DBM-009/014, 008/013 키등록) ──
+    # 위반0(수집 자체가 안 됐는지 진짜 양호인지 불확실)일 때만 개입.
+    if base in _MODE_J_ITEMS and not violations:
+        _mj_rows = _base_result_rows(base, data)
+        if not _mj_rows:
+            log.warning(
+                "모드J 가드: base=%s engine=%s RESULT 0행(빈배열) → 판단보류(미수집)",
+                base, engine,
+            )
+            return ForcedVerdict(
+                verdict="판단보류",
+                confidence=0.0,
+                rationale=(
+                    f"[{base} 설정 미수집 → 판단보류] "
+                    f"RESULT가 빈 배열(0행) — 수집 실패/0행을 양호로 단정할 수 없음 "
+                    f"(engine={engine}, item={base})"
+                ),
+                citations=[],
+                ev_status="review",
+                handled=True,
+            )
+        _mj_checker_table = _MODE_J_ITEMS[base]
+        _mj_checker = _mj_checker_table.get(engine) if _mj_checker_table else None
+        if _mj_checker is not None and not _mj_checker(_mj_rows):
+            log.warning(
+                "모드J 가드: base=%s engine=%s 기대 변수행 없음(RESULT %d행) → 판단보류",
+                base, engine, len(_mj_rows),
+            )
+            return ForcedVerdict(
+                verdict="판단보류",
+                confidence=0.0,
+                rationale=(
+                    f"[{base} 기대 변수 미수집 → 판단보류] "
+                    f"RESULT에 {len(_mj_rows)}행이 있으나 해당 엔진의 기대 변수 행이 "
+                    f"포함되지 않음 — 수집 실패 가능성, 자동 양호 판정 불가 "
                     f"(engine={engine}, item={base})"
                 ),
                 citations=[],

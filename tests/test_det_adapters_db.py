@@ -68,6 +68,8 @@ from judge_tool.det_adapters.db import (  # noqa: E402
     _PG_HBA_GUARD,
     _dbm034_has_daemon_line,
     _DAEMON_GUARD,
+    _base_result_rows,
+    _MODE_J_ITEMS,
 )
 from judge_tool.det_adapters.base import ForcedVerdict, _DET_ADAPTERS, reload_det_source, classify, gate  # noqa: E402
 
@@ -5221,3 +5223,234 @@ class TestModeA2Dbm003ClassifyHold:
             raw = _make_raw_ev(data)
             fv = judge("DBM-003", raw, variant, {})
             assert fv.verdict != "양호", f"{variant}: DBM-003 모드A2인데 양호 판정! {fv}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (t) 2026-07-10: 모드 J — 테이블 주도 fail-closed 미수집 가드 (F3 DBM-009, F4 DBM-014)
+#   배경: 벤더 analysis는 RESULT 0행/기대 변수행 부재를 "위반0"으로 조용히 통과시켜
+#   수집실패를 진짜 양호와 구분하지 못한다(DBM-009 유휴세션, DBM-014 원격OS인증 실증).
+#   모드J는 위반0일 때만 개입해 (a) RESULT 0행, (b) 엔진별 checker 등록시 기대행
+#   부재 → 판단보류로 강등한다. 위반>0(기존 결정론 취약 경로)에는 개입하지 않는다.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestModeJBaseResultRows:
+    """_base_result_rows 헬퍼 단위테스트 — base/base_* RESULT concat."""
+
+    def test_concat_base_and_suffixed_keys(self):
+        data = {
+            "DBM-009": {"RESULT": [{"a": 1}]},
+            "DBM-009_2": {"RESULT": [{"b": 2}]},
+            "DBM-999": {"RESULT": [{"c": 3}]},
+        }
+        rows = _base_result_rows("DBM-009", data)
+        assert rows == [{"a": 1}, {"b": 2}]
+
+    def test_missing_key_returns_empty(self):
+        assert _base_result_rows("DBM-009", {}) == []
+
+    def test_registry_has_all_expected_keys(self):
+        """모드J 테이블에 DBM-008/009/013/014 키가 등록돼 있어야 함(F3/F4 + 후속태스크 선등록)."""
+        for k in ("DBM-008", "DBM-009", "DBM-013", "DBM-014"):
+            assert k in _MODE_J_ITEMS, f"{k} 모드J 테이블 미등록"
+        assert _MODE_J_ITEMS["DBM-008"] is None
+        assert _MODE_J_ITEMS["DBM-013"] is None
+
+
+class TestModeJDbm009Hold:
+    """F3: DBM-009(유휴세션 종료) 모드J 가드 — mysql/mariadb/oracle/postgresql 4엔진."""
+
+    def test_mysql_empty_result_hold(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-009": {"RESULT": []}})
+        fv = judge("DBM-009", raw, "mysql_native", {})
+        assert fv.verdict == "판단보류", f"0행 → {fv.verdict} (기대: 판단보류)"
+        assert fv.handled is True
+
+    def test_mysql_no_wait_timeout_row_hold(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-009": {"RESULT": [
+            {"VARIABLE_NAME": "other_var", "VARIABLE_VALUE": "1"}
+        ]}})
+        fv = judge("DBM-009", raw, "mysql_native", {})
+        assert fv.verdict == "판단보류", f"wait_timeout 행 없음 → {fv.verdict} (기대: 판단보류)"
+        assert fv.handled is True
+
+    def test_mysql_expected_row_no_violation_good(self):
+        """회귀: wait_timeout=900(기준 이내) → 위반0 + 기대행 존재 → 양호 유지."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-009": {"RESULT": [
+            {"VARIABLE_NAME": "wait_timeout", "VARIABLE_VALUE": "900"}
+        ]}})
+        fv = judge("DBM-009", raw, "mysql_native", {})
+        assert fv.verdict == "양호", f"기대행+위반0 → {fv.verdict} (기대: 양호, 회귀)"
+
+    def test_mysql_violation_vuln(self):
+        """회귀: wait_timeout=9999(기준 초과) → 취약, 모드J 미개입."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-009": {"RESULT": [
+            {"VARIABLE_NAME": "wait_timeout", "VARIABLE_VALUE": "9999"}
+        ]}})
+        fv = judge("DBM-009", raw, "mysql_native", {})
+        assert fv.verdict == "취약", f"위반 → {fv.verdict} (기대: 취약, 모드J 미개입)"
+
+    def test_mariadb_empty_result_hold(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-009": {"RESULT": []}})
+        fv = judge("DBM-009", raw, "mariadb_native", {})
+        assert fv.verdict == "판단보류"
+        assert fv.handled is True
+
+    def test_mariadb_no_expected_row_hold(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-009": {"RESULT": [
+            {"VARIABLE_NAME": "OTHER_VAR", "VARIABLE_VALUE": "1"}
+        ]}})
+        fv = judge("DBM-009", raw, "mariadb_native", {})
+        assert fv.verdict == "판단보류"
+        assert fv.handled is True
+
+    def test_mariadb_expected_row_no_violation_good(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-009": {"RESULT": [
+            {"VARIABLE_NAME": "WAIT_TIMEOUT", "VARIABLE_VALUE": "900"}
+        ]}})
+        fv = judge("DBM-009", raw, "mariadb_native", {})
+        assert fv.verdict == "양호", f"기대행+위반0 → {fv.verdict} (기대: 양호, 회귀)"
+
+    def test_mariadb_violation_vuln(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-009": {"RESULT": [
+            {"VARIABLE_NAME": "WAIT_TIMEOUT", "VARIABLE_VALUE": "9999"}
+        ]}})
+        fv = judge("DBM-009", raw, "mariadb_native", {})
+        assert fv.verdict == "취약"
+
+    def test_oracle_empty_result_hold(self):
+        """현재 거짓양호 재현 케이스: oracle DBM-009 빈RESULT는 수정 전 '양호'였음."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-009": {"RESULT": []}})
+        fv = judge("DBM-009", raw, "oracle_native", {})
+        assert fv.verdict == "판단보류", f"0행 → {fv.verdict} (기대: 판단보류, 거짓양호 수정)"
+        assert fv.handled is True
+
+    def test_oracle_no_idle_time_row_hold(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-009": {"RESULT": [
+            {"profile": "DEFAULT", "resource_name": "CONNECT_TIME", "limit": "900"}
+        ]}})
+        fv = judge("DBM-009", raw, "oracle_native", {})
+        assert fv.verdict == "판단보류", f"IDLE_TIME 행 없음 → {fv.verdict} (기대: 판단보류)"
+        assert fv.handled is True
+
+    def test_oracle_expected_row_no_violation_good(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-009": {"RESULT": [
+            {"profile": "DEFAULT", "resource_name": "IDLE_TIME", "limit": "900"}
+        ]}})
+        fv = judge("DBM-009", raw, "oracle_native", {})
+        assert fv.verdict == "양호", f"기대행+위반0 → {fv.verdict} (기대: 양호, 회귀)"
+
+    def test_oracle_violation_vuln(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-009": {"RESULT": [
+            {"profile": "DEFAULT", "resource_name": "IDLE_TIME", "limit": "UNLIMITED"}
+        ]}})
+        fv = judge("DBM-009", raw, "oracle_native", {})
+        assert fv.verdict == "취약"
+
+    def test_postgresql_empty_result_hold(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-009": {"RESULT": []}})
+        fv = judge("DBM-009", raw, "pg_native", {})
+        assert fv.verdict == "판단보류"
+        assert fv.handled is True
+
+    def test_postgresql_no_expected_row_hold(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-009": {"RESULT": [
+            {"setting_name": "other_setting", "value": "900"}
+        ]}})
+        fv = judge("DBM-009", raw, "pg_native", {})
+        assert fv.verdict == "판단보류"
+        assert fv.handled is True
+
+    def test_postgresql_expected_row_no_violation_good(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-009": {"RESULT": [
+            {"setting_name": "idle_in_transaction_session_timeout", "value": "900"}
+        ]}})
+        fv = judge("DBM-009", raw, "pg_native", {})
+        assert fv.verdict == "양호", f"기대행+위반0 → {fv.verdict} (기대: 양호, 회귀)"
+
+    def test_postgresql_violation_vuln(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-009": {"RESULT": [
+            {"setting_name": "idle_in_transaction_session_timeout", "value": "0"}
+        ]}})
+        fv = judge("DBM-009", raw, "pg_native", {})
+        assert fv.verdict == "취약"
+
+
+class TestModeJDbm014Hold:
+    """F4: DBM-014(원격 OS 인증, oracle) 모드J 가드."""
+
+    def test_empty_result_hold(self):
+        """현재 거짓양호 재현 케이스: oracle DBM-014 빈RESULT는 수정 전 '양호'였음."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-014": {"RESULT": []}})
+        fv = judge("DBM-014", raw, "oracle_native", {})
+        assert fv.verdict == "판단보류", f"0행 → {fv.verdict} (기대: 판단보류, 거짓양호 수정)"
+        assert fv.handled is True
+
+    def test_no_expected_name_row_hold(self):
+        """RESULT에 행은 있으나 os_roles/remote_os_roles/remote_os_authent 없음 → 판단보류."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-014": {"RESULT": [
+            {"name": "unrelated_param", "value": "FALSE"}
+        ]}})
+        fv = judge("DBM-014", raw, "oracle_native", {})
+        assert fv.verdict == "판단보류", f"기대 파라미터 행 없음 → {fv.verdict} (기대: 판단보류)"
+        assert fv.handled is True
+
+    def test_expected_row_no_violation_good(self):
+        """회귀: os_roles=FALSE(양호값) → 위반0 + 기대행 존재 → 양호 유지."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-014": {"RESULT": [
+            {"name": "os_roles", "value": "FALSE"},
+            {"name": "remote_os_roles", "value": "FALSE"},
+        ]}})
+        fv = judge("DBM-014", raw, "oracle_native", {})
+        assert fv.verdict == "양호", f"기대행+위반0 → {fv.verdict} (기대: 양호, 회귀)"
+
+    def test_violation_vuln(self):
+        """회귀: os_roles=TRUE → 취약."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-014": {"RESULT": [
+            {"name": "os_roles", "value": "TRUE"}
+        ]}})
+        fv = judge("DBM-014", raw, "oracle_native", {})
+        assert fv.verdict == "취약"
+
+
+class TestModeJNoInterventionOnViolation:
+    """모드J는 위반>0(취약 확정) 케이스에는 개입하지 않는다."""
+
+    def test_dbm014_unexpected_name_but_violation_still_vuln(self):
+        """name이 checker 기대목록에 없어도(=checker라면 판단보류 후보) 위반>0이면
+        모드J가 개입하지 않고 기존 흐름대로 취약 판정을 유지해야 한다."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-014": {"RESULT": [
+            {"name": "some_other_param", "value": "TRUE"}
+        ]}})
+        fv = judge("DBM-014", raw, "oracle_native", {})
+        assert fv.verdict == "취약", (
+            f"위반>0인데 모드J가 개입해 {fv.verdict}로 강등 — 개입 금지 위반"
+        )
+
+    def test_dbm009_mysql_violation_not_downgraded(self):
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-009": {"RESULT": [
+            {"VARIABLE_NAME": "wait_timeout", "VARIABLE_VALUE": "9999"}
+        ]}})
+        fv = judge("DBM-009", raw, "mysql_native", {})
+        assert fv.verdict == "취약", f"위반>0인데 모드J 개입: {fv.verdict}"
