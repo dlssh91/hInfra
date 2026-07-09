@@ -382,7 +382,8 @@ _MODE_J_ITEMS: dict = {
             for x in r if isinstance(x, dict)
         ),
     },
-    "DBM-013": None,  # T4에서 엔진별 checker 활성화 예정 — 이번 태스크는 키 등록만
+    "DBM-013": None,  # F5(T4): cloud 와일드카드 parity로 처리 — 0행-only 가드 유지(HOST
+                       # 컬럼은 수집되면 항상 존재해 "기대 변수 존재" checker가 불필요)
     "DBM-014": {
         "oracle": lambda r: any(
             x.get("name") in ("os_roles", "remote_os_roles", "remote_os_authent")

@@ -195,10 +195,17 @@ class MySQLCloudAnalysis:
         ])
     
     def dbm_013(self, result_key='DBM-013'):
+        # VENDOR-EDIT: R-MY013-CLOUD — native(mysql/analysis.py R-MY013)와 동일한
+        # 포함매칭으로 parity. 기존 `datum['HOST'] in rules['HOST']`(=['%'])는 정확일치만
+        # 잡아 '10.%'(서브넷), '%.corp.com'(도메인 부분 와일드카드), '10.0.0._'(단일문자
+        # 와일드카드) 같은 광역 원격허용 Host가 rds/aurora/azure에서 양호로 새던 문제
+        # (§F5 거짓양호)를 차단. exception USER 제외는 유지(mysql-config.json에서 이미 빈
+        # 배열 — root 등도 검사 대상 유지). HOST='%'인 관리계정도 취약 검토 대상에
+        # 포함되는 것은 과탐이 아니라 안전방향 계약(§F5 명시).
         self.dbm_result[result_key] = []
         self.dbm_process_data(result_key, 'DBM-013', [
             lambda datum: datum['USER'] not in self.exception[result_key]['USER'],
-            lambda datum: datum['HOST'] in self.rules[result_key]['HOST'],
+            lambda datum: '%' in datum['HOST'] or '_' in datum['HOST'],
         ])
     
     def dbm_016(self, result_key='DBM-016'):

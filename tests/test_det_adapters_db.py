@@ -2348,6 +2348,197 @@ class TestDBM013HostWildcard:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# F5: DBM-013 cloud(rds/aurora/azure) 와일드카드 parity (R-MY013-CLOUD/R-MA013-CLOUD)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestDBM013CloudHostWildcard:
+    """DBM-013 mysql/mariadb cloud_analysis HOST 와일드카드 parity 핀고정 (F5).
+
+    배경: native(mysql/mariadb analysis.py)는 R-MY013/R-MA013으로
+    `'%' in HOST or '_' in HOST` 포함매칭으로 수정됐으나, cloud_analysis.py
+    (rds/aurora/azure variant가 사용)는 `HOST in ['%']` 정확일치만 검사해
+    '10.%'(서브넷), '%.corp.com'(도메인) 같은 광역 허용 Host가 양호로 샜다.
+    이 클래스는 그 거짓양호 갭을 재현/차단한다.
+    """
+
+    def setup_method(self):
+        import judge_tool.det_adapters.db as _db
+        _db._RUN_CACHE.clear()
+
+    def _run_cloud_mysql(self, rows):
+        import json
+        from judge_tool.vendor.common.db.mysql.cloud_analysis import MySQLCloudAnalysis
+        config_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "judge_tool", "vendor", "common", "db", "config", "mysql-config.json"
+        )
+        with open(config_path, encoding="utf-8") as f:
+            config = json.load(f)
+        data = {"DBM-013": {"RESULT": rows}}
+        analysis = MySQLCloudAnalysis(config, data)
+        result = analysis.run
+        return result.get("DBM-013", [])
+
+    def _run_cloud_mariadb(self, rows):
+        import json
+        from judge_tool.vendor.common.db.mariadb.cloud_analysis import MariaDBCloudAnalysis
+        config_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "judge_tool", "vendor", "common", "db", "config", "mariadb-config.json"
+        )
+        with open(config_path, encoding="utf-8") as f:
+            config = json.load(f)
+        data = {"DBM-013": {"RESULT": rows}}
+        analysis = MariaDBCloudAnalysis(config, data)
+        result = analysis.run
+        return result.get("DBM-013", [])
+
+    def _real_violations(self, violations):
+        return [v for v in violations if "***" not in v and "@@@" not in v]
+
+    # ── mysql cloud: 거짓양호 갭 재현/차단 ──────────────────────────────────
+
+    def test_mysql_cloud_full_wildcard_is_vuln(self):
+        """mysql cloud: HOST='%' → 취약 (기존 정확매칭도 잡던 케이스, 회귀 확인)."""
+        rows = [{"USER": "app_user", "HOST": "%"}]
+        violations = self._real_violations(self._run_cloud_mysql(rows))
+        assert len(violations) > 0, "mysql cloud HOST='%'인데 위반 미포함"
+
+    def test_mysql_cloud_subnet_wildcard_is_vuln(self):
+        """mysql cloud: HOST='10.%' 서브넷 와일드카드 → 취약.
+
+        수정 전 정확매칭(`HOST in ['%']`)에서는 '10.%' != '%'이므로 양호로
+        새던 케이스(F5 거짓양호 재현).
+        """
+        rows = [{"USER": "app_user", "HOST": "10.%"}]
+        violations = self._real_violations(self._run_cloud_mysql(rows))
+        assert len(violations) > 0, (
+            "mysql cloud HOST='10.%'인데 위반 미포함 — F5 거짓양호(cloud parity 미반영)"
+        )
+
+    def test_mysql_cloud_domain_wildcard_is_vuln(self):
+        """mysql cloud: HOST='%.corp.com' 도메인 와일드카드 → 취약."""
+        rows = [{"USER": "app_user", "HOST": "%.corp.com"}]
+        violations = self._real_violations(self._run_cloud_mysql(rows))
+        assert len(violations) > 0, (
+            "mysql cloud HOST='%.corp.com'인데 위반 미포함 — F5 거짓양호"
+        )
+
+    def test_mysql_cloud_underscore_wildcard_is_vuln(self):
+        """mysql cloud: HOST='10.0.0._' `_` 단일문자 와일드카드 → 취약."""
+        rows = [{"USER": "app_user", "HOST": "10.0.0._"}]
+        violations = self._real_violations(self._run_cloud_mysql(rows))
+        assert len(violations) > 0, (
+            "mysql cloud HOST='10.0.0._'인데 위반 미포함 — F5 거짓양호"
+        )
+
+    def test_mysql_cloud_specific_ip_is_good(self):
+        """mysql cloud: HOST='192.168.1.100' 구체 지정 → 양호 회귀 유지(과탐 아님)."""
+        rows = [{"USER": "app_user", "HOST": "192.168.1.100"}]
+        violations = self._real_violations(self._run_cloud_mysql(rows))
+        assert len(violations) == 0, (
+            f"mysql cloud HOST='192.168.1.100'인데 위반 포함 — 과탐: {violations}"
+        )
+
+    def test_mysql_cloud_admin_wildcard_is_intentionally_flagged(self):
+        """과탐 아닌 안전방향 계약: HOST='%'인 관리계정(root)도 취약 검토 대상.
+
+        설계서 §F5 명시 — root@% 도 안전방향(넓게 잡는 방향)으로 취약 검토 대상에
+        포함하는 것은 의도된 동작이다(과탐이 아니라 계약). 이 테스트는 그 의도를
+        고정한다.
+        """
+        rows = [{"USER": "root", "HOST": "%"}]
+        violations = self._real_violations(self._run_cloud_mysql(rows))
+        assert len(violations) > 0, (
+            "root@%(관리계정)가 cloud에서 취약 검토 대상 미포함 — 안전방향 계약 위반"
+        )
+
+    # ── mariadb cloud: 거짓양호 갭 재현/차단 ────────────────────────────────
+
+    def test_mariadb_cloud_full_wildcard_is_vuln(self):
+        """mariadb cloud: HOST='%' → 취약 (회귀 확인)."""
+        rows = [{"USER": "app_user", "HOST": "%"}]
+        violations = self._real_violations(self._run_cloud_mariadb(rows))
+        assert len(violations) > 0, "mariadb cloud HOST='%'인데 위반 미포함"
+
+    def test_mariadb_cloud_subnet_wildcard_is_vuln(self):
+        """mariadb cloud: HOST='10.%' 서브넷 와일드카드 → 취약 (F5 거짓양호 재현)."""
+        rows = [{"USER": "app_user", "HOST": "10.%"}]
+        violations = self._real_violations(self._run_cloud_mariadb(rows))
+        assert len(violations) > 0, (
+            "mariadb cloud HOST='10.%'인데 위반 미포함 — F5 거짓양호"
+        )
+
+    def test_mariadb_cloud_domain_wildcard_is_vuln(self):
+        """mariadb cloud: HOST='%.corp.com' 도메인 와일드카드 → 취약."""
+        rows = [{"USER": "app_user", "HOST": "%.corp.com"}]
+        violations = self._real_violations(self._run_cloud_mariadb(rows))
+        assert len(violations) > 0, (
+            "mariadb cloud HOST='%.corp.com'인데 위반 미포함 — F5 거짓양호"
+        )
+
+    def test_mariadb_cloud_underscore_wildcard_is_vuln(self):
+        """mariadb cloud: HOST='10.0.0._' `_` 단일문자 와일드카드 → 취약."""
+        rows = [{"USER": "app_user", "HOST": "10.0.0._"}]
+        violations = self._real_violations(self._run_cloud_mariadb(rows))
+        assert len(violations) > 0, (
+            "mariadb cloud HOST='10.0.0._'인데 위반 미포함 — F5 거짓양호"
+        )
+
+    def test_mariadb_cloud_specific_ip_is_good(self):
+        """mariadb cloud: HOST='192.168.1.100' 구체 지정 → 양호 회귀 유지."""
+        rows = [{"USER": "app_user", "HOST": "192.168.1.100"}]
+        violations = self._real_violations(self._run_cloud_mariadb(rows))
+        assert len(violations) == 0, (
+            f"mariadb cloud HOST='192.168.1.100'인데 위반 포함 — 과탐: {violations}"
+        )
+
+    # ── judge() 레벨 end-to-end (mysql_rds) ─────────────────────────────────
+
+    def test_mysql_rds_dbm013_subnet_wildcard_vuln_via_judge(self):
+        """judge() 통합 경로: mysql_rds DBM-013 HOST='10.%' → handled 시 취약."""
+        raw = _make_raw_ev({"DBM-013": {"RESULT": [
+            {"USER": "app_user", "HOST": "10.%"}
+        ]}})
+        fv = judge("DBM-013", raw, "mysql_rds", {})
+        if fv.handled:
+            assert fv.verdict == "취약", (
+                f"mysql_rds DBM-013 HOST='10.%'인데 취약이 아님(F5 거짓양호): {fv}"
+            )
+
+    def test_mysql_rds_dbm013_specific_host_good_via_judge(self):
+        """judge() 통합 경로: mysql_rds DBM-013 구체 Host만 → handled 시 양호(과탐 아님)."""
+        raw = _make_raw_ev({"DBM-013": {"RESULT": [
+            {"USER": "app_user", "HOST": "192.168.1.100"}
+        ]}})
+        fv = judge("DBM-013", raw, "mysql_rds", {})
+        if fv.handled:
+            assert fv.verdict == "양호", (
+                f"mysql_rds DBM-013 구체Host만인데 양호가 아님: {fv}"
+            )
+
+    def test_mysql_rds_dbm013_zero_rows_hold_via_judge(self):
+        """judge() 통합 경로: mysql_rds DBM-013 0행 → 모드J 판단보류(양호 자동판정 금지)."""
+        raw = _make_raw_ev({"DBM-013": {"RESULT": []}})
+        fv = judge("DBM-013", raw, "mysql_rds", {})
+        assert fv.verdict == "판단보류", (
+            f"mysql_rds DBM-013 0행인데 판단보류가 아님(모드J): {fv}"
+        )
+        assert fv.handled is True
+
+    def test_mariadb_rds_dbm013_subnet_wildcard_vuln_via_judge(self):
+        """judge() 통합 경로: mariadb_rds DBM-013 HOST='10.%' → handled 시 취약."""
+        raw = _make_raw_ev({"DBM-013": {"RESULT": [
+            {"USER": "app_user", "HOST": "10.%"}
+        ]}})
+        fv = judge("DBM-013", raw, "mariadb_rds", {})
+        if fv.handled:
+            assert fv.verdict == "취약", (
+                f"mariadb_rds DBM-013 HOST='10.%'인데 취약이 아님(F5 거짓양호): {fv}"
+            )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # (m) DBM-015 label B 라우팅 — oracle/mssql/pg native
 #
 # 설계 계약:

@@ -515,6 +515,58 @@ R-MY013과 동일 (mariadb engine 대상).
 
 ---
 
+## R-MY013-CLOUD / R-MA013-CLOUD. mysql/mariadb cloud_analysis dbm_013 와일드카드 parity 누락 (VENDOR-EDIT, 2026-07-10, §F5)
+
+**id**: `R-MY013-CLOUD`(mysql), `R-MA013-CLOUD`(mariadb)
+**위치**: `judge_tool/vendor/common/db/mysql/cloud_analysis.py` `dbm_013` +
+         `judge_tool/vendor/common/db/mariadb/cloud_analysis.py` `dbm_013`
+**상태**: VENDOR-EDIT 완료 (2026-07-10)
+
+### 증상 (cloud capability parity 누락 — 거짓양호)
+R-MY013/R-MA013은 **native**(`mysql/analysis.py`, `mariadb/analysis.py`)의 `dbm_013`만
+`'%' in HOST or '_' in HOST` 포함매칭으로 수정했다. rds/aurora/azure variant가 사용하는
+**cloud_analysis.py**의 `dbm_013`은 수정 전 그대로 `datum['HOST'] in self.rules['DBM-013']['HOST']`
+(= `['%']`)로 **정확일치만** 검사했다 — `'10.%'`(서브넷 와일드카드), `'%.corp.com'`(도메인
+부분 와일드카드), `'10.0.0._'`(`_` 단일문자 와일드카드) 같은 광역 원격허용 Host가 정확일치에서
+탈락하여 rds/aurora/azure에서 **양호로 오판(거짓양호)**.
+
+재현(수정 전):
+```python
+datum = {"USER": "app_user", "HOST": "10.%"}
+# datum['HOST'] in ['%'] → False → 위반 미포함 → 거짓양호(cloud만 발생, native는 이미 수정됨)
+```
+
+### Corrected 동작 (VENDOR-EDIT)
+mysql/mariadb cloud_analysis 모두 native와 동일하게 변경:
+`datum['HOST'] in self.rules['DBM-013']['HOST']` → `'%' in datum['HOST'] or '_' in datum['HOST']`.
+`exception.DBM-013.USER`는 mysql-config.json/mariadb-config.json 양쪽 다 이미 `[]`(빈 배열)이라
+네이티브의 VENDOR-EDIT(b)(root 등 예외 제거)가 cloud에도 그대로 적용된다 — 별도 config 수정 불필요.
+
+수정 후:
+- `HOST = '%'` → 취약 ✓ (기존에도 잡던 케이스, 회귀 확인)
+- `HOST = '10.%'` → 취약 ✓ (F5 거짓양호 차단)
+- `HOST = '%.corp.com'` → 취약 ✓ (F5 거짓양호 차단)
+- `HOST = '10.0.0._'` → 취약 ✓ (F5 거짓양호 차단)
+- `HOST = '192.168.1.100'` (구체 지정) → 양호 ✓ (과탐 아님, 회귀 유지)
+- `USER = 'root', HOST = '%'` → **취약** ✓ (설계서 §F5 명시 — 관리계정도 취약 검토 대상에
+  포함하는 것은 과탐이 아니라 안전방향 계약. 오탐이 아님을 테스트로 고정)
+
+### 모드J(0행 가드)
+`judge_tool/det_adapters/db.py` `_MODE_J_ITEMS["DBM-013"] = None`(T2에서 이미 등록) —
+RESULT 0행(수집실패) → 판단보류. 엔진별 "기대 변수 존재" checker는 두지 않는다(HOST 컬럼은
+행이 수집되면 항상 존재하므로 0행-only 가드로 충분).
+
+### 회귀테스트 핀
+`tests/test_det_adapters_db.py::TestDBM013CloudHostWildcard`
+- mysql/mariadb cloud_analysis 단위: `HOST='%'/'10.%'/'%.corp.com'/'10.0.0._'` → 위반 포함(취약),
+  `HOST='192.168.1.100'` → 위반 미포함(양호)
+- `root@%`(cloud) → 위반 포함(취약) — 안전방향 계약 고정
+- `judge("DBM-013", ..., "mysql_rds"/"mariadb_rds", {})`: `HOST='10.%'` → handled 시 취약,
+  구체 Host만 → handled 시 양호, RESULT 0행 → 판단보류(모드J)
+- native mysql/mariadb DBM-013 기존 테스트(`TestDBM013HostWildcard`) 회귀 무변
+
+---
+
 ## R-MA019. mariadb dbm_019 polarity 역전 — INTERVAL 임계값 오판 (VENDOR-EDIT(c) 완료)
 
 **id**: `R-MA019`
