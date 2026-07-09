@@ -188,6 +188,15 @@ def test_parse_secui_ips_extracted():
     assert "any" in p0.src_ips or len(p0.src_ips) == 0 or "any" in p0.src_ips
 
 
+def test_parse_secui_src_ports_not_collected():
+    """(B'-2 증거조작 제거) SECUI는 출발지 포트 컬럼이 없어 src_ports는
+    항상 []（["any"] 하드코딩 금지 — capability=False 게이트가 담당)."""
+    rows = [tuple(r) for r in _secui_rows()]
+    policies = _parse_secui(rows, "test")
+    for p in policies:
+        assert p.src_ports == []
+
+
 # ─ _parse_paloalto 단위 ───────────────────────────────────────────────────────
 
 def test_parse_paloalto_policies():
@@ -239,12 +248,13 @@ def test_parse_krfw_field_mapping():
     assert p0.description == "테스트 규칙1"
 
 
-def test_parse_krfw_src_ports_always_any():
-    """krfw는 출발지 포트 컬럼이 없어 src_ports는 항상 ['any']."""
+def test_parse_krfw_src_ports_not_collected():
+    """(B'-2 증거조작 제거) krfw는 출발지 포트 컬럼이 없어 src_ports는
+    항상 []（["any"] 하드코딩 금지 — capability=False 게이트가 담당)."""
     rows = [tuple(r) for r in _krfw_rows()]
     policies = _parse_krfw(rows, "test")
     for p in policies:
-        assert p.src_ports == ["any"]
+        assert p.src_ports == []
 
 
 def test_parse_krfw_action_mapping_allow_deny():

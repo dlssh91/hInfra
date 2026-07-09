@@ -322,7 +322,7 @@ def test_detect_src_port_any():
 
 
 def test_detect_src_port_wide_range():
-    # 1-65535는 광범위 → sentinel → 탐지 안 됨
+    # 1-65535는 any 표기(_is_any_port) → 탐지 안 됨(ID70 SVC SPEC 관례)
     p = _make(action="allow", src_ports=["1-65535"])
     assert detect_source_port_usage([p]) == []
 
@@ -330,6 +330,16 @@ def test_detect_src_port_wide_range():
 def test_detect_src_port_no_src_ports():
     p = _make(action="allow")
     assert detect_source_port_usage([p]) == []
+
+
+def test_detect_src_port_wide_specific_range_is_violation_m3():
+    """[M-3] 1024-65535처럼 any가 아닌 넓은 특정범위도 이제 위반.
+
+    기준 원문 "출발지 포트 기반의 정책이 존재할 경우 취약"(범위 조건 없음) →
+    _SENTINEL_WIDE_RANGE 제외 분기 삭제 이후 회귀 확인.
+    """
+    p = _make(action="allow", src_ports=["1024-65535"])
+    assert detect_source_port_usage([p]) == [p]
 
 
 # ─ detect_vuln_remote_service (ISS-036) ───────────────────────────────────────
@@ -493,11 +503,78 @@ def test_detect_for_iss_needs_review_always():
 
 
 def test_detect_for_iss_empty_policies_all_good():
-    """정책이 없으면 탐지 대상이 없어 양호."""
+    """정책이 없으면 탐지 대상이 없어 양호.
+
+    ISS-035는 B'-2로 SECUI capability=False(판단보류 강등)가 되어 이 목록에서
+    제외 — 아래 test_detect_for_iss_035_secui_no_capability에서 별도 검증.
+    """
     for iss_id in ["ISS-030", "ISS-031", "ISS-032", "ISS-033",
-                   "ISS-035", "ISS-036", "ISS-041"]:
+                   "ISS-036", "ISS-041"]:
         r = detect_for_iss(iss_id, [], _FORMAT_SECUI)
         assert r.verdict == "양호", f"{iss_id} with no policies should be 양호"
+
+
+# ─ detect_for_iss — ISS-035 SECUI/PaloAlto capability 강등 (B'-2) ────────────
+#
+# SECUI 실파일 15/15에 출발지 포트 컬럼이 없음(포트 컬럼은 목적지 Service Port
+# 뿐)이 확정됨 → 파서가 만들어낼 수 없는 위반을 영구 '양호'로 표기하던 거짓양호를
+# 판단보류로 강등. PaloAlto도 파서가 src_ports=[](미수집)인데 capability=True라
+# 동일한 영구양호 벡터였으므로 동일 강등. ID70만 SVC SPEC에서 실수집되어 True 유지.
+
+def test_detect_for_iss_035_secui_no_capability():
+    p = _make(action="allow", src_ports=["22"])
+    r = detect_for_iss("ISS-035", [p], _FORMAT_SECUI)
+    assert r.can_judge is False
+    assert r.verdict == "판단보류"
+    assert r.violations == []
+    assert "출발지 포트" in r.rationale
+
+
+def test_detect_for_iss_035_secui_no_capability_even_empty_policies():
+    """정책이 0건이어도(과거엔 '양호') SECUI는 capability=False라 판단보류."""
+    r = detect_for_iss("ISS-035", [], _FORMAT_SECUI)
+    assert r.can_judge is False
+    assert r.verdict == "판단보류"
+
+
+def test_detect_for_iss_035_paloalto_no_capability():
+    p = _make(action="allow", src_ports=["22"])
+    r = detect_for_iss("ISS-035", [p], _FORMAT_PALOALTO)
+    assert r.can_judge is False
+    assert r.verdict == "판단보류"
+    assert r.violations == []
+
+
+def test_detect_for_iss_035_id70_capability_retained():
+    """ID70은 SVC SPEC에서 출발지 포트가 실수집되므로 capability=True 유지."""
+    p = _make(action="allow", src_ports=["22"])
+    r = detect_for_iss("ISS-035", [p], _FORMAT_ID70)
+    assert r.can_judge is True
+    assert r.verdict == "취약"
+
+
+def test_detect_for_iss_035_id70_any_notation_not_violation():
+    """ID70: src spec 1-65535(=any 표기)는 위반 아님."""
+    p = _make(action="allow", src_ports=["1-65535"])
+    r = detect_for_iss("ISS-035", [p], _FORMAT_ID70)
+    assert r.can_judge is True
+    assert r.verdict == "양호"
+
+
+def test_detect_for_iss_035_id70_wide_specific_range_violation_m3():
+    """[M-3] ID70: 1024-65535(any 아닌 넓은 특정범위)는 이제 위반."""
+    p = _make(action="allow", src_ports=["1024-65535"])
+    r = detect_for_iss("ISS-035", [p], _FORMAT_ID70)
+    assert r.can_judge is True
+    assert r.verdict == "취약"
+
+
+def test_detect_for_iss_035_id70_specific_port_violation():
+    """ID70: 5000 등 구체 포트 지정은 위반."""
+    p = _make(action="allow", src_ports=["5000"])
+    r = detect_for_iss("ISS-035", [p], _FORMAT_ID70)
+    assert r.can_judge is True
+    assert r.verdict == "취약"
 
 
 # ─ detect_for_iss — krfw capability (B′-1) ───────────────────────────────────

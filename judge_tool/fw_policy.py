@@ -225,13 +225,17 @@ def _is_allow_action(action: str) -> bool:
 # {iss_id: {format: can_judge}}
 # krfw(한글 13열, P13/P14/P24/P25 실증): Two-way/출발지포트/hit-count 컬럼이
 # 없어 ISS-033/035/037은 False(사유는 _NO_CAPABILITY_REASON_BY_FORMAT).
+# ISS-035(B'-2, 2026-07-10 Fable 설계 확정): SECUI 실파일 15/15 헤더 스캔 결과
+# 출발지 포트 컬럼 부재 확정(포트 컬럼은 'Service Port'(목적지) 뿐) → False.
+# PaloAlto도 파서가 src_ports=[](미수집)인데 True였던 영구양호 벡터 → False.
+# ID70만 SVC SPEC(`tcp <src> <dst>`)에서 실수집되어 True 유지.
 _CAPABILITY: Dict[str, Dict[str, bool]] = {
     "ISS-030": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True,  _FORMAT_KRFW: True},
     "ISS-031": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True,  _FORMAT_KRFW: True},
     "ISS-032": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True,  _FORMAT_KRFW: True},
     "ISS-033": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True,  _FORMAT_KRFW: False},
     "ISS-034": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True,  _FORMAT_KRFW: True},
-    "ISS-035": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True,  _FORMAT_KRFW: False},
+    "ISS-035": {_FORMAT_SECUI: False, _FORMAT_ID70: True,  _FORMAT_PALOALTO: False, _FORMAT_KRFW: False},
     "ISS-036": {_FORMAT_SECUI: True,  _FORMAT_ID70: True,  _FORMAT_PALOALTO: True,  _FORMAT_KRFW: True},
     "ISS-037": {_FORMAT_SECUI: False, _FORMAT_ID70: True,  _FORMAT_PALOALTO: True,  _FORMAT_KRFW: False},
     "ISS-038": {_FORMAT_SECUI: False, _FORMAT_ID70: False, _FORMAT_PALOALTO: False, _FORMAT_KRFW: False},
@@ -264,6 +268,15 @@ _NO_CAPABILITY_REASON: Dict[str, str] = {
 _NO_CAPABILITY_REASON_BY_FORMAT: Dict[Tuple[str, str], str] = {
     ("ISS-033", _FORMAT_KRFW): (
         "krfw(한글 13열) 포맷은 Two-way(양방향) 상당 컬럼이 없어 "
+        "자동 탐지가 불가능합니다. 담당자 인터뷰로 확인하세요."
+    ),
+    ("ISS-035", _FORMAT_SECUI): (
+        "SECUI 포맷은 출발지 포트 컬럼이 정책 export에 없어(실파일 15종 확인, "
+        "포트 컬럼은 Service Port(목적지) 뿐) 자동 탐지가 불가능합니다. "
+        "담당자 인터뷰로 확인하세요."
+    ),
+    ("ISS-035", _FORMAT_PALOALTO): (
+        "PaloAlto 포맷은 export에 출발지 포트 컬럼이 없어(수집 불가) "
         "자동 탐지가 불가능합니다. 담당자 인터뷰로 확인하세요."
     ),
     ("ISS-035", _FORMAT_KRFW): (
@@ -344,7 +357,10 @@ def detect_two_way(policies: List[Policy]) -> List[Policy]:
 def detect_source_port_usage(policies: List[Policy]) -> List[Policy]:
     """ISS-035: 출발지 포트를 구체적으로 지정한 허용 정책.
 
-    src_ports가 'any'/'1-65535'가 아닌 구체적 포트 범위면 이상.
+    src_ports가 'any'/'1-65535'(전체 허용 표기)가 아니면 위반.
+    [M-3] 기준 원문 "출발지 포트 기반의 정책이 존재할 경우 취약"에는 범위
+    조건이 없으므로, 1024-65535처럼 any는 아니지만 넓은 특정범위 지정도
+    위반으로 간주(과거엔 _SENTINEL_WIDE_RANGE로 제외해 미탐이었음).
     """
     result = []
     for p in policies:
@@ -353,7 +369,7 @@ def detect_source_port_usage(policies: List[Policy]) -> List[Policy]:
         for ps in p.src_ports:
             if ps and not _is_any_port(ps):
                 parsed = _parse_port_range(ps)
-                if parsed and _SENTINEL_WIDE_RANGE not in parsed:
+                if parsed:
                     result.append(p)
                     break
     return result

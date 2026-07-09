@@ -291,6 +291,9 @@ def _parse_secui(rows: List[Tuple], sheet_name: str) -> List[Policy]:
     - 상단 몇 행은 색 범례/서브헤더 (Font Color, 색 표, 헤더, 서브헤더들)
     - Seq 컬럼에 숫자가 있는 행이 새 정책의 시작
     - 연속 행(Seq 빈칸)은 현재 정책의 IP/포트 추가 행
+    - 컬럼 부재(B'-2, 실파일 15/15 확인): 출발지 포트(포트 컬럼은
+      'Service Port'(목적지) 단 1개 → src_ports 항상 [], ISS-035는
+      capability=False로 판단보류 처리, _NO_CAPABILITY_REASON_BY_FORMAT 참조).
     """
     data_start, col_map = _find_secui_header_row(rows)
     src_ip_col, dst_ip_col, proto_col, port_col = _find_secui_ip_cols(
@@ -327,7 +330,7 @@ def _parse_secui(rows: List[Tuple], sheet_name: str) -> List[Policy]:
                 action=action,
                 two_way=two_way,
                 src_ips=[], dst_ips=[],
-                src_ports=["any"], dst_ports=[],
+                src_ports=[], dst_ports=[],  # 출발지 포트 미수집 → []
                 protocols=[],
             )
 
@@ -576,7 +579,7 @@ def _parse_paloalto(rows: List[Tuple], sheet_name: str) -> List[Policy]:
 #
 # 헤더: 룰 NUM / 출발지 / 목적지 / 서비스 / Protocol / inbound / 시간 /
 #       정책 / 로그 / session-limit / tcp / 활성화 / 설명
-# 컬럼 부재: 출발지 포트(→ src_ports 항상 ["any"]), Two-way, hit-count.
+# 컬럼 부재: 출발지 포트(→ src_ports 항상 [], 미수집 의미), Two-way, hit-count.
 
 _KRFW_ACTION_ALLOW: frozenset = frozenset({
     "허용", "승인", "permit", "allow", "accept", "pass",
@@ -717,7 +720,7 @@ def _parse_krfw(
             two_way=False,
             src_ips=[src] if src else [],
             dst_ips=[dst] if dst else [],
-            src_ports=["any"],  # 출발지 포트 컬럼 없음
+            src_ports=[],  # 출발지 포트 컬럼 없음 → 미수집 의미로 []
             dst_ports=[svc] if svc else [],
             protocols=[proto] if proto else [],
             hit_count=None,  # hit-count 컬럼 없음
