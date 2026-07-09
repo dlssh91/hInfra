@@ -462,6 +462,7 @@ class TestR3FalsePositiveBlock:
         }
         fv = judge("DBM-013", json.dumps(data), "mysql_native", {})
         # DBM-013 mysql DET: 위반이 발견되면 취약 유지 (R3 과차단 없음)
+        assert fv.handled, f"DBM-013/mysql_native: handled=False — gate 차단 회귀: {fv}"
         if fv.handled:
             assert fv.verdict == "취약", (
                 f"R3 과차단 의심: 실위반 있는데 verdict={fv.verdict} handled={fv.handled}"
@@ -2323,6 +2324,7 @@ class TestDBM013HostWildcard:
         """
         raw = _make_raw_ev({"DBM-013": {"RESULT": [{"USER": "app_user", "HOST": "%"}]}})
         fv = judge("DBM-013", raw, "mysql_native", {})
+        assert fv.handled, f"DBM-013/mysql_native: handled=False — gate 차단 회귀: {fv}"
         if fv.handled:
             assert fv.verdict == "취약", (
                 f"mysql_native DBM-013 HOST='%' 있는데 취약이 아님: {fv}"
@@ -2341,6 +2343,7 @@ class TestDBM013HostWildcard:
             ]}
         })
         fv = judge("DBM-013", raw, "mysql_native", {})
+        assert fv.handled, f"DBM-013/mysql_native: handled=False — gate 차단 회귀: {fv}"
         if fv.handled:
             assert fv.verdict == "양호", (
                 f"mysql_native DBM-013 특정호스트만인데 양호가 아님: {fv}"
@@ -2501,6 +2504,7 @@ class TestDBM013CloudHostWildcard:
             {"USER": "app_user", "HOST": "10.%"}
         ]}})
         fv = judge("DBM-013", raw, "mysql_rds", {})
+        assert fv.handled, f"DBM-013/mysql_rds: handled=False — gate 차단 회귀: {fv}"
         if fv.handled:
             assert fv.verdict == "취약", (
                 f"mysql_rds DBM-013 HOST='10.%'인데 취약이 아님(F5 거짓양호): {fv}"
@@ -2512,6 +2516,7 @@ class TestDBM013CloudHostWildcard:
             {"USER": "app_user", "HOST": "192.168.1.100"}
         ]}})
         fv = judge("DBM-013", raw, "mysql_rds", {})
+        assert fv.handled, f"DBM-013/mysql_rds: handled=False — gate 차단 회귀: {fv}"
         if fv.handled:
             assert fv.verdict == "양호", (
                 f"mysql_rds DBM-013 구체Host만인데 양호가 아님: {fv}"
@@ -2532,6 +2537,7 @@ class TestDBM013CloudHostWildcard:
             {"USER": "app_user", "HOST": "10.%"}
         ]}})
         fv = judge("DBM-013", raw, "mariadb_rds", {})
+        assert fv.handled, f"DBM-013/mariadb_rds: handled=False — gate 차단 회귀: {fv}"
         if fv.handled:
             assert fv.verdict == "취약", (
                 f"mariadb_rds DBM-013 HOST='10.%'인데 취약이 아님(F5 거짓양호): {fv}"
