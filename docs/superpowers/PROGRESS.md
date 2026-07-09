@@ -1,9 +1,23 @@
 # 작업 재개 노트 (RESUME)
 
 > ═══ 재개 안내 (pull 후 "진행해줘"/"개발진행해"라고 하면 여기부터) ═══
-> **★★ 다음 착수 = 판단로직 거짓양호 수정 F1~F5** (설계=`docs/superpowers/specs/2026-07-03-falsegood-audit.md`). 순서: ①F2(DBM-025 EoS: item_configs 4파일 det_common 제거+DET_SOURCE STUB+cov 문서정정, 코드무변경) → ②모드J 인프라(db.py)+F3(DBM-009)+F4(DBM-014)+cov 픽스처 2건 교체 → ③F1(DBM-008 vendor 수집키 정합, mysql/oracle analysis.py+KNOWN_BUGS) → ④F5(DBM-013 cloud 와일드카드 parity). 각 커밋 후 `python3 -m pytest tests/ -q` 전체통과. **전부 합성 픽스처로 검증 가능(모델·실데이터 불필요).** 후속=F6~F8, 그다음 FW B′-2(실데이터 환경).
-> ⏳ **미완 리뷰**: ④파일명→플랫폼 인지(profile.py, 2005 passed 구현완료)는 **Fable 리뷰 미실시** — 재개 시 리뷰부터 or 그대로 SHIP 판단.
+> **★★ 다음 착수 (병렬 가능 2트랙)**:
+> ① **FW B′-3b** — ObjectTable(`judge_tool/fw_objects.py`)+`--aux-objects` CLI+그룹 치환(중첩 재귀·visited·깊이8). 합성 픽스처로 구현 가능(실 객체 export는 현장 요청 대기). 설계=`2026-07-02-fw-implementation-design.md` Phase B′ 3번 "B′-3b" 블록. **스코프 추가**: ID70 SVC SPEC의 named src_port(예 `tcp WEB_OBJ 443`)가 ISS-035에서 미해석→양호로 새는 갭(최종리뷰 Low-2) — resolve_policies에 src_ports 편입 or 035 가드 편입으로 봉쇄. 이후 **B′-4 정밀도**(H-4 IP대시범위 / M-1 광역임계 /8→/16 / M-2 _policy_covers 포트비대칭).
+> ② **거짓양호 후속 F6~F8**(설계=`2026-07-03-falsegood-audit.md` §1 표) — F6 DBM-006/007(0행→양호, cov 픽스처 4곳 empty→양호 재설계), F7 DBM-005 mssql_rds, F8 container 오류출력 정규식 가드(실샘플 과트리거0 검증 필수). 별도 배치 권장.
+> ⏳ **미완 리뷰(이월)**: 파일명→플랫폼 인지(profile.py, 2026-07-03 구현완료)는 **Fable 리뷰 여전히 미실시** — 재개 시 리뷰 or SHIP 판단.
+> 📌 **백로그(비차단)**: eol.yaml 커버리지 보강(잘 알려진 EoS(oracle 11/12/18, mysql 5.7, mssql 2012, pg≤12) 미등재→현재 판단보류로만 귀결 — 등재하면 능동 취약 판정 가능), FW _summarize_policy 미해석 병기, mysql 모드J checker interactive_timeout 추가 여지.
 > ═══════════════════════════════════════════════════
+>
+> **✅ 2026-07-10 세션 — 거짓양호 F1~F5(트랙1) + FW B′-2·B′-3a(트랙2) 병렬 완주 (8커밋, 최종 2098+ passed / 0 failed)**
+> 사이클: Fable 설계 → Sonnet 구현 → Opus 리뷰(med+ → Sonnet 개선 → Opus 재리뷰). 전 태스크 Opus SHIP + 최종 브랜치 리뷰 SHIP(Critical/High/Medium 0).
+> - **F2**(25c8b43): DBM-025 EoS det 자동판정 제거 → eol.yaml 권위경로(judge_eol, as_of staleness) 복원 + DET_SOURCE STUB 이중방어. EoS 버전(12.2/18c/5.7 등) 양호로 새던 경로 실증 차단.
+> - **모드J+F3/F4**(41e569d): db.py 테이블 주도 fail-closed 미수집 가드 신설(_MODE_J_ITEMS: 008/013=0행가드, 009=4엔진 checker, 014=oracle checker). 0행 RESULT→판단보류, 기대행 부재→판단보류. cov oracle 009/014 good 픽스처 유효행으로 교체.
+> - **F1**(b0d24fc): DBM-008 vendor data_key 정합(R-MY008: 'DBM-008_1' 추가, R-OR008: 'DBM-008_2' PASSWORD_LIFE_TIME=UNLIMITED 복원). oracle 실수집 UNLIMITED 4계정 양호→취약 실증.
+> - **F5**(767aaf7): DBM-013 cloud_analysis 와일드카드 parity(R-MY013-CLOUD/R-MA013-CLOUD) — rds/aurora/azure에서 '10.%'/'%.corp.com' 양호로 새던 것 취약 전환. localhost 오탐 0.
+> - **FW B′-2**(de595d9): ISS-035 SECUI/PaloAlto capability=False 강등(**영구 양호 제거** — SECUI 실파일 15/15 출발지포트 컬럼 부재 확정, 기준 원문 "존재 시 취약" 재확인) + M-3(광역 src범위 1024-65535 미탐) 제거 + src_ports=["any"] 증거조작→[] 정정. ID70만 capability 유지(SVC SPEC 실수집).
+> - **FW B′-3a**(f3f2c0e+fe3e441): 실파일 19개 객체정의 시트 0건 확정 → Policy.unresolved_src/dst/svc 보존 + resolve_policies + "미해석 존재∧위반0→판단보류" 가드(030/031/041/034=src+dst, 032/036=svc). Opus High 발견("빈 리스트=any" 관례가 미해석 유래 빈 필드를 가짜위반 처리, 032/036은 잠복 지뢰) → 수정 후 재리뷰 SHIP. 배치 최종(20파일 양/취/보): 030 5/8/7, 031 4/6/10, 034 2/16/2, 041 4/4/12 — 미해석 유래는 전부 판단보류 귀속.
+> - 마무리 커밋: 최종리뷰 Low 반영(F5 e2e assert 무조건화, DET_SOURCE 주석 정정) + 본 문서·설계문서 갱신.
+> - **닫힌 거짓양호 4경로**: 노후지식→양호(F2) / 수집실패→양호(모드J+F1+F5) / 미해석 객체→양호(B′-3a) / 컬럼부재 영구양호(B′-2). 잔여(F6~F10)는 위 ② 참조.
 >
 > 마지막 업데이트: 2026-07-03 (**4트랙 커밋·push 완료(2005 passed / 100 skipped / 0 failed):**
 > ① **DBM-003 모드A2(classify-then-hold)** — 코어 Opus리뷰 High "DBM-003 거짓양호" 해소(항상 판단보류+결정론 계정분류 인터뷰정보). Opus리뷰 SHIP.
@@ -28,7 +42,7 @@
 5. **향후 도메인(네트워크/방화벽/가상화)**: 기존분류 따라가기 + 픽스처/듀얼런으로 틀린방향 잡힐 때만 수정.
 > ⚠️ **보류한 deep-audit 백로그**: 아래 "deep-audit 백로그(보류)" 섹션 참조. 필요시 나중에 항목별 정밀감사 적용 가능하도록 상태 보존.
 
-- **★다음 착수 = 방화벽(FW) 결정론 검증·갭메우기**
+- ~~★다음 착수 = 방화벽(FW) 결정론 검증·갭메우기~~ → **B′-1(2026-07-02)·B′-2·B′-3a(2026-07-10) 완료. 현재 다음 착수는 맨 위 재개 안내 참조(B′-3b/B′-4).**
 
   ### 🔥 방화벽 즉시 시작점 (다음 세션 여기부터)
 
