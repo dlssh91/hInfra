@@ -592,3 +592,59 @@ def test_parse_shared_context_across_all_items(tmp_path):
     result = parse(p)
     contexts = [ctx for _, _, ctx in result]
     assert all(c == contexts[0] for c in contexts)
+
+
+# ─ resolve_policies 배선 (B′-3a) — parse() 말미에서 1회 호출 ─────────────────
+
+def _find_policy_by_seq(policies, seq):
+    return next(pol for pol in policies if pol.get("seq") == seq)
+
+
+def test_parse_krfw_named_dst_object_moves_to_unresolved(tmp_path):
+    """krfw 목적지 셀이 named 객체(그룹명)면 dst_ips가 아니라 unresolved_dst로."""
+    header = _krfw_rows()[0]
+    rows = [
+        header,
+        ["1", "10.0.0.1", "WEB_SERVERS_GRP", "443", "tcp", None, None,
+         "허용", "Enable", None, None, "Enable", "테스트"],
+    ]
+    p = str(tmp_path / "krfw_named.xlsx")
+    _write_xlsx(p, "Detail", rows)
+    result = parse(p)
+    ctx = result[0][2]
+    json_part = ctx.split("FW_POLICIES_JSON:", 1)[1]
+    policies = json.loads(json_part)
+    pol = _find_policy_by_seq(policies, 1)
+    assert pol["dst_ips"] == []
+    assert pol["unresolved_dst"] == ["WEB_SERVERS_GRP"]
+
+
+def test_parse_krfw_ip_dst_stays_resolved(tmp_path):
+    """krfw 목적지가 정상 IP면 unresolved_dst는 비어있다(회귀 방지)."""
+    p = str(tmp_path / "krfw_ip.xlsx")
+    _write_xlsx(p, "Detail", _krfw_rows())
+    result = parse(p)
+    ctx = result[0][2]
+    json_part = ctx.split("FW_POLICIES_JSON:", 1)[1]
+    policies = json.loads(json_part)
+    for pol in policies:
+        assert pol["unresolved_dst"] == []
+        assert pol["unresolved_src"] == []
+
+
+def test_parse_id70_named_svc_spec_moves_to_unresolved_svc(tmp_path):
+    """ID70 SVC SPEC 단일 비숫자 토큰(named 서비스객체 후보) → unresolved_svc."""
+    rows = [
+        ["PRIORITY", "ENABLED", "SRC ADDR", "DST ADDR", "SVC SPEC", "ACTION",
+         "DAILY HIT COUNT"],
+        ["P001", "YES", "any", "10.0.0.0/8", "HTTPS_SVC_GRP", "allow", 5],
+    ]
+    p = str(tmp_path / "id70_named_svc.xlsx")
+    _write_xlsx(p, "FW_Policy", rows)
+    result = parse(p)
+    ctx = result[0][2]
+    json_part = ctx.split("FW_POLICIES_JSON:", 1)[1]
+    policies = json.loads(json_part)
+    assert len(policies) == 1
+    assert policies[0]["protocols"] == []
+    assert policies[0]["unresolved_svc"] == ["HTTPS_SVC_GRP"]

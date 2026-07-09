@@ -37,6 +37,14 @@ class Policy:
     protocols: List[str] = field(default_factory=list)  # "tcp"|"udp"|"icmp"|"any"
     hit_count: Optional[int] = None             # Palo Alto / ID70 전용
     description: str = ""
+    # 미해석(named 객체/그룹 후보) 토큰 보존 (B′-3a).
+    # resolve_policies()가 src_ips/dst_ips/dst_ports/protocols에서 IP/포트로
+    # 파싱 불가한 토큰을 제거해 여기로 옮긴다. 후속 B′-3b에서 ObjectTable로
+    # 실치환 시도 대상이 되며, 그 전까지는 detect_for_iss의 거짓양호 봉쇄
+    # 가드(양호→판단보류 강등)의 근거로 쓰인다.
+    unresolved_src: List[str] = field(default_factory=list)
+    unresolved_dst: List[str] = field(default_factory=list)
+    unresolved_svc: List[str] = field(default_factory=list)
 
 
 # ─ 포맷 탐지 ──────────────────────────────────────────────────────────────────
@@ -220,6 +228,101 @@ def _is_allow_action(action: str) -> bool:
     return action.strip().lower() in ("allow", "permit", "accept", "pass")
 
 
+# ─ 미해석 토큰 분류 + 해석 패스 (named 객체/그룹 후보 — B′-3a) ────────────────
+#
+# "미해석" 판정 기준(설계문서 2026-07-02-fw-implementation-design.md A-2 정의와
+# 동일): IP측 = `_is_any()` 아님 ∧ `ipaddress.ip_network()` 실패. 포트측 =
+# `_is_any_port()` 아님 ∧ `_parse_port_range()` 빈집합. 둘 다 아니면(=IP/CIDR/
+# any 또는 숫자/범위/any로 파싱 가능) 해석됨으로 간주해 원 필드에 유지한다.
+# IP 대시범위(`a-b`) 해석은 별도 과제(B′-4)로 아직 unparseable — 이번 태스크는
+# 그룹객체 후보를 "제거하지 않고 보존"하는 것이 목적이므로 대시범위도 일단
+# unresolved로 분류해도 안전(후속 과제가 좁혀줌).
+_KNOWN_PROTOCOL_TOKENS: FrozenSet[str] = frozenset({
+    "tcp", "udp", "icmp", "ip", "gre", "esp", "ah",
+    "any", "all", "*", "",
+})
+
+
+def _is_resolvable_ip_token(token: str) -> bool:
+    """src_ips/dst_ips 토큰이 IP/CIDR/any 계열로 파싱 가능하면 True."""
+    if _is_any(token):
+        return True
+    try:
+        ipaddress.ip_network(token.strip(), strict=False)
+        return True
+    except (ValueError, AttributeError):
+        return False
+
+
+def _is_resolvable_port_token(token: str) -> bool:
+    """dst_ports 토큰이 숫자/범위/any로 파싱 가능하면 True."""
+    if _is_any_port(token):
+        return True
+    return bool(_parse_port_range(token))
+
+
+def _is_resolvable_protocol_token(token: str) -> bool:
+    """protocols 토큰이 알려진 프로토콜명이거나 포트형으로 파싱 가능하면 True.
+
+    ID70 SVC SPEC 단일토큰(`_parse_svc_spec`)처럼 숫자가 아닌 값이 protocols에
+    떨어지는 경로가 있어(named 서비스객체 후보), tcp/udp/icmp 등 알려진
+    프로토콜명은 유지하고 그 외 미지 토큰만 unresolved_svc 후보로 취급한다.
+    """
+    if token.strip().lower() in _KNOWN_PROTOCOL_TOKENS:
+        return True
+    return _is_resolvable_port_token(token)
+
+
+def resolve_policies(
+    policies: List[Policy],
+    table: Any = None,
+) -> List[Policy]:
+    """정책 목록의 IP/포트 토큰을 해석 가능/불가능으로 분류(1회 패스).
+
+    파싱 가능한 토큰은 원래 필드(src_ips/dst_ips/dst_ports/protocols)에
+    그대로 유지하고, 불가능한 토큰(=named 객체/그룹 후보)은 해당 필드에서
+    제거해 unresolved_src/unresolved_dst/unresolved_svc로 옮긴다
+    (dst_ports·protocols의 미해석 토큰은 모두 unresolved_svc로 합류).
+
+    table: 후속 B′-3b에서 ObjectTable을 주입해 그룹→멤버 실치환에 쓰일
+    자리다. 현재는 None만 지원하며, 분류만 수행하고 치환은 하지 않는다.
+    """
+    for p in policies:
+        resolved_src: List[str] = []
+        for tok in p.src_ips:
+            if _is_resolvable_ip_token(tok):
+                resolved_src.append(tok)
+            else:
+                p.unresolved_src.append(tok)
+        p.src_ips = resolved_src
+
+        resolved_dst: List[str] = []
+        for tok in p.dst_ips:
+            if _is_resolvable_ip_token(tok):
+                resolved_dst.append(tok)
+            else:
+                p.unresolved_dst.append(tok)
+        p.dst_ips = resolved_dst
+
+        resolved_dport: List[str] = []
+        for tok in p.dst_ports:
+            if _is_resolvable_port_token(tok):
+                resolved_dport.append(tok)
+            else:
+                p.unresolved_svc.append(tok)
+        p.dst_ports = resolved_dport
+
+        resolved_proto: List[str] = []
+        for tok in p.protocols:
+            if _is_resolvable_protocol_token(tok):
+                resolved_proto.append(tok)
+            else:
+                p.unresolved_svc.append(tok)
+        p.protocols = resolved_proto
+
+    return policies
+
+
 # ─ 포맷별 capability 맵 ───────────────────────────────────────────────────────
 
 # {iss_id: {format: can_judge}}
@@ -288,6 +391,36 @@ _NO_CAPABILITY_REASON_BY_FORMAT: Dict[Tuple[str, str], str] = {
         "미사용 정책 자동 탐지가 불가능합니다. 담당자 인터뷰로 확인하세요."
     ),
 }
+
+# 항목별 미해석 토큰 가드 관련 필드(B′-3a §B-1 규칙3).
+# 030/031/034/041 = src+dst 미해석, 032/036 = svc(dst_ports/protocols) 미해석.
+# 033/035/037/038~040은 이 가드의 대상이 아니다(무영향).
+_UNRESOLVED_GUARD_FIELDS: Dict[str, Tuple[str, ...]] = {
+    "ISS-030": ("unresolved_src", "unresolved_dst"),
+    "ISS-031": ("unresolved_src", "unresolved_dst"),
+    "ISS-034": ("unresolved_src", "unresolved_dst"),
+    "ISS-041": ("unresolved_src", "unresolved_dst"),
+    "ISS-032": ("unresolved_svc",),
+    "ISS-036": ("unresolved_svc",),
+}
+
+
+def _count_unresolved_policies(iss_id: str, policies: List[Policy]) -> int:
+    """iss_id 관련 필드에 미해석 토큰을 가진 **enabled** 정책 수.
+
+    disabled 정책은 애초에 탐지 대상이 아니므로(각 detect_* 함수가 이미
+    enabled 필터링) 가드도 disabled 정책의 미해석은 무시한다.
+    """
+    fields = _UNRESOLVED_GUARD_FIELDS.get(iss_id)
+    if not fields:
+        return 0
+    count = 0
+    for p in policies:
+        if not p.enabled:
+            continue
+        if any(getattr(p, f) for f in fields):
+            count += 1
+    return count
 
 
 # ─ 탐지 함수들 ────────────────────────────────────────────────────────────────
@@ -585,6 +718,11 @@ def detect_for_iss(
         count = len(viol_policies)
 
     active_total = len([p for p in policies if p.enabled])
+    # 거짓양호 봉쇄 가드 ② (B′-3a §B-1 규칙3): 항목 관련 필드에 미해석
+    # (named 객체/그룹 후보) 토큰을 가진 enabled 정책 수. 기존 가드
+    # (unrecognized_action_count, 위 docstring)와 독립적으로 판정한다 —
+    # 서로 다른 근거(액션 미인식 vs. 토큰 미해석)라 순서 간섭 없이 병기 가능.
+    unresolved_count = _count_unresolved_policies(iss_id, policies)
 
     if count > 0:
         rationale = (
@@ -597,17 +735,31 @@ def detect_for_iss(
                 f" (참고: 미인식 정책 액션 {unrecognized_action_count}건 존재 — "
                 "추가 미탐 가능성 있으나 이미 탐지된 위반은 유효.)"
             )
+        if unresolved_count > 0:
+            rationale += (
+                f" (참고: 미해석 객체 토큰 보유 정책 {unresolved_count}건 존재 — "
+                "추가 미탐 가능성 있으나 이미 탐지된 위반은 유효.)"
+            )
         verdict = "취약"
         confidence = 0.9
-    elif unrecognized_action_count > 0:
-        # 거짓양호 봉쇄 가드(핵심 계약): 위반 0건이라도 파일 내 미인식 action이
-        # 있으면 "양호"를 단정할 수 없다 — 그 action이 실은 allow였다면
-        # 탐지 로직이 놓쳤을 수 있으므로 판단보류로 강등한다.
+    elif unresolved_count > 0 or unrecognized_action_count > 0:
+        # 거짓양호 봉쇄 가드(핵심 계약): 위반 0건이라도 (a) 파일 내 미인식
+        # action이 있거나 (b) 판정 관련 필드에 미해석 객체 토큰을 가진
+        # enabled 정책이 있으면 "양호"를 단정할 수 없다 — 어느 쪽이든 탐지
+        # 로직이 실제 위반을 놓쳤을 가능성이 있으므로 판단보류로 강등한다.
+        hold_reasons: List[str] = []
+        if unresolved_count > 0:
+            hold_reasons.append(
+                f"미해석 객체 토큰 보유 정책 {unresolved_count}건 → 양호 단정 불가"
+            )
+        if unrecognized_action_count > 0:
+            hold_reasons.append(
+                f"미인식 정책 액션 {unrecognized_action_count}건 → 양호 단정 불가"
+            )
         rationale = (
             f"[FW 결정론 탐지] {detect_label} — "
             f"활성 정책 {active_total}개 전수 검사, 해당 이상 없음. "
-            f"단, 미인식 정책 액션 {unrecognized_action_count}건 → "
-            "양호 단정 불가(판단보류)."
+            f"단, {' / '.join(hold_reasons)}(판단보류)."
         )
         verdict = "판단보류"
         confidence = 0.0
@@ -640,11 +792,19 @@ def policy_to_dict(p: Policy) -> Dict[str, Any]:
         "src_ports": p.src_ports, "dst_ports": p.dst_ports,
         "protocols": p.protocols, "hit_count": p.hit_count,
         "description": p.description,
+        "unresolved_src": p.unresolved_src,
+        "unresolved_dst": p.unresolved_dst,
+        "unresolved_svc": p.unresolved_svc,
     }
 
 
 def policy_from_dict(d: Dict[str, Any]) -> Policy:
-    """dict → Policy 역직렬화 (핸들러에서 context JSON 파싱 시 사용)."""
+    """dict → Policy 역직렬화 (핸들러에서 context JSON 파싱 시 사용).
+
+    unresolved_src/dst/svc(B′-3a 신규 필드)는 `.get(..., []) or []` 패턴으로
+    하위호환 처리 — 신규 필드 도입 이전에 직렬화된 데이터를 로드해도 빈
+    리스트로 채워져 KeyError 없이 동작한다.
+    """
     return Policy(
         seq=d.get("seq"),
         rule_id=d.get("rule_id"),
@@ -658,4 +818,7 @@ def policy_from_dict(d: Dict[str, Any]) -> Policy:
         protocols=d.get("protocols") or [],
         hit_count=d.get("hit_count"),
         description=d.get("description") or "",
+        unresolved_src=d.get("unresolved_src", []) or [],
+        unresolved_dst=d.get("unresolved_dst", []) or [],
+        unresolved_svc=d.get("unresolved_svc", []) or [],
     )

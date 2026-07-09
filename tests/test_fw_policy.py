@@ -35,6 +35,7 @@ from judge_tool.fw_policy import (
     detect_vuln_remote_service,
     policy_from_dict,
     policy_to_dict,
+    resolve_policies,
     sniff_format,
 )
 
@@ -717,3 +718,197 @@ def test_policy_from_dict_defaults():
     assert p.action == ""
     assert p.src_ips == []
     assert p.hit_count is None
+
+
+def test_policy_unresolved_fields_default_empty():
+    p = _make(action="allow")
+    assert p.unresolved_src == []
+    assert p.unresolved_dst == []
+    assert p.unresolved_svc == []
+
+
+# ─ resolve_policies (B′-3a) — named 객체 토큰 분류 ────────────────────────────
+
+def test_resolve_policies_named_dst_moves_to_unresolved():
+    """(a) named 객체 토큰(그룹명) dst → unresolved_dst로 분류, dst_ips에서 제거."""
+    p = _make(action="allow", src_ips=["10.0.0.1"], dst_ips=["WEB_SERVERS_GRP"])
+    result = resolve_policies([p])
+    assert result[0].dst_ips == []
+    assert result[0].unresolved_dst == ["WEB_SERVERS_GRP"]
+
+
+def test_resolve_policies_named_src_moves_to_unresolved():
+    p = _make(action="allow", src_ips=["ADMIN_GRP"], dst_ips=["any"])
+    resolve_policies([p])
+    assert p.src_ips == []
+    assert p.unresolved_src == ["ADMIN_GRP"]
+
+
+def test_resolve_policies_ip_and_cidr_kept():
+    p = _make(action="allow", src_ips=["10.0.0.1", "192.168.1.0/24", "any"],
+               dst_ips=["0.0.0.0/0"])
+    resolve_policies([p])
+    assert p.src_ips == ["10.0.0.1", "192.168.1.0/24", "any"]
+    assert p.unresolved_src == []
+    assert p.dst_ips == ["0.0.0.0/0"]
+    assert p.unresolved_dst == []
+
+
+def test_resolve_policies_named_svc_from_dst_ports():
+    p = _make(action="allow", dst_ports=["HTTP_SVC_GRP"])
+    resolve_policies([p])
+    assert p.dst_ports == []
+    assert p.unresolved_svc == ["HTTP_SVC_GRP"]
+
+
+def test_resolve_policies_numeric_port_kept():
+    p = _make(action="allow", dst_ports=["22", "1-65535", "any"])
+    resolve_policies([p])
+    assert p.dst_ports == ["22", "1-65535", "any"]
+    assert p.unresolved_svc == []
+
+
+def test_resolve_policies_known_protocol_kept():
+    p = Policy(seq=1, rule_id=None, action="allow", protocols=["tcp", "udp", "ANY"])
+    resolve_policies([p])
+    assert p.protocols == ["tcp", "udp", "ANY"]
+    assert p.unresolved_svc == []
+
+
+def test_resolve_policies_unknown_protocol_token_moves_to_unresolved_svc():
+    p = Policy(seq=1, rule_id=None, action="allow", protocols=["CUSTOM_SVC_OBJ"])
+    resolve_policies([p])
+    assert p.protocols == []
+    assert p.unresolved_svc == ["CUSTOM_SVC_OBJ"]
+
+
+def test_resolve_policies_table_none_only_classifies():
+    """table=None(현재 유일 지원)이면 치환 없이 분류만 수행."""
+    p = _make(action="allow", dst_ips=["DB_GRP"])
+    resolve_policies([p], table=None)
+    assert p.dst_ips == []
+    assert p.unresolved_dst == ["DB_GRP"]
+
+
+def test_resolve_policies_returns_same_list():
+    p = _make(action="allow")
+    result = resolve_policies([p])
+    assert result == [p]
+
+
+# ─ detect_for_iss — 미해석 객체 토큰 거짓양호 봉쇄 가드 (B′-3a §B-1 규칙3) ────
+
+def test_detect_for_iss_030_unresolved_and_no_violation_downgrades_to_hold():
+    """(b) 030: unresolved 존재 + 위반 0 → 판단보류, rationale에 명시 문구."""
+    p = _make(action="deny", src_ips=["10.0.0.1"], dst_ips=["192.168.1.1"])
+    p.unresolved_dst = ["WEB_GRP"]
+    r = detect_for_iss("ISS-030", [p], _FORMAT_KRFW)
+    assert r.verdict == "판단보류"
+    assert "미해석 객체 토큰 보유 정책 1건 → 양호 단정 불가" in r.rationale
+
+
+def test_detect_for_iss_032_unresolved_svc_and_no_violation_downgrades_to_hold():
+    """(b) 032: unresolved_svc 존재 + 위반 0 → 판단보류."""
+    p = _make(action="allow", dst_ports=["443"])
+    p.unresolved_svc = ["HTTP_SVC_GRP"]
+    r = detect_for_iss("ISS-032", [p], _FORMAT_KRFW)
+    assert r.verdict == "판단보류"
+    assert "미해석 객체 토큰 보유 정책 1건 → 양호 단정 불가" in r.rationale
+
+
+def test_detect_for_iss_030_unresolved_but_violation_exists_stays_vulnerable():
+    """(c) 위반≥1 + unresolved → 취약 유지 + rationale에 미해석 건수 부기."""
+    p = _make(action="allow", src_ips=["any"], dst_ips=["any"])
+    p.unresolved_dst = ["WEB_GRP"]
+    r = detect_for_iss("ISS-030", [p], _FORMAT_KRFW)
+    assert r.verdict == "취약"
+    assert "미해석 객체 토큰 보유 정책 1건 존재" in r.rationale
+
+
+def test_detect_for_iss_036_unresolved_but_violation_exists_stays_vulnerable():
+    p = _make(action="allow", dst_ports=["69"])
+    p.unresolved_svc = ["SVC_GRP"]
+    r = detect_for_iss("ISS-036", [p], _FORMAT_KRFW)
+    assert r.verdict == "취약"
+    assert "미해석 객체 토큰 보유 정책 1건 존재" in r.rationale
+
+
+def test_detect_for_iss_no_unresolved_verdict_unchanged_positive():
+    """(d) unresolved 없음 → 기존 판정 불변(양극성 회귀: 취약 유지)."""
+    p = _make(action="allow", src_ips=["any"], dst_ips=["any"])
+    r = detect_for_iss("ISS-030", [p], _FORMAT_KRFW)
+    assert r.verdict == "취약"
+    assert "미해석" not in r.rationale
+
+
+def test_detect_for_iss_no_unresolved_verdict_unchanged_negative():
+    """(d) unresolved 없음 → 기존 판정 불변(양극성 회귀: 양호 유지)."""
+    p = _make(action="deny", src_ips=["10.0.0.1"], dst_ips=["192.168.1.1"])
+    r = detect_for_iss("ISS-030", [p], _FORMAT_KRFW)
+    assert r.verdict == "양호"
+    assert "미해석" not in r.rationale
+
+
+@pytest.mark.parametrize("iss_id,field", [
+    ("ISS-033", "unresolved_src"),
+    ("ISS-035", "unresolved_src"),
+    ("ISS-037", "unresolved_svc"),
+])
+def test_detect_for_iss_guard_no_effect_on_unrelated_items(iss_id, field):
+    """(e) 033/035/037은 unresolved 토큰이 있어도 가드 무영향(capability로만 결정)."""
+    p = _make(action="allow", hit_count=100)
+    setattr(p, field, ["SOME_GRP"])
+    r = detect_for_iss(iss_id, [p], _FORMAT_ID70)
+    assert r.verdict == "양호"
+    assert "미해석" not in r.rationale
+
+
+def test_detect_for_iss_guard_disabled_policy_unresolved_no_effect():
+    """(g) disabled 정책의 unresolved는 가드 미발동(위반도 없으니 양호 유지)."""
+    p_disabled = _make(action="deny", enabled=False)
+    p_disabled.unresolved_dst = ["WEB_GRP"]
+    p_active = _make(action="deny", src_ips=["10.0.0.1"], dst_ips=["192.168.1.1"])
+    r = detect_for_iss("ISS-030", [p_disabled, p_active], _FORMAT_KRFW)
+    assert r.verdict == "양호"
+    assert "미해석" not in r.rationale
+
+
+def test_detect_for_iss_unresolved_guard_independent_of_unrecognized_action_guard():
+    """두 가드가 각각 독립적으로 판단보류를 만들고 함께 있으면 둘 다 명시."""
+    p = _make(action="deny")
+    p.unresolved_dst = ["WEB_GRP"]
+    r = detect_for_iss("ISS-030", [p], _FORMAT_KRFW, unrecognized_action_count=2)
+    assert r.verdict == "판단보류"
+    assert "미해석 객체 토큰 보유 정책 1건 → 양호 단정 불가" in r.rationale
+    assert "미인식 정책 액션 2건 → 양호 단정 불가" in r.rationale
+
+
+# ─ policy_to_dict / policy_from_dict — unresolved 필드 왕복 (B′-3a) ──────────
+
+def test_policy_roundtrip_unresolved_fields():
+    """(f) 직렬화 왕복: unresolved_src/dst/svc 보존."""
+    p = Policy(
+        seq=1, rule_id="R001", enabled=True, action="allow",
+        src_ips=["10.0.0.1"], dst_ips=["any"],
+        unresolved_src=["ADMIN_GRP"], unresolved_dst=["WEB_GRP"],
+        unresolved_svc=["HTTP_SVC_GRP"],
+    )
+    d = policy_to_dict(p)
+    p2 = policy_from_dict(d)
+    assert p2.unresolved_src == p.unresolved_src
+    assert p2.unresolved_dst == p.unresolved_dst
+    assert p2.unresolved_svc == p.unresolved_svc
+
+
+def test_policy_from_dict_unresolved_fields_backward_compatible():
+    """기존(신규 필드 도입 이전) 직렬 데이터 로드 시 KeyError 없이 빈 리스트."""
+    legacy_dict = {
+        "seq": 1, "rule_id": "R001", "enabled": True, "action": "allow",
+        "two_way": False, "src_ips": ["any"], "dst_ips": ["any"],
+        "src_ports": [], "dst_ports": [], "protocols": [],
+        "hit_count": None, "description": "",
+    }
+    p = policy_from_dict(legacy_dict)
+    assert p.unresolved_src == []
+    assert p.unresolved_dst == []
+    assert p.unresolved_svc == []

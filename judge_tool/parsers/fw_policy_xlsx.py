@@ -45,7 +45,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import openpyxl
 
 from judge_tool.errors import ReportError
-from judge_tool.fw_policy import Policy, policy_to_dict, sniff_format
+from judge_tool.fw_policy import Policy, policy_to_dict, resolve_policies, sniff_format
 from judge_tool.models import ResourceEvidence
 
 # ISS-030~041 대상 ID 목록 (파서가 emit할 ID 집합)
@@ -161,6 +161,13 @@ def parse(
     # unknown으로 강등해 detect_for_iss의 기존 unknown 경로(전 항목 판단보류)를 태운다.
     if not all_policies:
         detected_fmt = "unknown"
+
+    # (B′-3a) 해석 패스: IP/포트로 파싱 불가한 토큰(named 객체/그룹 후보)을
+    # src_ips/dst_ips/dst_ports/protocols에서 unresolved_src/dst/svc로 이동.
+    # 파서 자체는 셀 값을 그대로 필드에 적재할 뿐 토큰 유효성 검사를 하지
+    # 않으므로(각 _parse_* 어댑터 확인 — 이중 필터링 없음) 여기 1회 호출로
+    # 전 포맷 공통 분류를 완결한다. table=None → 분류만(치환은 B′-3b).
+    all_policies = resolve_policies(all_policies)
 
     # compact JSON 직렬화 (단일 행 보장)
     policies_json = json.dumps(
