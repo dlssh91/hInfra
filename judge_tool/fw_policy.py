@@ -114,8 +114,45 @@ def sniff_format(
 
 # ─ 포트/CIDR 유틸 ─────────────────────────────────────────────────────────────
 
-# 광역 CIDR 임계: prefix_len <= 이 값 (≤ /8 = 16M+ 호스트)
-_BROAD_CIDR_PREFIX_LEN = 8
+# 광역 IP범위 임계: 구간 내 호스트 수 >= 이 값 (=/16 상당, 65536개 호스트).
+# (B′-4/M-1) 기존 `_BROAD_CIDR_PREFIX_LEN=8`(prefix_len<=8만 광역)은 기준
+# xlsx 원문에 구체 숫자 근거가 없고, Opus 실사에서 /12~/16 대역이 미탐되는
+# 것으로 확인되어 안전마진을 두고 호스트수 임계로 교체(더 넓게 탐지하는
+# 방향 — 미탐 축소). /24(256개) 이하는 여전히 비광역 유지(과탐 방지).
+_BROAD_RANGE_HOST_THRESHOLD = 65536
+
+# 대시범위(`10.0.0.1-10.0.0.100`) 파싱용 정규식 — 양쪽 다 유효 IP 토큰이어야
+# 함(공백/대시 미포함 문자열). CIDR("a/b")에는 대시가 없어 매치되지 않는다.
+_DASH_RANGE_RE = re.compile(r"^\s*([^\s-]+)\s*-\s*([^\s-]+)\s*$")
+
+
+def _parse_ip_range(ip_str: str) -> Optional[Tuple[int, int]]:
+    """IP 문자열(CIDR/단일 IP/대시범위)을 (시작 정수, 끝 정수) 구간으로 통일 파싱한다
+    (B′-4 H-4+M-1 통합 유틸). 이 표현으로 통일하면 광역판정(호스트수 임계)과
+    포함관계판정(구간 포함)을 동일한 정수쌍 비교로 처리할 수 있다.
+    - CIDR(`10.0.0.0/24`) → (network_address, broadcast_address)의 정수.
+    - 단일 IP(`10.0.0.5`) → (같은 정수, 같은 정수).
+    - 대시범위(`10.0.0.1-10.0.0.100`) → (low, high)의 정수. low>high면 파싱
+      실패로 처리(형식 불명 취급).
+    - 파싱 불가(형식 불명) → None(호출측에서 기존과 동일하게 보수적으로
+      처리 — 비광역/미포함 방향, 회귀 아님).
+    """
+    s = ip_str.strip()
+    m = _DASH_RANGE_RE.match(s)
+    if m:
+        try:
+            lo = int(ipaddress.ip_address(m.group(1)))
+            hi = int(ipaddress.ip_address(m.group(2)))
+        except ValueError:
+            return None
+        if lo > hi:
+            return None
+        return (lo, hi)
+    try:
+        net = ipaddress.ip_network(s, strict=False)
+    except ValueError:
+        return None
+    return (int(net.network_address), int(net.broadcast_address))
 
 # 관리 포트 집합 (ISS-031)
 ADMIN_PORTS: FrozenSet[int] = frozenset({
@@ -153,14 +190,19 @@ def _is_any(ip_str: str) -> bool:
 
 
 def _is_broad_cidr(ip_str: str) -> bool:
-    """광역 CIDR 여부: any이거나 prefix_len <= _BROAD_CIDR_PREFIX_LEN."""
+    """광역 IP범위 여부: any이거나 구간 호스트 수 >= _BROAD_RANGE_HOST_THRESHOLD.
+
+    CIDR/단일 IP/대시범위 모두 `_parse_ip_range`로 통일 파싱해 동일 기준으로
+    판정한다(H-4: 대시범위도 크기 기준이라 자연 확장). 파싱 실패(형식 불명)는
+    비광역으로 보수 처리(기존과 동일한 방향, 회귀 아님).
+    """
     if _is_any(ip_str):
         return True
-    try:
-        net = ipaddress.ip_network(ip_str, strict=False)
-        return net.prefixlen <= _BROAD_CIDR_PREFIX_LEN
-    except ValueError:
+    rng = _parse_ip_range(ip_str)
+    if rng is None:
         return False
+    start, end = rng
+    return (end - start + 1) >= _BROAD_RANGE_HOST_THRESHOLD
 
 
 # sentinel: 1024개 초과 포트 범위를 표현하는 특수값
@@ -701,26 +743,45 @@ def _policy_covers(upper: Policy, lower: Policy) -> bool:
         return False
     if not _ips_cover(upper.dst_ips, lower.dst_ips):
         return False
-    # 포트 포함 검사
-    if upper.dst_ports and lower.dst_ports:
+    # 포트 포함 검사 (B′-4 M-2: 비대칭 수정 — 기존엔 upper/lower dst_ports가
+    # 둘 다 비어있지 않을 때만 검사해, lower가 전포트(dst_ports=[])인데
+    # upper가 특정포트만 허용해도 검사를 건너뛰고 "포함"으로 오판했다(거짓
+    # 그림자). upper가 전포트가 아니면서 lower가 전포트(또는 unresolved_svc로
+    # 인한 불확정)면 covers=False. B′-3a-fix와 동형 패턴: unresolved_svc로
+    # 인한 빈 dst_ports는 upper/lower 양쪽 모두 "전포트"로 오인하지 않는다
+    # (불확정을 포함으로 오판 금지 — 보수적으로 covers=False).
+    upper_all_ports = not upper.dst_ports and not upper.unresolved_svc
+    if not upper_all_ports:
+        if not upper.dst_ports:  # unresolved_svc만 있어 불확정
+            return False
         upper_ports: Set[int] = set()
         for ps in upper.dst_ports:
             if _is_any_port(ps):
                 upper_ports = {_SENTINEL_WIDE_RANGE}
                 break
             upper_ports |= _parse_port_range(ps)
-        lower_ports: Set[int] = set()
-        for ps in lower.dst_ports:
-            lower_ports |= _parse_port_range(ps)
-        # sentinel: upper가 전포트 → 항상 포함
-        if _SENTINEL_WIDE_RANGE not in upper_ports and lower_ports:
-            if not lower_ports.issubset(upper_ports):
+        if _SENTINEL_WIDE_RANGE not in upper_ports:
+            # lower가 전포트(dst_ports=[])면 unresolved_svc 유무와 무관하게
+            # "포함 안 됨" 방향으로 보수 처리(lower의 불확정은 판단보류 몫이지
+            # 여기서 covers=True로 오판할 몫이 아님).
+            lower_all_ports = not lower.dst_ports
+            if lower_all_ports:
+                return False
+            lower_ports: Set[int] = set()
+            for ps in lower.dst_ports:
+                lower_ports |= _parse_port_range(ps)
+            if _SENTINEL_WIDE_RANGE in lower_ports or not lower_ports.issubset(upper_ports):
                 return False
     return True
 
 
 def _ips_cover(upper_list: List[str], lower_list: List[str]) -> bool:
-    """upper_list의 CIDR들이 lower_list의 모든 IP를 포함하면 True."""
+    """upper_list의 IP범위들이 lower_list의 모든 IP범위를 포함하면 True.
+
+    (B′-4 H-4) `ipaddress.ip_network()` 직접 파싱 대신 `_parse_ip_range` 기반
+    정수구간 포함 비교로 통일 — CIDR뿐 아니라 대시범위도 지원한다. CIDR만
+    쓰는 기존 케이스는 정수구간 포함이 `subnet_of`와 동치이므로 회귀 없음.
+    """
     if not upper_list or all(_is_any(ip) for ip in upper_list):
         return True
     if not lower_list or all(_is_any(ip) for ip in lower_list):
@@ -729,22 +790,22 @@ def _ips_cover(upper_list: List[str], lower_list: List[str]) -> bool:
     for lower_ip in lower_list:
         if _is_any(lower_ip):
             return False  # lower가 any인데 upper가 한정 → 불포함
-        try:
-            lower_net = ipaddress.ip_network(lower_ip, strict=False)
-        except ValueError:
+        lower_rng = _parse_ip_range(lower_ip)
+        if lower_rng is None:
             return False
+        lower_start, lower_end = lower_rng
         covered = False
         for upper_ip in upper_list:
             if _is_any(upper_ip):
                 covered = True
                 break
-            try:
-                upper_net = ipaddress.ip_network(upper_ip, strict=False)
-                if lower_net.subnet_of(upper_net):  # type: ignore[attr-defined]
-                    covered = True
-                    break
-            except (ValueError, TypeError):
-                pass
+            upper_rng = _parse_ip_range(upper_ip)
+            if upper_rng is None:
+                continue
+            upper_start, upper_end = upper_rng
+            if upper_start <= lower_start and upper_end >= lower_end:
+                covered = True
+                break
         if not covered:
             return False
     return True

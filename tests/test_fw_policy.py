@@ -3,6 +3,8 @@
 합성 Policy 객체 사용 — 실데이터 불필요.
 탐지 함수별 양성/음성 케이스 + detect_for_iss capability 검사.
 """
+import ipaddress
+
 import pytest
 
 from judge_tool.fw_objects import ObjectTable
@@ -22,7 +24,9 @@ from judge_tool.fw_policy import (
     _is_any_port,
     _is_broad_cidr,
     _ips_cover,
+    _parse_ip_range,
     _parse_port_range,
+    _policy_covers,
     _ports_intersect,
     _SENTINEL_WIDE_RANGE,
     detect_all_port_allow,
@@ -132,8 +136,7 @@ def test_is_broad_cidr_any():
 
 
 def test_is_broad_cidr_slash8_boundary():
-    assert _is_broad_cidr("10.0.0.0/8")   # /8 → broad
-    assert not _is_broad_cidr("10.0.0.0/9")  # /9 → not broad
+    assert _is_broad_cidr("10.0.0.0/8")   # /8 → broad (기존 유지)
 
 
 def test_is_broad_cidr_slash24_false():
@@ -146,6 +149,86 @@ def test_is_broad_cidr_host_false():
 
 def test_is_broad_cidr_invalid_false():
     assert not _is_broad_cidr("not-an-ip")
+
+
+# ─ M-1: 광역 임계 /8→/16(호스트수 65536) 상향 ──────────────────────────────────
+
+def test_is_broad_cidr_slash16_now_broad():
+    # /16 = 65536개 호스트 → 신규 임계에서 광역(기존엔 미탐이었음)
+    assert _is_broad_cidr("10.0.0.0/16")
+
+
+def test_is_broad_cidr_slash12_now_broad():
+    # /12 = 1,048,576개 호스트 → 광역(Opus 실사에서 미탐으로 지적된 케이스)
+    assert _is_broad_cidr("10.0.0.0/12")
+
+
+def test_is_broad_cidr_slash17_still_not_broad():
+    # /17 = 32768개 호스트 → 임계(65536) 미만 → 비광역(과탐 방지 회귀핀)
+    assert not _is_broad_cidr("10.0.0.0/17")
+
+
+def test_is_broad_cidr_slash24_still_not_broad_regression():
+    # /24 = 256개 호스트 → 여전히 비광역(과탐 방지 회귀핀, 안전마진 확보)
+    assert not _is_broad_cidr("192.168.1.0/24")
+
+
+# ─ _parse_ip_range (H-4/M-1 통합 유틸) ─────────────────────────────────────────
+
+def test_parse_ip_range_cidr():
+    assert _parse_ip_range("10.0.0.0/24") == (
+        int(ipaddress.ip_address("10.0.0.0")),
+        int(ipaddress.ip_address("10.0.0.255")),
+    )
+
+
+def test_parse_ip_range_single_ip():
+    n = int(ipaddress.ip_address("10.0.0.5"))
+    assert _parse_ip_range("10.0.0.5") == (n, n)
+
+
+def test_parse_ip_range_dash_range():
+    assert _parse_ip_range("10.0.0.1-10.0.0.100") == (
+        int(ipaddress.ip_address("10.0.0.1")),
+        int(ipaddress.ip_address("10.0.0.100")),
+    )
+
+
+def test_parse_ip_range_dash_range_low_gt_high_is_none():
+    assert _parse_ip_range("10.0.0.100-10.0.0.1") is None
+
+
+def test_parse_ip_range_invalid_is_none():
+    assert _parse_ip_range("not-an-ip") is None
+    assert _parse_ip_range("") is None
+
+
+# ─ H-4: IP 대시범위 지원 (_is_broad_cidr / _ips_cover) ────────────────────────
+
+def test_is_broad_cidr_dash_range_wide_is_broad():
+    # 65536개 이상 호스트를 포괄하는 대시범위 → 광역(기존엔 ValueError로 미탐)
+    assert _is_broad_cidr("10.0.0.1-10.1.0.0")
+
+
+def test_is_broad_cidr_dash_range_narrow_not_broad():
+    # 좁은 대시범위(10개 호스트)는 여전히 비광역
+    assert not _is_broad_cidr("10.0.0.1-10.0.0.10")
+
+
+def test_ips_cover_dash_range_covered_by_cidr():
+    # upper CIDR(/16)이 lower 대시범위를 완전 포함 → 그림자 포함관계 성립
+    assert _ips_cover(["10.0.0.0/16"], ["10.0.5.1-10.0.5.100"])
+
+
+def test_ips_cover_dash_range_not_covered():
+    # lower 대시범위가 upper 범위 밖으로 걸침 → 불포함
+    assert not _ips_cover(["10.0.0.0/24"], ["10.0.0.200-10.0.1.5"])
+
+
+def test_ips_cover_cidr_only_regression_subnet():
+    # 기존 CIDR-only 케이스: subnet_of와 동치 — 회귀 없음
+    assert _ips_cover(["10.0.0.0/8"], ["10.1.2.0/24"])
+    assert not _ips_cover(["10.0.0.0/24"], ["10.1.2.0/24"])
 
 
 # ─ _parse_port_range / _is_any_port ────────────────────────────────────────────
@@ -1228,3 +1311,95 @@ def test_aux_empty_group_normal_case_regression_unaffected():
     assert p.unresolved_dst == []
     r = detect_for_iss("ISS-031", [p], _FORMAT_KRFW)
     assert r.verdict == "취약"
+
+
+# ═ B′-4 — 정밀도 보정: H-4(IP 대시범위) + M-1(광역임계 /16) + M-2(그림자포트비대칭) ═
+
+# ─ H-4: ISS-031 대시범위 광역/비광역 + ISS-034 대시범위 그림자 ────────────────
+
+def test_detect_for_iss_031_dash_range_wide_is_vulnerable():
+    # 65536개 이상 호스트를 포괄하는 대시범위 → ISS-031 취약(관리포트 포함)
+    p = _make(action="allow", src_ips=["10.0.0.1-10.1.0.0"], dst_ports=["22"])
+    r = detect_for_iss("ISS-031", [p], _FORMAT_KRFW)
+    assert r.verdict == "취약"
+
+
+def test_detect_for_iss_031_dash_range_narrow_is_good():
+    # 좁은 대시범위(10개 호스트)는 여전히 비광역 → 양호(과탐 방지 회귀핀)
+    p = _make(action="allow", src_ips=["10.0.0.1-10.0.0.10"], dst_ports=["22"])
+    r = detect_for_iss("ISS-031", [p], _FORMAT_KRFW)
+    assert r.verdict == "양호"
+
+
+def test_detect_shadow_dash_range_covered_by_cidr():
+    # upper CIDR(/16)이 lower 대시범위를 완전 포함 + action 상이 → 그림자
+    upper = _make(action="allow", seq=1, src_ips=["10.0.0.0/16"], dst_ips=["any"])
+    lower = _make(action="deny", seq=2,
+                  src_ips=["10.0.5.1-10.0.5.100"], dst_ips=["any"])
+    result = detect_shadow_policies([upper, lower])
+    assert result == [(upper, lower)]
+
+
+def test_detect_for_iss_034_dash_range_shadow_vulnerable():
+    upper = _make(action="allow", seq=1, src_ips=["10.0.0.0/16"], dst_ips=["any"])
+    lower = _make(action="deny", seq=2,
+                  src_ips=["10.0.5.1-10.0.5.100"], dst_ips=["any"])
+    r = detect_for_iss("ISS-034", [upper, lower], _FORMAT_KRFW)
+    assert r.verdict == "취약"
+
+
+# ─ M-2: _policy_covers 포트 비대칭 수정 ────────────────────────────────────────
+
+def test_policy_covers_a_lower_all_ports_upper_restricted_is_false():
+    # (a) lower 전포트 + upper 제한 포트 → covers=False(거짓 그림자였던 것 수정)
+    upper = _make(action="allow", src_ips=["any"], dst_ips=["any"],
+                  dst_ports=["22"])
+    lower = _make(action="deny", src_ips=["10.0.0.5"], dst_ips=["10.0.0.5"],
+                  dst_ports=[])
+    assert _policy_covers(upper, lower) is False
+
+
+def test_policy_covers_b_upper_all_ports_lower_restricted_is_true():
+    # (b) upper 전포트 + lower 제한 포트 → covers=True(기존 유지, 회귀핀)
+    upper = _make(action="allow", src_ips=["any"], dst_ips=["any"],
+                  dst_ports=[])
+    lower = _make(action="deny", src_ips=["10.0.0.5"], dst_ips=["10.0.0.5"],
+                  dst_ports=["22"])
+    assert _policy_covers(upper, lower) is True
+
+
+def test_policy_covers_c_both_specific_subset_is_true():
+    # (c) 양쪽 특정 포트, subset → True(기존 유지)
+    upper = _make(action="allow", src_ips=["any"], dst_ips=["any"],
+                  dst_ports=["22", "23"])
+    lower = _make(action="deny", src_ips=["10.0.0.5"], dst_ips=["10.0.0.5"],
+                  dst_ports=["22"])
+    assert _policy_covers(upper, lower) is True
+
+
+def test_policy_covers_d_both_specific_not_subset_is_false():
+    # (d) 양쪽 특정, 비subset → False(기존 유지)
+    upper = _make(action="allow", src_ips=["any"], dst_ips=["any"],
+                  dst_ports=["22"])
+    lower = _make(action="deny", src_ips=["10.0.0.5"], dst_ips=["10.0.0.5"],
+                  dst_ports=["22", "23"])
+    assert _policy_covers(upper, lower) is False
+
+
+def test_policy_covers_e_upper_unresolved_svc_only_is_false():
+    # (e) upper dst_ports=[] ∧ unresolved_svc 존재(불확정) → covers=False(신규 가드)
+    upper = _make(action="allow", src_ips=["any"], dst_ips=["any"], dst_ports=[])
+    upper.unresolved_svc = ["SVC_GRP"]
+    lower = _make(action="deny", src_ips=["10.0.0.5"], dst_ips=["10.0.0.5"],
+                  dst_ports=["22"])
+    assert _policy_covers(upper, lower) is False
+
+
+def test_policy_covers_f_lower_unresolved_svc_only_is_false():
+    # (f) lower dst_ports=[] ∧ unresolved_svc 존재(불확정) → covers=False(신규 가드)
+    upper = _make(action="allow", src_ips=["any"], dst_ips=["any"],
+                  dst_ports=["22"])
+    lower = _make(action="deny", src_ips=["10.0.0.5"], dst_ips=["10.0.0.5"],
+                  dst_ports=[])
+    lower.unresolved_svc = ["SVC_GRP"]
+    assert _policy_covers(upper, lower) is False
