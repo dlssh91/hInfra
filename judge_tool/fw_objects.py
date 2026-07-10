@@ -118,6 +118,12 @@ def _validated_section(
                 f"--aux-objects 스키마 오류: '{name}.{key}' 값은 문자열 "
                 f"리스트여야 합니다: {path}"
             )
+        if not members:
+            raise ReportError(
+                f"--aux-objects 스키마 오류: 객체 '{name}.{key}'의 멤버가 "
+                f"비어 있습니다 — 빈 그룹은 허용되지 않습니다(0-leaf 확장으로 "
+                f"토큰이 조용히 사라지는 것을 방지): {path}"
+            )
     return section
 
 
@@ -131,9 +137,23 @@ def resolve_name(table: ObjectTable, kind: str, name: str) -> List[str]:
     visited-set으로 순환 참조를 감지하고, 재귀 깊이가 `_MAX_DEPTH`(8)를
     넘으면 `UnresolvableError`를 던진다 — 부분 결과를 반환하지 않고
     호출측이 원 토큰 전체를 미해석으로 유지하게 한다.
+
+    최종 해석 결과가 빈 리스트(0-leaf 확장 — 예: 멤버가 0개인 빈 그룹)이면
+    역시 `UnresolvableError`를 던진다. `load_aux_objects`가 로드 시점에
+    빈 그룹 정의를 이미 거부하므로 YAML 경로로는 도달하지 않지만, 로더를
+    우회해 `ObjectTable`을 프로그래매틱으로 직접 구성하는 호출측(테스트,
+    또는 향후 벤더 export 어댑터)이 실수로 빈 그룹을 주입해도 방어하기
+    위한 2차 가드다 — 빈 결과가 조용히 "토큰 소거"(호출측 extend([])에
+    의한 사실상 삭제)로 이어져 거짓양호/거짓취약을 유발하는 것을 막는다.
     """
     section = table.address if kind == "address" else table.service
-    return _expand_member(section, name, visited=frozenset(), depth=0)
+    result = _expand_member(section, name, visited=frozenset(), depth=0)
+    if not result:
+        raise UnresolvableError(
+            f"'{name}' 해석 결과가 빈 리스트입니다(빈 그룹 또는 0-leaf 확장) "
+            "— 미해석으로 처리합니다."
+        )
+    return result
 
 
 def _expand_member(

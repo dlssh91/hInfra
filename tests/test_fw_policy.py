@@ -1161,3 +1161,70 @@ def test_aux_table_given_but_token_absent_from_table_same_as_no_table():
     resolve_policies([p], table=table)
     assert p.dst_ips == []
     assert p.unresolved_dst == ["NOT_IN_TABLE_GRP"]
+
+
+# ═ B′-3b 후속 — 빈 그룹(0-leaf 확장) 토큰 증발 차단 (T9 리뷰 Medium) ═════════
+#
+# load_aux_objects는 빈 그룹 정의를 로드 시점에 거부하므로(test_fw_objects.py
+# 참조) 정상 YAML 경로로는 여기 도달하지 않는다. 그러나 fw_policy 쪽
+# 통합동작(resolve_policies)이 "로더를 신뢰하지 않아도" 안전한지를 별도로
+# 검증하기 위해, 여기서는 로더를 우회해 ObjectTable을 프로그래매틱으로
+# 직접 구성한다(=resolve_name의 2차 방어가 실제로 fw_policy 판정 결과에
+# 반영되는지 확인) — 리뷰가 명시한 "이중 방어" 계약의 통합 테스트.
+
+def test_aux_empty_group_src_port_stays_unresolved_blocks_false_good_iss035():
+    """[재현] ISS-035 거짓양호: src_ports=['EMPTY_SVC']가 멤버 0개 그룹으로
+    치환되면 extend([])로 토큰이 증발 → 위반 0건 '양호'로 오판정됐던 갭.
+    수정 후: resolve_name이 UnresolvableError → 원 토큰이 src_ports에 그대로
+    남아 ISS-035 갭 가드가 발동 → '판단보류'(거짓양호 차단)."""
+    table = ObjectTable(service={"EMPTY_SVC": []})  # 로더 우회 직접 주입
+    p = _make(action="allow", src_ports=["EMPTY_SVC"])
+    resolve_policies([p], table=table)
+    assert p.src_ports == ["EMPTY_SVC"]  # 토큰 증발하지 않고 그대로 잔존
+    r = detect_for_iss("ISS-035", [p], _FORMAT_ID70)
+    assert r.verdict == "판단보류"
+    assert "미해석 출발지포트 토큰 보유 정책 1건 → 양호 단정 불가" in r.rationale
+
+
+def test_aux_empty_group_address_stays_unresolved_blocks_false_vuln_iss030():
+    """[재현] ISS-030 거짓취약(과탐): src_ips=['EMPTY_GRP']가 멤버 0개
+    그룹으로 치환되면(수정 전) unresolved_src까지 비워져 '빈=any 간주'로
+    dst=any와 결합해 any-any 위반(취약)으로 오탐. 수정 후: unresolved_src에
+    토큰이 잔존해 '전체(any) 확정' 판단을 보류 → any-any 오탐 회피,
+    미해석 가드로 '판단보류'."""
+    table = ObjectTable(address={"EMPTY_GRP": []})  # 로더 우회 직접 주입
+    p = _make(action="allow", src_ips=["EMPTY_GRP"], dst_ips=["any"])
+    resolve_policies([p], table=table)
+    assert p.src_ips == []
+    assert p.unresolved_src == ["EMPTY_GRP"]  # 토큰 증발하지 않고 미해석 잔존
+    r = detect_for_iss("ISS-030", [p], _FORMAT_KRFW)
+    assert r.verdict == "판단보류"
+    assert "미해석 객체 토큰 보유 정책 1건 → 양호 단정 불가" in r.rationale
+
+
+def test_aux_empty_group_service_stays_unresolved_blocks_false_vuln_iss032():
+    """[재현] ISS-032 거짓취약(과탐): dst_ports 토큰이 멤버 0개 서비스
+    그룹으로 치환되면(수정 전) unresolved_svc까지 비워져 '전포트 허용'으로
+    오탐. 수정 후: unresolved_svc에 토큰이 잔존해 미해석 가드가 발동 →
+    '판단보류'."""
+    table = ObjectTable(service={"EMPTY_SVC_GRP": []})  # 로더 우회 직접 주입
+    p = _make(action="allow", src_ips=["any"], dst_ips=["10.0.0.1"],
+              dst_ports=["EMPTY_SVC_GRP"])
+    resolve_policies([p], table=table)
+    assert p.dst_ports == []
+    assert p.unresolved_svc == ["EMPTY_SVC_GRP"]  # 토큰 증발하지 않고 잔존
+    r = detect_for_iss("ISS-032", [p], _FORMAT_KRFW)
+    assert r.verdict == "판단보류"
+    assert "미해석 객체 토큰 보유 정책 1건 → 양호 단정 불가" in r.rationale
+
+
+def test_aux_empty_group_normal_case_regression_unaffected():
+    """정상(비어있지 않은) 그룹 확장은 이번 수정으로 영향받지 않음(회귀 0) —
+    B′-3b 기존 케이스 재확인."""
+    table = ObjectTable(address={"WEB_GRP": ["10.0.0.0/7"]})
+    p = _make(action="allow", dst_ips=["WEB_GRP"], dst_ports=["22"])
+    resolve_policies([p], table=table)
+    assert p.dst_ips == ["10.0.0.0/7"]
+    assert p.unresolved_dst == []
+    r = detect_for_iss("ISS-031", [p], _FORMAT_KRFW)
+    assert r.verdict == "취약"

@@ -888,6 +888,12 @@ def detect_for_iss(
                 f" (참고: 미해석 객체 토큰 보유 정책 {unresolved_count}건 존재 — "
                 "추가 미탐 가능성 있으나 이미 탐지된 위반은 유효.)"
             )
+        if src_port_unresolved_count > 0:
+            rationale += (
+                f" (참고: 미해석 출발지포트 토큰 보유 정책 "
+                f"{src_port_unresolved_count}건 존재 — 추가 미탐 가능성 있으나 "
+                "이미 탐지된 위반은 유효.)"
+            )
         verdict = "취약"
         confidence = 0.9
     elif (unresolved_count > 0 or unrecognized_action_count > 0

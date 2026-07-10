@@ -106,6 +106,25 @@ def test_load_aux_objects_value_list_with_non_string_raises(tmp_path):
         load_aux_objects(path)
 
 
+# ─ 빈 그룹(0-leaf 확장) 거부 — B′-3b 후속(T9 리뷰 Medium) ────────────────────
+#
+# 멤버가 0개인 그룹(`{EMPTY_SVC: []}`)이 로더를 통과하면
+# resolve_policies의 확장 헬퍼가 extend([])로 토큰을 사실상 소거해
+# ISS-035 거짓양호(src_ports 증발)·ISS-030/032 거짓취약(빈=any 간주)로
+# 이어진다. 로더 단계에서 fail-closed로 거부한다.
+
+def test_load_aux_objects_empty_member_list_address_raises(tmp_path):
+    path = _write_yaml(tmp_path, "address:\n  EMPTY_GRP: []\n")
+    with pytest.raises(ReportError, match="멤버가 비어 있습니다"):
+        load_aux_objects(path)
+
+
+def test_load_aux_objects_empty_member_list_service_raises(tmp_path):
+    path = _write_yaml(tmp_path, "service:\n  EMPTY_SVC: []\n")
+    with pytest.raises(ReportError, match="멤버가 비어 있습니다"):
+        load_aux_objects(path)
+
+
 # ─ resolve_name — 단순/중첩/순환/깊이초과 ────────────────────────────────────
 
 def test_resolve_name_simple_no_nesting():
@@ -179,3 +198,25 @@ def test_resolve_name_unknown_top_level_returns_as_leaf():
     """name 자체가 섹션에 없으면(호출측이 사전확인 없이 부른 경우) leaf로 반환."""
     table = ObjectTable(address={})
     assert resolve_name(table, "address", "NOT_IN_TABLE") == ["NOT_IN_TABLE"]
+
+
+# ─ resolve_name — 빈 그룹(0-leaf) 2차 방어 — B′-3b 후속(T9 리뷰 Medium) ──────
+#
+# load_aux_objects는 이미 빈 그룹 정의를 로드 시점에 거부하지만, 로더를
+# 우회해 ObjectTable을 프로그래매틱으로 직접 구성하는 호출측(테스트,
+# 향후 벤더 export 어댑터 등)에 대비해 resolve_name 자체도 최종 결과가
+# 빈 리스트면 UnresolvableError를 던진다(이중 방어).
+
+def test_resolve_name_empty_group_raises_unresolvable():
+    """로더를 우회해 멤버 0개 그룹을 직접 주입해도 resolve_name이 방어."""
+    table = ObjectTable(service={"EMPTY_SVC": []})
+    with pytest.raises(UnresolvableError):
+        resolve_name(table, "service", "EMPTY_SVC")
+
+
+def test_resolve_name_nested_collapses_to_empty_raises():
+    """중첩 그룹의 leaf가 결국 빈 그룹 하나뿐이면(0-leaf 확장) 전체가 빈
+    리스트로 붕괴 — 이 경우도 UnresolvableError."""
+    table = ObjectTable(address={"A": ["B"], "B": []})
+    with pytest.raises(UnresolvableError):
+        resolve_name(table, "address", "A")
