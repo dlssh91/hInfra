@@ -2,11 +2,22 @@
 
 > ═══ 재개 안내 (pull 후 "진행해줘"/"개발진행해"라고 하면 여기부터) ═══
 > **★★ 다음 착수 (병렬 가능 2트랙)**:
-> ① **FW B′-3b** — ObjectTable(`judge_tool/fw_objects.py`)+`--aux-objects` CLI+그룹 치환(중첩 재귀·visited·깊이8). 합성 픽스처로 구현 가능(실 객체 export는 현장 요청 대기). 설계=`2026-07-02-fw-implementation-design.md` Phase B′ 3번 "B′-3b" 블록. **스코프 추가**: ID70 SVC SPEC의 named src_port(예 `tcp WEB_OBJ 443`)가 ISS-035에서 미해석→양호로 새는 갭(최종리뷰 Low-2) — resolve_policies에 src_ports 편입 or 035 가드 편입으로 봉쇄. 이후 **B′-4 정밀도**(H-4 IP대시범위 / M-1 광역임계 /8→/16 / M-2 _policy_covers 포트비대칭).
-> ② **거짓양호 후속 F6~F8**(설계=`2026-07-03-falsegood-audit.md` §1 표) — F6 DBM-006/007(0행→양호, cov 픽스처 4곳 empty→양호 재설계), F7 DBM-005 mssql_rds, F8 container 오류출력 정규식 가드(실샘플 과트리거0 검증 필수). 별도 배치 권장.
+> ① **FW B′-4 정밀도** — H-4(IP 대시범위 `a-b`→CIDR 목록 파싱 유틸) / M-1(광역 임계 /8→/16 상향, 항목별 근거 확정) /
+>    M-2(`_policy_covers` 포트 비대칭: lower 전포트∧upper 제한→거짓그림자 수정). 이후 B-2(ISS-038/039 --aux 연계),
+>    벤더 객체 export→ObjectTable 캐노니컬 어댑터(실 export 확보 시, load_aux_objects fail-closed 계약 유지 확인).
+> ② **거짓양호 후속(비차단 잔여)** — oracle DBM-007 vendor exception config 과탐 방향 결함 정정(config 채움/rules 검증,
+>    T7 리뷰 인계). F9(DBM-033 이중화, 문서화된 설계 한계 — 우선순위 낮음), F10(server 명령실패 출력, 백로그).
+>    container 다변형(docker/ocp/eks/aks) 실샘플 확보 시 F8 과트리거 재검증(현재 corpus=k8s_master 1대뿐).
 > ⏳ **미완 리뷰(이월)**: 파일명→플랫폼 인지(profile.py, 2026-07-03 구현완료)는 **Fable 리뷰 여전히 미실시** — 재개 시 리뷰 or SHIP 판단.
-> 📌 **백로그(비차단)**: eol.yaml 커버리지 보강(잘 알려진 EoS(oracle 11/12/18, mysql 5.7, mssql 2012, pg≤12) 미등재→현재 판단보류로만 귀결 — 등재하면 능동 취약 판정 가능), FW _summarize_policy 미해석 병기, mysql 모드J checker interactive_timeout 추가 여지.
+> 📌 **백로그(비차단)**: eol.yaml 커버리지 보강(잘 알려진 EoS(oracle 11/12/18, mysql 5.7, mssql 2012, pg≤12) 미등재→현재 판단보류로만 귀결 — 등재하면 능동 취약 판정 가능), YAML aux-objects 중복 키 침묵 병합(명시 거부 선택 개선), F8 면제토큰 "Error from server" 광범위(방향 안전, 조치 불요).
 > ═══════════════════════════════════════════════════
+>
+> **✅ 2026-07-10 세션(라운드2) — 거짓양호 F6~F8 + FW B′-3b 병렬 완주 (5커밋, 2206 passed / 0 failed)**
+> 사이클: Fable 설계 → Sonnet 구현 → Opus 리뷰(med+ → Sonnet 개선 → Opus 재리뷰). 전 태스크 SHIP + 최종 브랜치 리뷰 SHIP(Critical/High/Medium 0).
+> - **F6+F7**(58b9293): DBM-005(mssql_rds)/006/007 모드J 등록(0행→판단보류). cov 픽스처 "empty→양호" 인코딩 6곳(브리프 추정4보다 많음, 투명히 재교정)을 유효행 good으로 교체. **oracle DBM-007 good 극성 재정의**(양호→판단보류) — vendor exception config가 전부 빈 리스트라 "행 있으면 값 불문 취약"이 구조적 사실(실수집 샘플로 확증, 과교정 아님). pg 모드B·mysql int() R3 흡수 비간섭 회귀 고정.
+> - **F8**(3b808b9+be38850): container 오류출력 가드(`_RE_ERROR_OUTPUT`, 명령흔적은 있으나 실패한 출력→handled=False 판단보류). 1차 리뷰 Medium: PRCC-013 eks_master는 Forbidden이 **양호신호**(autoAnalysis:595-598)인데 오강등 → `_ERROR_GUARD_EXEMPT_TOKENS`((item,variant)→기대신호 토큰) 테이블로 해소. 과트리거 0(k8s_master corpus 상주 회귀).
+> - **FW B′-3b**(4292d43+8e6534b): `fw_objects.py` 신규(ObjectTable, `load_aux_objects` fail-closed, `resolve_name` 중첩재귀+순환가드+깊이8) + `--aux-objects` CLI(main.py, 기본 None=no-op) + ISS-035 named src_port 갭 가드. 1차 리뷰 Medium: 빈 그룹(`[]`) 0-leaf 확장이 토큰 증발시켜 봉쇄를 우회(ISS-035 거짓양호+030/032 거짓취약) → `resolve_name`이 빈 결과를 `UnresolvableError`로 처리하는 한 줄 수정으로 fw_policy.py 무변경 자동봉쇄(호출부가 이미 캐치해 원 토큰 보존). 배치 no-op 회귀 = worktree 대조 **바이트 동일**.
+> - **닫힌 거짓양호 3경로(라운드2)**: 0행→양호(F6/F7) / 오류출력→N→양호(F8) / 미해석 src_port·빈그룹 토큰증발→양호(B′-3b, 반대방향 거짓취약도 동시 봉쇄).
 >
 > **✅ 2026-07-10 세션 — 거짓양호 F1~F5(트랙1) + FW B′-2·B′-3a(트랙2) 병렬 완주 (8커밋, 최종 2098+ passed / 0 failed)**
 > 사이클: Fable 설계 → Sonnet 구현 → Opus 리뷰(med+ → Sonnet 개선 → Opus 재리뷰). 전 태스크 Opus SHIP + 최종 브랜치 리뷰 SHIP(Critical/High/Medium 0).
