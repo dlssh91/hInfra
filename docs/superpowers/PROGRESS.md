@@ -1,17 +1,75 @@
 # 작업 재개 노트 (RESUME)
 
 > ═══ 재개 안내 (pull 후 "진행해줘"/"개발진행해"라고 하면 여기부터) ═══
-> **★★ 다음 착수 (병렬 가능 2트랙)**:
-> ① **FW B′-4 정밀도** — H-4(IP 대시범위 `a-b`→CIDR 목록 파싱 유틸) / M-1(광역 임계 /8→/16 상향, 항목별 근거 확정) /
->    M-2(`_policy_covers` 포트 비대칭: lower 전포트∧upper 제한→거짓그림자 수정). 이후 B-2(ISS-038/039 --aux 연계),
->    벤더 객체 export→ObjectTable 캐노니컬 어댑터(실 export 확보 시, load_aux_objects fail-closed 계약 유지 확인).
-> ② **거짓양호 후속(비차단 잔여)** — oracle DBM-007 vendor exception config 과탐 방향 결함 정정(config 채움/rules 검증,
->    T7 리뷰 인계). F9(DBM-033 이중화, 문서화된 설계 한계 — 우선순위 낮음), F10(server 명령실패 출력, 백로그).
->    container 다변형(docker/ocp/eks/aks) 실샘플 확보 시 F8 과트리거 재검증(현재 corpus=k8s_master 1대뿐).
+> **★★ 다음 착수 — 우선순위 순, 각 항목 착수에 필요한 정보를 아래에 전부 기재(재유도 불필요)**:
+>
+> **① DB Tibero 활성화** (가장 저비용·즉시 착수 가능 — 코드 배선만 남음, 샘플/스크립트 이미 확보)
+>   - 현황: `judge_tool/vendor/common/db/tibero/analysis.py`(315줄)에 `dbm_001/003/004/005/006/007/008/009/011...`
+>     등 다수 `dbm_XXX` 메서드가 **이미 구현되어 있음**(다른 4엔진과 동형 패턴). `tibero-config.json`(176줄)도 존재.
+>     그런데 `judge_tool/item_configs/db_tibero.yaml`이 **아예 없고**, `judge_tool/det_adapters/db.py` 최하단
+>     레지스트리 등록 루프(`for _k in ("db_mysql","db_oracle","db_mssql","db_mariadb","db_postgresql"):`) 주석에
+>     `"db_tibero excluded"`로 **명시적으로 제외**돼 있음(등록 안 하면 label 분류 자체가 안 되어 전 항목 LLM 기본으로 흘러감).
+>   - 절차: (1) `db_mariadb.yaml`(115줄, 구조가 가장 단순해 템플릿으로 적합)을 참조해 `db_tibero.yaml` 신규 작성 —
+>     tibero/analysis.py의 `dbm_XXX` 메서드 목록과 1:1 대응하는 항목만 label/judgment_method 부여(다른 엔진과
+>     동일 항목 번호는 동일 라벨 유지가 기본, tibero 고유 차이는 기준xlsx 원문 재확인 후 반영).
+>     (2) db.py 레지스트리 루프에 `"db_tibero"` 추가(제외 사유 주석 제거).
+>     (3) `tests/db_cov_contract.py`에 tibero 양극성 픽스처 추가(기존 5엔진 패턴 재사용).
+>     (4) `python3 -m pytest tests/ -q` 전체 통과 확인. **Fable 설계 → Sonnet 구현 → Opus 리뷰** 사이클 그대로 적용.
+>     참고: [[domain-script-sample-status]] 메모리에 8도메인 전체 현황 기록됨.
+>
+> **② FW B-2 (ISS-038/039 --aux 연계)** — 설계 원문: `docs/superpowers/specs/2026-07-02-fw-implementation-design.md`
+>   Phase B "### B-2. ISS-038/039 --aux 연계" 섹션(그대로 구현).
+>   - `--aux-assets <자산목록.xlsx>` CLI 신규(기존 `--aux-objects` 배선 패턴 재사용 — main.py의 `aux_objects_path`
+>     인자·파서 분기 참고). ref/FW의 "점검대상" 시트가 자산목록 역할(서버IP/접근통제시스템IP 목록) — **Phase A에서
+>     실파일 헤더 확인 필요**(대외비 원칙: 헤더 1~2행만 열람, [[fw-data-confidential-header-only]]).
+>   - **ISS-038**(서버 IP 접근정책): aux 제공 시 `_CAPABILITY`에서 capability=True로 승격. 탐지 로직: dst가 aux의
+>     서버IP 목록에 속하면서 (src 광역 ∨ dst_ports 과다/any) 인 허용정책 → 취약. aux 미제공 시 현행 판단보류 유지
+>     (fail-closed, 회귀 없어야 함).
+>   - **ISS-039**(접근통제시스템 경유): 토폴로지 자동판단은 신뢰 불가 → aux 있어도 **후보 나열 + 판단보류 고정**
+>     (인터뷰 요약형 — B′-3 DBM-003 모드A2의 interview_summary 패턴 재사용 검토). label C 유지, 자동 취약/양호 절대 금지.
+>
+> **③ 거짓양호 후속(비차단 잔여)**:
+>   - oracle DBM-007 vendor exception config 과탐 정정 — `oracle-config.json`의 `exception.DBM-007`이 전부 빈 리스트라
+>     "행 있으면 값 불문 취약"(T7 리뷰 확증 사실). 실제 검증함수(PASSWORD_VERIFY_FUNCTION) 지정 계정은 정당 양호여야
+>     하는데 현재 무조건 취약 — config에 정당한 프로파일/함수명 채우고 `judge_tool/vendor/common/db/oracle/analysis.py`
+>     `dbm_007` 조건 재검증 필요.
+>   - F9(DBM-033 이중화 평문, 우선순위 낮음 — 설계상 문서화된 한계), F10(server 명령실패 출력→N, 백로그, 컨테이너
+>     F8과 동형 패턴으로 접근 가능).
+>   - container 다변형(docker/ocp/eks/aks) 실샘플 확보 시 `tests/test_det_adapters_container.py`의
+>     `TestErrorGuardNoOvertrigger` corpus에 추가해 F8 과트리거 재검증(현재 corpus=k8s_master 1대뿐).
+>
+> **④ FW 정밀도 잔여 백로그(비차단, 코드위치 명시)**:
+>   - **[Medium]** `judge_tool/fw_policy.py`의 `_parse_ip_range`(H-4/M-1용 신규 유틸, 커밋 7aa2893)가 IPv4/IPv6
+>     교차버전을 정수구간으로 뭉뚱그려 비교 — upper가 IPv6 저정수 대역(`::/64` 등)이고 lower가 IPv4일 때 거짓포함
+>     (과탐 방향, 거짓양호 아님, 현재 실데이터엔 IPv6 없어 무영향). 수정: `_parse_ip_range`가 `(version, lo, hi)`
+>     3-튜플 반환하도록 확장하고 `_ips_cover`/`_is_broad_cidr`에서 버전 상이 시 미포함/비광역 처리. IPv6 데이터
+>     유입 전 처리 권장(급하지 않음).
+>   - **[Low]** `_policy_covers`(fw_policy.py:770 부근) lower측 dst_ports에 리터럴 `"any"` 토큰이 있을 때
+>     `_is_any_port` 체크가 upper 분기에만 있고 lower 분기엔 없음(선재버그, 이번 세션 회귀 아님) — lower 분기에도
+>     미러링 권장.
+>   - **[별도 태스크, 이번 라운드 범위밖]** `ADMIN_PORTS`(ISS-031)/`VULN_PORTS`(ISS-041)가 기준 원문(정보보호시스템
+>     장비 시트) 명시 포트목록(FTP 20/21·SSH 22·Telnet 23·MSSQL 1433/1434·Oracle 1521/1522·MySQL 3306·RDP 3389·
+>     TFTP 69·R-Service 512-514·Xmanager 177/7000/7100 등)과 상당히 다름(코드에 80/443/8080/8443 있으나 원문엔
+>     없음, 원문의 FTP/DB포트/TFTP/R-Service/Xmanager는 코드에 없음) — 포트목록 완전성 재검토 필요.
+>   - 벤더 객체 export→ObjectTable 캐노니컬 어댑터(B′-3b 후속) — **실 export 미확보 상태라 착수 불가**, 확보 시
+>     `judge_tool/fw_objects.py`의 `load_aux_objects` fail-closed 계약 유지 확인하며 착수.
+>
 > ⏳ **미완 리뷰(이월)**: 파일명→플랫폼 인지(profile.py, 2026-07-03 구현완료)는 **Fable 리뷰 여전히 미실시** — 재개 시 리뷰 or SHIP 판단.
-> 📌 **백로그(비차단)**: eol.yaml 커버리지 보강(잘 알려진 EoS(oracle 11/12/18, mysql 5.7, mssql 2012, pg≤12) 미등재→현재 판단보류로만 귀결 — 등재하면 능동 취약 판정 가능), YAML aux-objects 중복 키 침묵 병합(명시 거부 선택 개선), F8 면제토큰 "Error from server" 광범위(방향 안전, 조치 불요).
+> 📌 **기타 백로그(비차단)**: eol.yaml 커버리지 보강(EoS(oracle 11/12/18, mysql 5.7, mssql 2012, pg≤12) 미등재→판단보류만 귀결),
+>    YAML aux-objects 중복 키 침묵 병합, F8 면제토큰 "Error from server" 광범위(방향 안전, 조치 불요).
 > ═══════════════════════════════════════════════════
 >
+> **✅ 2026-07-10 세션(라운드3) — FW B′-4 정밀도 보정 완주 (1커밋, 2230 passed / 0 failed)**
+> - **B′-4**(7aa2893): H-4(대시범위 IP `_parse_ip_range` 정수구간 통합유틸, CIDR과 완전동치 91,809쌍 전수검증)
+>   + M-1(`_BROAD_CIDR_PREFIX_LEN=8`→`_BROAD_RANGE_HOST_THRESHOLD=65536`=/16상당, 경계 off-by-one 없음)
+>   + M-2(`_policy_covers` 포트비대칭: lower 전포트∧upper제한→거짓그림자 수정, 과교정 없음). 배치 실검증:
+>   20파일×9항목=180셀 중 **1셀만 변화**(P11 ISS-034 취약→판단보류, M-2가 잡던 거짓그림자). Opus 리뷰 SHIP
+>   (조건: 위 백로그 Medium/Low 등재 — 완료).
+> - **범위밖 신규 발견(백로그 인계, 이번 태스크 무관)**: `ADMIN_PORTS`/`VULN_PORTS`(ISS-031/041)가 기준 원문의
+>   명시 포트목록(FTP/MSSQL/Oracle/MySQL/TFTP/R-Service/Xmanager 등)과 상당히 다름 — 별도 포트목록 완전성
+>   재검토 태스크 필요.
+> - 사용자 지시로 이번 라운드는 push 보류 요청 없었으나, 이어지는 도메인완료도 질문/메모리 갱신 요청에 따라
+>   push 진행(아래 참조).
 > **✅ 2026-07-10 세션(라운드2) — 거짓양호 F6~F8 + FW B′-3b 병렬 완주 (5커밋, 2206 passed / 0 failed)**
 > 사이클: Fable 설계 → Sonnet 구현 → Opus 리뷰(med+ → Sonnet 개선 → Opus 재리뷰). 전 태스크 SHIP + 최종 브랜치 리뷰 SHIP(Critical/High/Medium 0).
 > - **F6+F7**(58b9293): DBM-005(mssql_rds)/006/007 모드J 등록(0행→판단보류). cov 픽스처 "empty→양호" 인코딩 6곳(브리프 추정4보다 많음, 투명히 재교정)을 유효행 good으로 교체. **oracle DBM-007 good 극성 재정의**(양호→판단보류) — vendor exception config가 전부 빈 리스트라 "행 있으면 값 불문 취약"이 구조적 사실(실수집 샘플로 확증, 과교정 아님). pg 모드B·mysql int() R3 흡수 비간섭 회귀 고정.
