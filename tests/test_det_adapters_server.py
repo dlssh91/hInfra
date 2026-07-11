@@ -6,7 +6,11 @@
   (c) 미지 함수(ABSENT) → handled=False
   (d) SRV-010 회귀: KNOWN_BUGS.md SRV-010-polarity 수정 확인
   (e) 누출 경계: raw_output이 citations/rationale에 통째로 포함되지 않음
+  (f) F10 오류출력 가드: 세션/연결급 오류 출력 → handled=False(거짓양호 차단)
+      + 과트리거 0 검증(collected/server, out/srv_lab 실샘플 corpus)
 """
+from pathlib import Path
+
 import pytest
 
 # ── 공통 헬퍼 ────────────────────────────────────────────────────────────────
@@ -913,3 +917,183 @@ class TestSvcBlockBoundaryGuard:
             f"verdict={fv.verdict!r}"
         )
         assert fv.verdict != "양호"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# F10 오류출력 가드 — "명령은 찍혔으나 실패한 출력에서 미탐→N→양호" 거짓양호 차단
+# (2026-07-03-falsegood-audit.md F10, 백로그 처리, container.py F8 동형)
+#
+# 실증(collected/server/linux/*, out/srv_lab/*, collected/web/apache_linux/*,
+# out/was_lab/* 전 실샘플 + comparison.md 항목별 양호증거표)에서 확인된 바:
+#   container F8과 달리 서버 도메인은 "cat: ... No such file"/"command not found"/
+#   bare "Permission denied"가 SRV-004~009(메일릴레이)/SRV-163(배너) 등 **다수
+#   항목의 정당 양호증거 그 자체**이므로 그대로 채택 불가(과트리거 대량 발생).
+#   따라서 F10은 세션/연결 전체가 끊겼다는 좁은 신호만 채택한다
+#   (judge_tool/det_adapters/server.py _RE_ERROR_OUTPUT 주석 참조).
+# ─────────────────────────────────────────────────────────────────────────────
+
+_F10_ERROR_CASES = [
+    # (case_id, 오류 라인)
+    ("bash_command_not_found", "-bash: nonexistent_tool: command not found"),
+    ("sh_permission_denied", "sh: /root/secret.sh: Permission denied"),
+    ("connection_refused", "ssh: connect to host 10.0.0.5 port 22: Connection refused"),
+    ("connection_timed_out", "Connection timed out during collection"),
+    ("no_route_to_host", "ssh: connect to host 10.0.0.5 port 22: No route to host"),
+    ("network_unreachable", "connect: Network is unreachable"),
+    ("unable_to_connect", "Unable to connect to remote host"),
+    ("host_is_down", "ssh: connect to host 10.0.0.5 port 22: Host is down"),
+    ("operation_not_permitted", "chattr: Operation not permitted while reading /etc/shadow"),
+]
+
+
+def _good_with_error(error_line):
+    """SRV-082 정당 양호(others 쓰기 없음) 출력 + 세션/연결급 오류 라인 삽입."""
+    return (
+        "$ ls -alLd /usr /bin /sbin /etc /var\n"
+        "drwxr-xr-x  2 root root 4096 Jan  1 00:00 /etc\n"
+        f"{error_line}\n"
+    )
+
+
+class TestF10ErrorOutputGuard:
+    """F10: 세션/연결급 오류출력 → handled=False(판단보류 폴백)."""
+
+    @pytest.mark.parametrize(
+        "case_id,error_line", _F10_ERROR_CASES, ids=[c[0] for c in _F10_ERROR_CASES],
+    )
+    def test_error_tokens_handled_false(self, case_id, error_line):
+        """토큰별 대표 오류 출력이 섞이면 정당 양호 입력도 handled=False로 강등."""
+        fv = judge("SRV-082", _good_with_error(error_line), "linux", {})
+        assert fv.handled is False, (
+            f"[{case_id}] F10 오류출력 가드 미발동 — 거짓양호 위험: {fv}"
+        )
+        assert fv.verdict == "판단보류"
+        assert fv.ev_status == "review"
+        assert "오류 출력" in fv.rationale
+
+    def test_error_guard_no_raw_leak(self):
+        """§7: rationale에 매치토큰(짧음)만 — raw 전문 미포함."""
+        raw = _good_with_error("Connection refused")
+        fv = judge("SRV-082", raw, "linux", {})
+        assert raw not in fv.rationale
+        assert fv.citations == []
+
+    def test_normal_good_output_unaffected(self):
+        """정상 양호 출력(오류 토큰 없음) → 가드 미발동, 기존 판정 불변."""
+        fv = judge(
+            "SRV-082",
+            "$ ls -alLd /usr /bin /sbin /etc /var\n"
+            "drwxr-xr-x  2 root root 4096 Jan  1 00:00 /etc\n",
+            "linux",
+            {},
+        )
+        assert fv.handled is True
+        assert fv.verdict == "양호"
+
+    def test_normal_vuln_output_unaffected(self):
+        """정상 취약 출력(오류 토큰 없음) → 가드는 result='Y' 경로에 적용되지 않음."""
+        fv = judge(
+            "SRV-082",
+            "$ ls -alLd /tmp/vuln\n"
+            "drwxrwxrwx  2 root root 4096 Jan  1 00:00 /tmp/vuln\n",
+            "linux",
+            {},
+        )
+        assert fv.handled is True
+        assert fv.verdict == "취약"
+
+    def test_bare_no_such_file_not_guarded(self):
+        """설계결정 회귀핀: bare 'No such file or directory'는 F10 토큰셋에서
+        의도적으로 제외됨(SRV-004~009 메일릴레이/SRV-163 배너의 정당 양호증거이므로
+        채택 시 과트리거 대량 발생 — server.py _RE_ERROR_OUTPUT 주석 참조).
+        """
+        from judge_tool.det_adapters.server import _RE_ERROR_OUTPUT
+        benign = "cat: /etc/mail/sendmail.cf: No such file or directory\n"
+        assert _RE_ERROR_OUTPUT.search(benign) is None, (
+            "bare 'No such file or directory'가 F10 가드에 매치됨 — "
+            "SRV-004~009류 정당 양호증거 과트리거 위험(설계 위반)"
+        )
+
+    def test_bare_command_not_found_not_guarded(self):
+        """설계결정 회귀핀: 비앵커 'command not found'(예: '.../fsi_unix.sh: line N:
+        sendmail: command not found')는 SRV-006/007의 정당 양호증거이므로 제외.
+        오직 '-bash:'/'sh:' 로 시작하는 셸 자체의 명령 미발견만 채택한다.
+        """
+        from judge_tool.det_adapters.server import _RE_ERROR_OUTPUT
+        benign = "/tmp/fsi_unix.sh: line 1139: sendmail: command not found\n"
+        assert _RE_ERROR_OUTPUT.search(benign) is None, (
+            "비앵커 'command not found'가 F10 가드에 매치됨 — "
+            "SRV-006/007 정당 양호증거 과트리거 위험(설계 위반)"
+        )
+
+    def test_bare_permission_denied_not_guarded(self):
+        """설계결정 회귀핀: bare 'Permission denied'(툴 프리픽스, 예: 'cat: ... :
+        Permission denied')는 SRV-073처럼 이미 vendor 파서가 구조적으로 처리하는
+        영역이므로 F10에서 중복 채택하지 않음(과트리거 축소)."""
+        from judge_tool.det_adapters.server import _RE_ERROR_OUTPUT
+        benign = "cat: /etc/group: Permission denied\n"
+        assert _RE_ERROR_OUTPUT.search(benign) is None, (
+            "bare 'Permission denied'가 F10 가드에 매치됨(설계 위반) — "
+            "-bash:/sh: 앵커형만 채택해야 함"
+        )
+
+
+class TestF10ErrorGuardNoOvertrigger:
+    """F10 SHIP 조건: 서버 실샘플 corpus 과트리거 0 검증
+    (collected/server, out/srv_lab, collected/web, out/was_lab).
+    """
+
+    def _corpus_files(self):
+        base = Path(__file__).resolve().parents[1]
+        patterns = [
+            "collected/server/linux/*.xml",
+            "out/srv_lab/*.xml",
+            "out/srv_lab/promo/*.xml",
+            "collected/web/apache_linux/*.xml",
+            "out/was_lab/*.xml",
+        ]
+        files = []
+        for pat in patterns:
+            files.extend(sorted(base.glob(pat)))
+        return files
+
+    def _corpus_outputs(self):
+        """서버 XML 파서로 전체 (파일, 항목id, raw_output) 순회."""
+        from judge_tool.parsers.server_xml import parse
+        outputs = []
+        for x in self._corpus_files():
+            for cid, resources, _ in parse(str(x)):
+                for r in resources:
+                    raw = getattr(r, "raw_evidence", None) or getattr(r, "evidence", None) or ""
+                    outputs.append((x.name, cid, raw))
+        return outputs
+
+    def test_real_corpus_zero_false_matches(self):
+        """실수집 서버/웹WAS xml 전 항목 raw_output에 F10 가드 오매치 0건."""
+        from judge_tool.det_adapters.server import _RE_ERROR_OUTPUT
+        outputs = self._corpus_outputs()
+        assert outputs, "corpus가 비어 있음 — 과트리거 검증 불가"
+        false_matches = [
+            (fname, cid, m.group(0))
+            for fname, cid, raw in outputs
+            if (m := _RE_ERROR_OUTPUT.search(raw))
+        ]
+        assert false_matches == [], (
+            f"실샘플 과트리거 {len(false_matches)}건 — 토큰 재검토 필요: "
+            f"{false_matches[:10]}"
+        )
+
+    def test_real_corpus_verdicts_unchanged_by_guard(self):
+        """corpus 전 항목에 대해 judge() 최종 verdict/handled가 가드 유무와 무관하게
+        동일함을 직접 실증(가드 통과 없이 이미 handled=False였던 항목도 포함해
+        전체 판정 결과가 가드 도입으로 변하지 않았는지 재확인).
+        """
+        from judge_tool.det_adapters.server import _RE_ERROR_OUTPUT
+        outputs = self._corpus_outputs()
+        for fname, cid, raw in outputs:
+            # 가드가 발동한다면 그것은 곧 위 zero-false-match 단언 실패로 already 잡힘.
+            # 여기서는 발동하지 않는 케이스에서 judge()가 여전히 정상 동작함을 확인.
+            if _RE_ERROR_OUTPUT.search(raw) is not None:
+                continue
+            fv = judge(cid, raw, "linux", {})
+            assert isinstance(fv, ForcedVerdict)

@@ -15,7 +15,11 @@
   (l) WST-033 apache 양호 합성 픽스처 (버전 2.4.x → 양호)
   (m) WST-033 apache 취약 합성 픽스처 (버전 1.x → 취약)
   (n) raw_evidence 누출 경계: raw가 citations/rationale에 통째로 포함되지 않음
+  (o) F10 오류출력 가드 파급: SRV-* server 위임 자동적용 + WST-* 명시 재적용
+      + 과트리거 0 검증(collected/web, out/was_lab 실샘플 corpus)
 """
+from pathlib import Path
+
 import pytest
 
 # ── 어댑터 임포트 (import 시 레지스트리 등록 부작용) ──────────────────────────
@@ -644,3 +648,117 @@ class TestWST038DotallRegression:
         result, reason, vul_list = check_WST_038(config)
         assert result == "N", f"check_WST_038 clean 블록 → result='N' 기대, 실제: {result!r}"
         assert vul_list == [], f"양호 시 vul_list 비어있어야 함: {vul_list}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (o) F10 오류출력 가드 파급 — server.py 재사용 확인
+# (2026-07-03-falsegood-audit.md F10, 백로그 처리)
+#
+# SRV-* 항목은 server.judge() 위임 경로를 그대로 타므로 F10 가드가 자동 적용된다.
+# WST-* 항목은 _map_result가 자체 매핑을 수행하므로 명시적으로 재적용했는지
+# 확인한다(judge_tool/det_adapters/webwas.py _has_error_output 재사용).
+# ─────────────────────────────────────────────────────────────────────────────
+
+_F10_WEBWAS_ERROR_CASES = [
+    ("bash_command_not_found", "-bash: nonexistent_tool: command not found"),
+    ("connection_refused", "ssh: connect to host 10.0.0.5 port 22: Connection refused"),
+    ("operation_not_permitted", "chattr: Operation not permitted"),
+]
+
+
+class TestF10ErrorOutputGuardPropagation:
+    """F10: SRV-* 위임 자동적용 + WST-* 명시 재적용 확인."""
+
+    def _wst033_good_raw(self):
+        """WST-033 apache 정당 양호(버전 2.4.x) 합성 픽스처(재사용)."""
+        return (
+            "[ http|https|http-alt|www|www-http|apache|apache2 ][S]\n"
+            "$ ps -ef | egrep apache\nroot /usr/sbin/apache2 -k start\n"
+            "[ http|https|http-alt|www|www-http|apache|apache2 ][E]\n"
+            f"{DELIMITER}\n"
+            "$ rpm -qa httpd\nhttpd not found\n"
+            f"{DELIMITER}\n"
+            "$ dpkg -l | grep apache\nii  apache2  2.4.52-1ubuntu4.21\n"
+            f"{DELIMITER}\n"
+            "$ apache2 -v\nServer version: Apache/2.4.52 (Ubuntu)\n"
+        )
+
+    def test_srv_star_delegation_guard_auto_applies(self):
+        """SRV-082(server 위임) — F10 오류 라인 삽입 시 handled=False로 강등된다
+        (server.judge() 위임 경로를 통해 F10 가드가 자동 적용됨을 확인)."""
+        raw = (
+            "$ ls -alLd /usr /bin /sbin /etc /var\n"
+            "drwxr-xr-x  2 root root 4096 Jan  1 00:00 /etc\n"
+            "ssh: connect to host 10.0.0.5 port 22: Connection refused\n"
+        )
+        fv = judge("SRV-082", raw, "linux", {})
+        assert fv.handled is False, (
+            f"SRV-082 위임 경로에서 F10 가드 미적용 — 거짓양호 위험: {fv}"
+        )
+        assert fv.verdict == "판단보류"
+
+    @pytest.mark.parametrize(
+        "case_id,error_line", _F10_WEBWAS_ERROR_CASES,
+        ids=[c[0] for c in _F10_WEBWAS_ERROR_CASES],
+    )
+    def test_wst_item_error_tokens_handled_false(self, case_id, error_line):
+        """WST-033(명령출력 항목) — F10 오류 라인 삽입 시 handled=False로 강등."""
+        raw = self._wst033_good_raw() + f"{error_line}\n"
+        fv = judge("WST-033", raw, "apache", {})
+        assert fv.handled is False, (
+            f"[{case_id}] WST-033에서 F10 가드 미발동 — 거짓양호 위험: {fv}"
+        )
+        assert fv.verdict == "판단보류"
+
+    def test_wst033_normal_good_unaffected(self):
+        """오류 토큰 없는 정상 WST-033 양호 입력 → 가드 미발동, 기존 판정 불변."""
+        fv = judge("WST-033", self._wst033_good_raw(), "apache", {})
+        assert fv.handled is True
+        assert fv.verdict == "양호"
+
+    def test_has_error_output_alias_matches_server(self):
+        """webwas._has_error_output이 server._has_error_output과 동일 객체(재사용)."""
+        from judge_tool.det_adapters import webwas as _webwas
+        from judge_tool.det_adapters import server as _server
+        assert _webwas._has_error_output is _server._has_error_output
+
+
+class TestF10ErrorGuardNoOvertriggerWebwas:
+    """F10 SHIP 조건: webwas(WEBWAS) 실샘플 corpus 과트리거 0 검증
+    (collected/web, out/was_lab)."""
+
+    def _corpus_files(self):
+        base = Path(__file__).resolve().parents[1]
+        patterns = [
+            "collected/web/apache_linux/*.xml",
+            "out/was_lab/*.xml",
+        ]
+        files = []
+        for pat in patterns:
+            files.extend(sorted(base.glob(pat)))
+        return files
+
+    def _corpus_outputs(self):
+        from judge_tool.parsers.webwas_xml import parse
+        outputs = []
+        for x in self._corpus_files():
+            for cid, resources, _ in parse(str(x)):
+                for r in resources:
+                    raw = getattr(r, "raw_evidence", None) or getattr(r, "evidence", None) or ""
+                    outputs.append((x.name, cid, raw))
+        return outputs
+
+    def test_real_corpus_zero_false_matches(self):
+        """실수집 webwas xml 전 항목 raw_output에 F10 가드 오매치 0건."""
+        from judge_tool.det_adapters.server import _RE_ERROR_OUTPUT
+        outputs = self._corpus_outputs()
+        assert outputs, "corpus가 비어 있음 — 과트리거 검증 불가"
+        false_matches = [
+            (fname, cid, m.group(0))
+            for fname, cid, raw in outputs
+            if (m := _RE_ERROR_OUTPUT.search(raw))
+        ]
+        assert false_matches == [], (
+            f"실샘플 과트리거 {len(false_matches)}건 — 토큰 재검토 필요: "
+            f"{false_matches[:10]}"
+        )

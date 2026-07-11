@@ -52,6 +52,10 @@ _INFER_WEB_PATTERNS = (
 # server.py 정의와 완전히 동일(AST 비교로 확인)하므로 재정의하지 않고 그대로 참조한다.
 # _has_collection_evidence는 하위 모듈 import 호환을 위해 별칭으로 유지.
 _has_collection_evidence = _server._has_collection_evidence
+# F10 오류출력 가드(server.py _RE_ERROR_OUTPUT/_has_error_output)도 동일 재사용.
+# SRV-* 항목은 server.judge() 위임 경로로 이미 자동 적용되나, WST-* 항목은
+# _map_result가 자체 매핑을 수행하므로 아래에서 명시적으로 재적용한다(§F10 파급).
+_has_error_output = _server._has_error_output
 
 
 def _absent(reason: str) -> ForcedVerdict:
@@ -154,6 +158,25 @@ def _map_result(
                 ev_status="review",
                 handled=False,
             )
+
+        # F10 오류출력 가드(server.py 정의 재사용, 설계근거는 그쪽 주석 참조):
+        # config-항목/명령출력 항목 공통 적용 — 세션/연결급 오류 신호가 있으면
+        # check_WST_*의 "패턴 부재→N" 판정을 신뢰하지 않고 handled=False로 강등.
+        err_match = _has_error_output(raw_output)
+        if err_match is not None:
+            return ForcedVerdict(
+                verdict="판단보류",
+                confidence=0.0,
+                rationale=(
+                    "[수집 명령 오류 출력 감지 — 자동판정 불가]"
+                    f" (item={item_id}, variant={variant},"
+                    f" 매치토큰={err_match.group(0).strip()!r})"
+                ),
+                citations=[],
+                ev_status="review",
+                handled=False,
+            )
+
         return ForcedVerdict(
             verdict="양호",
             confidence=0.9,

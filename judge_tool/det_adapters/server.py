@@ -8,6 +8,7 @@
   - 판정값 매핑 (§5.4):
       result='N' (양호) AND "(*)" not in reason → 증거존재 확인 후 verdict=양호, ev_status=good, conf=0.9, handled=True
       result='N' (양호) AND 증거부재(빈출력·명령없음·에러만) → handled=False (C-1/C-2 shift-left 가드)
+      result='N' (양호) AND 세션/연결 오류출력(_RE_ERROR_OUTPUT) → handled=False (F10 가드, 백로그 처리)
       result='Y' → verdict=취약, ev_status=bad, conf=0.9, citations 추출, handled=True
       "(*)" in reason AND result != 'Y' → handled=False (Low-1 거짓양호 방지 가드, fail-closed)
       result in ('', 'M') → handled=False
@@ -57,6 +58,63 @@ def _has_collection_evidence(raw_output: str) -> bool:
     return bool(_RE_CMD_PROMPT.search(raw_output) or _RE_SVC_BLOCK.search(raw_output))
 
 
+# ── F10 오류출력 가드 (백로그, 2026-07-11-falsegood-audit.md F10 처리) ──────────
+# 대상: "명령은 찍혔으나(=_has_collection_evidence 통과) 실패한 출력"에서
+# check_SRV_*가 기대 취약패턴을 찾지 못해 result='N'(양호)로 떨어지는 거짓양호.
+# container.py F8과 동형 문제이나, 실샘플 실증 결과 **F8과 동일한 토큰셋을
+# 그대로 쓸 수 없다** — 아래는 그 실증 근거와 최종 축소 설계다.
+#
+# 실증(collected/server/linux/*, out/srv_lab/*, collected/web/apache_linux/*,
+# out/was_lab/* 전 실샘플 + comparison.md 항목별 양호증거표):
+#   - "cat: /etc/mail/sendmail.cf: No such file or directory" 류는 SRV-004~009
+#     (메일릴레이 점검)의 **정당 양호증거 그 자체**다(메일서버 미설치=양호).
+#   - "cat: /etc/motd: No such file or directory"는 SRV-163(로그인 배너)의
+#     **정당 양호증거**다(배너 파일 없음=정보노출 없음=양호, comparison.md 참조).
+#   - "sendmail: command not found"/"...: not found"는 SRV-006/007의 정당
+#     양호증거(메일서버 바이너리 없음=양호) — out/was_lab/tomcat-good.xml(양호
+#     라벨 샘플)에도 그대로 등장.
+#   - 즉 컨테이너 F8과 달리 서버 도메인은 "명령 결과 없음/파일 없음"이 다수
+#     항목에서 이미 의도된 정상 신호이므로, container.py의 무앵커 토큰
+#     (`command not found`/`Permission denied`/`No such file or directory`)을
+#     그대로 쓰면 **정당 양호가 대량으로 판단보류 강등** → 과트리거 0 실패.
+#     (F8이 요구한 "과트리거 0 검증" 원칙을 지키려면 이 토큰들을 넣을 수 없다.)
+#
+# 따라서 F10은 "개별 명령의 대상 부재/거부"가 아니라 **세션/연결 전체가
+# 끊겨 이후 모든 명령 결과를 신뢰할 수 없는** 신호만 좁게 채택한다.
+# 이 토큰들은 위 실샘플 전체(양호/취약 라벨 불문) grep 결과 0건이며,
+# vendor/common/server, vendor/common/webwas, comparison.md 어디에서도
+# "정당 양호증거"로 문서화된 사례가 없다(전수 grep 확인, 면제 테이블 불요).
+#   - `-bash:`/`sh:` 로 시작하는 셸 자체의 명령 미발견/권한거부
+#     (개별 도구의 "cat:/grep:/ls: 파일없음"과 달리, 셸이 명령 자체를
+#     못 찾거나 실행을 거부한 것 — 수집 스크립트 실행 환경이 깨졌다는 신호).
+#   - 연결류: Connection refused/timed out, No route to host,
+#     Network is unreachable, Unable to connect, Host is down
+#     (SSH/원격 연결이 중간에 끊겨 이후 명령 출력이 비정상이라는 신호).
+#   - Operation not permitted (capability 수준 거부 — Permission denied와
+#     달리 실샘플에서 정상 점검 결과로 쓰인 사례가 전혀 없어 채택).
+_RE_ERROR_OUTPUT = re.compile(
+    r"(?m)"
+    r"^\s*(-bash|sh):.*(command not found|Permission denied)"
+    r"|Connection refused"
+    r"|Connection timed out"
+    r"|No route to host"
+    r"|Network is unreachable"
+    r"|Unable to connect"
+    r"|Host is down"
+    r"|Operation not permitted"
+)
+
+
+def _has_error_output(raw_output: str):
+    """raw_output에서 F10 오류출력 가드 패턴 매치를 반환(없으면 None).
+
+    webwas.py의 WST-* 명령출력 항목에서도 동일 패턴을 재사용한다(§F10 파급).
+    """
+    if not raw_output:
+        return None
+    return _RE_ERROR_OUTPUT.search(raw_output)
+
+
 def _citations_from_vul_list(vul_list) -> list:
     """common vul_list에서 citation 문자열 리스트 추출 (최대 20개).
 
@@ -88,6 +146,8 @@ def judge(
     §18.1 C1: gate() 선확인 — DET가 아니면 즉시 handled=False.
     §16.3: linux variant + _LINUX_OVERRIDE_ITEMS → SRV_Linux_parse 사용.
     §5.4: result 매핑 및 수동/(*)분기 처리.
+    F10: result='N' 경로에서 세션/연결급 오류출력(_RE_ERROR_OUTPUT) 감지 시
+         handled=False로 강등(명령은 찍혔으나 실패한 출력→N→양호 차단, 백로그).
     §7: raw_output 누출 방지 — reason/vul_list 텍스트만 사용.
     """
     # ── §18.1 C1: 거짓 양호 게이트 (DET가 아니면 차단) ──────────────────────
@@ -171,6 +231,25 @@ def judge(
                 ev_status="review",
                 handled=False,
             )
+
+        # F10 오류출력 가드: 명령은 찍혔으나(증거존재 통과) 세션/연결이 끊겨
+        # 실패한 출력이면 check_SRV_*의 "패턴 부재→N" 판정을 신뢰할 수 없다.
+        # _RE_ERROR_OUTPUT 설계근거는 위 정의부 주석 참조(과트리거 0 실증 완료).
+        err_match = _has_error_output(raw_output)
+        if err_match is not None:
+            return ForcedVerdict(
+                verdict="판단보류",
+                confidence=0.0,
+                rationale=(
+                    "[수집 명령 오류 출력 감지 — 자동판정 불가]"
+                    f" (item={item_id}, variant={variant},"
+                    f" 매치토큰={err_match.group(0).strip()!r})"
+                ),
+                citations=[],
+                ev_status="review",
+                handled=False,
+            )
+
         return ForcedVerdict(
             verdict="양호",
             confidence=0.9,
