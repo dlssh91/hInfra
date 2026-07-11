@@ -113,3 +113,7 @@ class Judgment:
     interview_summary: Optional[str] = None   # B항목: LLM 요약문 (인터뷰 보조용)
     # 판단방식 5분류(정적). Criterion에서 전파됨.
     judgment_method: str = "llm"
+    # 판정 근거 표시용: 평가기준 xlsx의 판단기준 텍스트(Criterion.standard 전파).
+    # main.py의 단일 관문(judgment 확정 지점)에서 주입된다. 기본값 있는 optional
+    # 필드로 뒤에 추가 — 기존 Judgment(...) 생성 호출부는 무변경으로 하위호환.
+    standard: str = ""

@@ -1257,9 +1257,17 @@ items:
       docker_linux: DET  # :1120 host / icc+bridge 확인
       ocp_master: DET    # :1129 [X] 확인
 
+  # PRCC-045: 2026-07-11 DET→MANUAL 강등(k8s_master만, VENDOR-EDIT(bug) 아님 —
+  # gate 라우팅 조정). 코드(:1135)는 "spec.hostUTS:'true'"를 찾으나 실 수집
+  # jsonpath는 `.securityContext.hostUTS`를 조회 — 코드 마커가 실 데이터에
+  # 영구 부재해 k8s_master가 항상 result='N'(양호)로 고정된다(거짓양호, High).
+  # vanilla Kubernetes PodSpec에는 hostUTS 필드 자체가 표준으로 없어(host
+  # 네임스페이스 공유는 hostPID/hostIPC/hostNetwork 3종만 표준) 결정론 검증이
+  # 구조적으로 불가능 — fail-closed로 MANUAL 강등(label A로 LLM 폴백).
+  # docker_linux/ocp_master는 실 마커가 코드와 일치해 정상 동작하므로 변경 없음.
   PRCC-045:
     variants:
-      k8s_master: DET    # :1135 spec.hostUTS:'true' (중복조건 버그 무해)
+      k8s_master: MANUAL   # 2026-07-11 DET→MANUAL 강등(위 주석) — gate 차단→LLM(label A)
       docker_linux: DET  # :1140 UTSMode: host
       ocp_master: DET    # :1145 [X] 확인
 

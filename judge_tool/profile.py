@@ -76,7 +76,10 @@ class Profile:
         구체마커가 전혀 매칭되지 않으면 alias_variant_tokens(플랫폼 별칭표에서
         유추 가능한 환경토큰 → variant명)로 폴백한다. 정확히 하나의 variant만
         가리키면 그 variant, 2개 이상이면 모호로 간주해 None(오추정 방지)."""
-        low = os.path.basename(filename).lower()
+        # guess_profile과 동일하게 NFC 정규화 — _alias_hit는 NFC 입력을 전제
+        # 하므로(한글 토큰 substring), 향후 한글 variant 별칭이 추가돼도
+        # macOS NFD 파일명에서 조용히 실패하지 않는다(Fable 리뷰 L-1).
+        low = unicodedata.normalize("NFC", os.path.basename(filename)).lower()
         best_name: Optional[str] = None
         best_len = -1
         for vspec in self.variants.values():

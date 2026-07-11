@@ -29,8 +29,11 @@ ESXi가 평가항목 슈퍼셋(35항목 전부 'o'), vCenter·Xen은 부분집�
   폴백 대신 명시적 --variant 지정을 유도하는 보수 선택(server_xml 선례).
 - parse(): 3-튜플 [(id, [ResourceEvidence], None), ...] — server_xml과 동일 계약.
 - 민감 마스킹: server_xml._mask_server_evidence(crypt해시·PEM개인키·32+hex) 체이닝.
-  ESXi shell은 리눅스 기반이라 crypt 해시 동형. 하이퍼바이저 특화 패턴(vpxuser
-  비밀번호·API 세션 토큰)은 실수집 데이터 확보 후 보강(활성화 게이트).
+  ESXi shell은 리눅스 기반이라 crypt 해시 동형. §4-2(2026-07-11) 초안으로
+  하이퍼바이저 특화 패턴(vpxuser 자격증명 결합토큰, SAML 어서션, Bearer/
+  vmware-api-session-id 세션 토큰)도 공유 마스커에 추가됨(공개 문서 기반
+  보수적 작성 — 실수집 데이터 확보 시 재검증 필요, docs/superpowers/specs/
+  2026-07-02-remaining-domains-design.md §4 참조).
 - resource_id: cid별 전역 카운터({cid}#0, ...)로 유일성 보장.
 - 빈 output → resources=[] (증거 없음 → 판단보류 가드).
 """

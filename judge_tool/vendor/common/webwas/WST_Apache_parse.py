@@ -2,6 +2,13 @@
 import re, json
 from judge_tool.vendor.common.webwas.wslib import get_remove_line
 
+# VENDOR-EDIT(bug): BUG-WST033-apache — fDumpS 진단 헤더 라인
+# (`[ http|...|apache2 ][S]` ~ `[E]`, 앞에 `-e ` 접두 가능) 판별용.
+# check_WST_033의 서비스 존재 조기반환이 헤더 자체를 서비스 증거로 오인하지
+# 않도록, 헤더 라인만 제거한 나머지에서 service_pattern을 매칭한다
+# (KNOWN_BUGS.md R-WST033 참조).
+_SVC_HEADER_LINE = re.compile(r"^(?:-e\s+)?\[.*?\]\[[SE]\]\s*$", re.MULTILINE)
+
 # 스크립트 결과
 # WST-34(기존 SRV-043)은 서버 스크립트 결과로 나오는 xml 항목을 참조하여 점검
 # 기존 자동 점검 루틴도 실행 여부만 확인 후에 수동점검하는 식으로 안내됨
@@ -16,14 +23,30 @@ def check_WST_033(outputData):
     apache_version = ""
 
     # Check if Apache service is running
-    service_pattern = "http\\|https\\|http-alt\\|www\\|www-http\\|apache\\|apache2"
-    if not re.search(service_pattern, output_arr[0], re.IGNORECASE):
+    # VENDOR-EDIT(bug): BUG-WST033-apache — 원본은 output_arr[0](헤더 포함
+    # 전체)에 service_pattern을 검색했다. fDumpS 헤더는
+    # `[ http|https|http-alt|www|www-http|apache|apache2 ][S]`~`[E]` 형식으로,
+    # 실제 서비스 존재 여부와 무관하게 점검 대상 토큰을 항상 그대로 echo한다
+    # → 이 조기반환이 도달 불가능한 죽은 코드였다(Apache 부재 호스트에서도
+    # "실행 중"으로 오판 → 뒤이어 버전 미검출임에도 "2.1 이상 탐지"라는 허위
+    # 근거로 양호 처리, tomcat-good.xml 실측으로 재현됨). 헤더 라인만 제거한
+    # 나머지(`$ ps -ef | egrep apache` 등 실제 명령 출력)에서만 매칭한다.
+    #
+    # 원본 service_pattern은 `\|`(이스케이프된 리터럴 파이프)로 토큰을 이어
+    # 붙여, 정규식 교대(alternation)가 아니라 "http|https|...|apache2" 라는
+    # 하나의 긴 리터럴 문자열을 찾는 패턴이었다 — 이 리터럴은 헤더 문자열
+    # 자체에만 등장하고 실제 ps/포트 출력에는 결코 나타나지 않으므로, 헤더를
+    # 제외하면 이 이스케이프 그대로는 항상 미매치가 된다. 실제 프로세스 라인
+    # (`apache2`, `httpd` 등)과 매칭되도록 진짜 교대(`|`)로 수정한다.
+    service_pattern = r"http|https|http-alt|www|www-http|apache|apache2"
+    service_evidence = _SVC_HEADER_LINE.sub("", output_arr[0])
+    if not re.search(service_pattern, service_evidence, re.IGNORECASE):
         auto_result_reason = "(+) Apache 서비스가 실행 중이지 않은 것으로 탐지되어 양호로 판단\n" + output_arr[0]
         return result, auto_result_reason, vulnerability_condition_result_model_list
 
     # Check first Apache version pattern
     httpd_pattern = r"httpd-(.*?)-.*"
-    m = re.search(httpd_pattern, output_arr[1], re.IGNORECASE)
+    m = re.search(httpd_pattern, output_arr[1], re.IGNORECASE) if len(output_arr) > 1 else None
     if m:
         apache_version = m.group()
         version_str = m.group(1).rsplit('.', 1)[0]
@@ -41,7 +64,7 @@ def check_WST_033(outputData):
 
     # Check second Apache version pattern
     apache_pattern = r"apache[0-9\s]\s(.*?)-"
-    m_ = re.search(apache_pattern, output_arr[2], re.IGNORECASE)
+    m_ = re.search(apache_pattern, output_arr[2], re.IGNORECASE) if len(output_arr) > 2 else None
     if m_:
         apache_version = m_.group()
         version_str = m_.group(1).rsplit('.', 1)[0]
@@ -58,7 +81,19 @@ def check_WST_033(outputData):
             pass
 
     if not vulnerability_condition_result_model_list:
-        auto_result_reason = "(+) Apache 버전이 2.1 이상인 것으로 탐지되어 양호로 판단\n" + apache_version + "\n"
+        if apache_version:
+            auto_result_reason = "(+) Apache 버전이 2.1 이상인 것으로 탐지되어 양호로 판단\n" + apache_version + "\n"
+        else:
+            # VENDOR-EDIT(bug): BUG-WST033-apache — 버전 문자열이 실제로
+            # 탐지되지 않았는데 "2.1 이상 탐지"라는 문구로 양호를 내는 것은
+            # 허위 근거(거짓양호)다. 서비스는 확인됐지만 버전을 특정할 수
+            # 없는 경우 "(*)" 수동 마커로 판단보류 처리한다(어댑터
+            # Low-1 가드가 "(*)" in reason and result != "Y" 를 판단보류로
+            # 흡수 — judge_tool/det_adapters/webwas.py:_map_result 참조).
+            auto_result_reason = (
+                "(*) Apache 서비스는 확인되었으나 버전 문자열이 탐지되지 않아 "
+                "수동 확인 필요\n"
+            )
     else:
         result = 'Y'
         auto_result_reason = "(-) Directory Traversal 취약점이 발견된 Apache 버전(<2.1)을 사용 중인 것으로 탐지되어 취약으로 판단\n" + reason_str

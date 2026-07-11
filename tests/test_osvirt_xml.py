@@ -238,6 +238,73 @@ def test_parse_masks_private_key(tmp_path):
     assert "<REDACTED>" in ev
 
 
+# ── 하이퍼바이저 특화 마스킹 초안 (§4-2, 2026-07-11 — 공유 마스커 신규 패턴) ────
+# 실데이터 없음 — 공개 문서 기반 보수적 초안. 과마스킹 가드(esxcli/vim-cmd 출력
+# 보존)를 osvirt parse() 경로로도 재확인한다(server_xml 단위 테스트와 별도로,
+# osvirt 실제 소비 지점에서의 회귀 고정).
+
+def test_parse_masks_vpxuser_credential(tmp_path):
+    """vpxa 설정 덤프의 `vpxuserPassword="..."` 결합토큰 값만 마스킹된다."""
+    p = _write(tmp_path, _xml(dumps=[
+        ("PRCV-001",
+         '<vpxa><config vpxuserPassword="R4nd0mVpx!Secr3t" '
+         'hostname="esxi-01"/></vpxa>'),
+    ]))
+    result = parse(p)
+    ev = result[0][1][0].evidence
+    assert "R4nd0mVpx!Secr3t" not in ev
+    assert 'vpxuserPassword="<REDACTED>"' in ev
+    assert 'hostname="esxi-01"' in ev
+
+
+def test_parse_masks_saml_assertion(tmp_path):
+    """vCenter SSO SAML 어서션 본문은 치환, 태그 마커는 보존된다."""
+    p = _write(tmp_path, _xml(dumps=[
+        ("PRCV-001",
+         "<saml2:Assertion ID=\"_x1\">"
+         "<saml2:Subject>administrator@vsphere.local</saml2:Subject>"
+         "</saml2:Assertion>"),
+    ]))
+    result = parse(p)
+    ev = result[0][1][0].evidence
+    assert "administrator@vsphere.local" not in ev
+    assert "<saml2:Assertion" in ev
+    assert "</saml2:Assertion>" in ev
+
+
+def test_parse_overmasking_guard_esxi_config_lines_preserved(tmp_path):
+    """과마스킹 가드(핵심): PRCV 판정에 실제 쓰이는 vim-cmd/esxcli 라인은
+    하이퍼바이저 특화 패턴 추가 후에도 그대로 보존된다(합성 케이스, 실데이터
+    없음 — 실수집 확보 시 재검증 필요)."""
+    output = (
+        "Security.PasswordMaxDays | 90\n"
+        "Security.AccountLockFailures | 5\n"
+        "UserVars.HostClientSessionTimeout | 900\n"
+        "Syslog.global.logHost | udp://loghost.example.com:514\n"
+        "esxcli network vswitch standard policy security get "
+        "--vswitch-name=vSwitch0\n"
+        "   Allow Promiscuous: false\n"
+        "   Forged Transmits: false\n"
+        "   MAC Address Change: false\n"
+        "Name: vpxuser  Description: vSphere Administrator  "
+        "Enabled: true  Locked: false\n"
+    )
+    p = _write(tmp_path, _xml(dumps=[("PRCV-005", output)]))
+    result = parse(p)
+    ev = result[0][1][0].evidence
+    assert "Security.PasswordMaxDays | 90" in ev
+    assert "Security.AccountLockFailures | 5" in ev
+    assert "UserVars.HostClientSessionTimeout | 900" in ev
+    assert "Syslog.global.logHost | udp://loghost.example.com:514" in ev
+    assert "Allow Promiscuous: false" in ev
+    assert "Forged Transmits: false" in ev
+    assert "MAC Address Change: false" in ev
+    assert "Description: vSphere Administrator" in ev
+    assert "Enabled: true" in ev
+    assert "Locked: false" in ev
+    assert "<REDACTED>" not in ev
+
+
 def test_parse_preserves_normal_output(tmp_path):
     normal = "Account  Description\nroot     Administrator\ndcui     DCUI User"
     p = _write(tmp_path, _xml(dumps=[("PRCV-001", normal)]))

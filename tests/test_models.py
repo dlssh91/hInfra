@@ -32,3 +32,16 @@ def test_overall_status_priority():
 
 def test_overall_status_empty():
     assert EvidenceItem("PISM-001", "AWS", []).overall_status == "info"
+
+
+def test_judgment_standard_field_default_backward_compat():
+    """standard는 기본값("") 있는 optional 필드 — 기존 Judgment(...) 위치/키워드
+    생성 호출부(핸들러 등)는 무변경으로 하위호환되어야 한다."""
+    j = Judgment(
+        item_id="PISM-001", item_name="테스트", variant="AWS", risk=5.0,
+        verdict="양호", confidence=0.9, rationale="근거", cited_evidence=["x"],
+        scope="스크립트 전체", management_review_needed=False,
+        script_status="good", agreement="일치", needs_review=False)
+    assert j.standard == ""
+    j.standard = "판단기준 텍스트"
+    assert j.standard == "판단기준 텍스트"

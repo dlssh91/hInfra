@@ -489,6 +489,14 @@
     font-size: 11.5px;
     color: var(--muted);
   }
+  .standard-block {
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px dashed var(--border);
+    font-size: 11.5px;
+  }
+  .standard-block b { color: var(--text); font-weight: 700; }
+  .standard-text { margin-top: 4px; white-space: pre-wrap; color: var(--muted); }
   .review-dot {
     display: inline-block;
     width: 8px;
@@ -555,6 +563,7 @@
         <div id="dropzone">
           <div><strong>여기로 파일을 끌어다 놓거나 클릭</strong>해서 점검 결과를 업로드하세요</div>
           <div class="dz-sub">xml · json · xlsx · csv · txt — 여러 파일 동시 선택 가능</div>
+          <div class="dz-sub" id="upload-progress" style="display:none;"></div>
           <input id="file-input" type="file" multiple class="visually-hidden" />
         </div>
 
@@ -983,10 +992,15 @@
     if (!state.currentPid) { toast("먼저 프로젝트를 선택하세요.", true); return; }
     var files = Array.prototype.slice.call(fileList);
     if (!files.length) return;
+    var total = files.length;
+    var progressEl = document.getElementById("upload-progress");
     var chain = Promise.resolve();
-    var okCount = 0, failCount = 0;
-    files.forEach(function (file) {
+    var okCount = 0, failCount = 0, done = 0;
+    progressEl.style.display = "block";
+    progressEl.textContent = "업로드 중 (0/" + total + ")";
+    files.forEach(function (file, idx) {
       chain = chain.then(function () {
+        progressEl.textContent = "업로드 중 (" + (idx + 1) + "/" + total + ") — " + file.name;
         return apiFetch("/api/projects/" + state.currentPid + "/assets", {
           method: "POST",
           headers: {
@@ -995,12 +1009,23 @@
           },
           body: file
         }).then(function () { okCount++; })
-          .catch(function (e) { failCount++; toast(file.name + ": " + e.message, true); });
+          .catch(function (e) { failCount++; toast(file.name + ": " + e.message, true); })
+          .then(function () {
+            done++;
+            progressEl.textContent = "업로드 중 (" + done + "/" + total + ")";
+            // 파일별 등록 결과를 즉시 반영 — 전체 완료를 기다리지 않고
+            // 성공한 자산이 바로 테이블에 나타나게 한다.
+            return refreshProject();
+          });
       });
     });
     chain.then(function () {
-      if (okCount) toast(okCount + "개 파일 업로드 완료" + (failCount ? (", " + failCount + "개 실패") : "") + ".");
-      refreshProject();
+      progressEl.style.display = "none";
+      if (okCount) {
+        toast(okCount + "개 파일 업로드 완료" + (failCount ? (", " + failCount + "개 실패") : "") + ".");
+      } else if (failCount) {
+        toast(failCount + "개 파일 업로드 모두 실패했습니다.", true);
+      }
     });
   }
 
@@ -1117,8 +1142,12 @@
   function renderItemRow(j) {
     var vcls = VERDICT_COLOR[j.verdict] || "hold";
     var expanded = !!state.expandedRationale[j.item_id];
+    var standardBlock = (j.standard && j.standard.trim())
+      ? '<div class="standard-block"><b>판단기준(xlsx)</b><div class="standard-text">' + escapeHtml(j.standard) + '</div></div>'
+      : "";
     var rationaleBody = expanded
-      ? '<div class="rationale-full">' + escapeHtml(j.rationale) + '</div>' +
+      ? standardBlock +
+        '<div class="rationale-full">' + escapeHtml(j.rationale) + '</div>' +
         (j.cited_evidence && j.cited_evidence.length
           ? '<div class="cited-list">인용 증거: ' + escapeHtml(j.cited_evidence.join(" | ")) + '</div>'
           : "")

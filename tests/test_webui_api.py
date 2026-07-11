@@ -110,6 +110,30 @@ def test_upload_asset_exceeds_max_size_returns_413(running_server):
     assert resp.status_code == 413
 
 
+# ── 다중 파일 업로드: 순차 POST 2건 → 자산 2개 등록 ────────────────────────
+
+def test_multiple_sequential_uploads_register_two_assets(running_server):
+    """설계서 §UI '숨김 input file multiple + 순차 POST'가 서버 쪽에서
+    실제로 파일별 독립 자산으로 등록되는지 검증(프론트 JS의 순차 POST
+    루프를 서버 API 레벨에서 시뮬레이션)."""
+    base_url, store, jobs, config = running_server
+    pid = store.create_project("다중업로드")["project_id"]
+
+    resp1 = _upload(base_url, pid, "mysql_result_rds.json", b'{"a":1}')
+    assert resp1.status_code == 201
+    resp2 = _upload(base_url, pid, "한글결과파일2.xml", b"<xml/>")
+    assert resp2.status_code == 201
+
+    aid1 = resp1.json()["asset"]["asset_id"]
+    aid2 = resp2.json()["asset"]["asset_id"]
+    assert aid1 != aid2
+
+    project = store.get_project(pid)
+    assert len(project["assets"]) == 2
+    filenames = {a["original_filename"] for a in project["assets"]}
+    assert filenames == {"mysql_result_rds.json", "한글결과파일2.xml"}
+
+
 def test_upload_asset_traversal_rejected(running_server):
     base_url, store, jobs, config = running_server
     pid = store.create_project("트래버설웹")["project_id"]

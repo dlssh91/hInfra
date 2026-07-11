@@ -445,3 +445,261 @@ MIIEvQIBADANBgkqhkiG9w0BAQEFAASC...pkcs8_secret...AAAA==
         "M-a: 접두어 없는 PRIVATE KEY 본문이 평문 노출됨"
     )
     assert "<REDACTED>" in evidence
+
+
+# ── L2 마스킹 확장 (2026-07-11, §1/§2 도커 자가수집 실증 결함 수정) ──────────
+# 실증(out/srv_lab/*.xml, out/was_lab/*.xml)에서 기존 3패턴을 통과한 평문 4종
+# + 과마스킹 가드(login.defs/PAM/sshd 판정 라인 보존)를 고정한다.
+# 패턴 A(XML/속성형)·B(셸 KEY=VALUE형)는 서버·웹WAS 파서가 공유하는
+# server_xml._mask_server_evidence 한 곳에서 구현된다.
+
+def test_l2_shell_kv_db_password_masked(tmp_path):
+    """서버 /etc/profile류 `DB_PASSWORD=...` 평문이 마스킹된다(실증 §1)."""
+    body = """
+<dump>
+<items><id>/etc/profile</id></items>
+<output><![CDATA[
+# app secret (test) DB_PASSWORD=SuperSecretPassw0rd! api_key=sk-live-ABCDEF1234567890
+]]></output>
+</dump>
+"""
+    path = _write(tmp_path, "profile.xml", _server_xml(body=body))
+    evidence = server_xml.parse(path)[0][1][0].evidence
+    assert "SuperSecretPassw0rd!" not in evidence
+    assert "sk-live-ABCDEF1234567890" not in evidence
+    assert "DB_PASSWORD=<REDACTED>" in evidence
+    assert "api_key=<REDACTED>" in evidence
+
+
+def test_l2_xml_attr_password_masked(tmp_path):
+    """웹WAS tomcat-users.xml류 `password="..."` 속성값만 마스킹, 속성명·따옴표는
+    보존된다(실증 §2)."""
+    body = """
+<dump>
+<items><id>wasconf</id></items>
+<output><![CDATA[
+<user username="admin" password="Sup3rSecretPW!23" roles="manager-gui"/>
+]]></output>
+</dump>
+"""
+    path = _write(tmp_path, "tomcatusers.xml", _server_xml(body=body))
+    evidence = server_xml.parse(path)[0][1][0].evidence
+    assert "Sup3rSecretPW!23" not in evidence
+    assert 'password="<REDACTED>"' in evidence
+    assert 'username="admin"' in evidence
+
+
+def test_l2_xml_attr_keystore_pass_masked(tmp_path):
+    """웹WAS server.xml류 `keystorePass="..."`/`certificateKeystorePassword="..."`
+    속성값만 마스킹된다(실증 §2)."""
+    body = """
+<dump>
+<items><id>WST-102</id></items>
+<output><![CDATA[
+<SSLHostConfig keystorePass="KeyStoreSecr3t99" keystoreFile="conf/keystore.jks">
+<Certificate certificateKeystorePassword="KeyStoreSecr3t99" type="RSA" />
+</SSLHostConfig>
+]]></output>
+</dump>
+"""
+    path = _write(tmp_path, "serverxml.xml", _server_xml(body=body))
+    evidence = server_xml.parse(path)[0][1][0].evidence
+    assert "KeyStoreSecr3t99" not in evidence
+    assert 'keystorePass="<REDACTED>"' in evidence
+    assert 'certificateKeystorePassword="<REDACTED>"' in evidence
+
+
+def test_l2_overmasking_guard_login_defs_pam_sshd_preserved(tmp_path):
+    """과마스킹 가드: `=` 가 없는 login.defs/PAM/sshd 판정 라인은 그대로 보존된다.
+
+    이 라인들은 결정론 판정이 참조하는 문자열(예: PermitRootLogin 값,
+    PAM 스택 구성)이므로 한 글자도 손상되면 안 된다.
+    """
+    body = """
+<dump>
+<items><id>SRV-030</id></items>
+<output><![CDATA[
+PASS_MAX_DAYS   99999
+PASS_MIN_LEN    8
+password        requisite               pam_pwquality.so
+PermitRootLogin yes
+]]></output>
+</dump>
+"""
+    path = _write(tmp_path, "guard.xml", _server_xml(body=body))
+    evidence = server_xml.parse(path)[0][1][0].evidence
+    assert "PASS_MAX_DAYS   99999" in evidence
+    assert "PASS_MIN_LEN    8" in evidence
+    assert "password        requisite               pam_pwquality.so" in evidence
+    assert "PermitRootLogin yes" in evidence
+    assert "<REDACTED>" not in evidence
+
+
+# ── 하이퍼바이저 특화 마스킹 초안 (§4-2, 2026-07-11 — 실데이터 없음, 공개문서 기반) ──
+# osvirt_xml이 이 마스커를 그대로 체이닝하므로 여기서 회귀 고정한다.
+# vpxuser 자격증명(quoted/unquoted, 결합토큰만) + SAML 어서션 + Bearer/
+# vmware-api-session-id 세션 토큰. 과마스킹 가드(ESXi 설정 판정 라인 보존)가
+# 핵심 — 실데이터 확보 전이므로 최대한 보수적으로 검증한다.
+
+def test_vpxuser_quoted_password_masked(tmp_path):
+    """`vpxuserPassword="..."` 같은 결합토큰 속성값만 마스킹된다."""
+    body = """
+<dump>
+<items><id>PRCV-000</id></items>
+<output><![CDATA[
+<vpxa><config vpxuserPassword="R4nd0mVpx!Secr3t" hostname="esxi-01"/></vpxa>
+]]></output>
+</dump>
+"""
+    path = _write(tmp_path, "vpxa.xml", _server_xml(body=body))
+    evidence = server_xml.parse(path)[0][1][0].evidence
+    assert "R4nd0mVpx!Secr3t" not in evidence
+    assert 'vpxuserPassword="<REDACTED>"' in evidence
+    assert 'hostname="esxi-01"' in evidence
+
+
+def test_vpxuser_unquoted_kv_masked(tmp_path):
+    """`vpxuser_pwd=...` 비따옴표 셸 KV 형태도 마스킹된다."""
+    body = """
+<dump>
+<items><id>PRCV-000</id></items>
+<output><![CDATA[
+vpxuser_pwd=Sup3rRand0mVpx99
+]]></output>
+</dump>
+"""
+    path = _write(tmp_path, "vpxkv.xml", _server_xml(body=body))
+    evidence = server_xml.parse(path)[0][1][0].evidence
+    assert "Sup3rRand0mVpx99" not in evidence
+    assert "vpxuser_pwd=<REDACTED>" in evidence
+
+
+def test_vpxuser_overmasking_guard_passwd_line_preserved(tmp_path):
+    """과마스킹 가드: /etc/passwd류 `vpxuser:x:1000:...` 콜론 라인은 UID/GID/셸
+    필드가 보존된다 — "vpxuser"만으로는 매치하지 않고 password 키워드가
+    결합된 토큰만 매치 대상이다."""
+    body = """
+<dump>
+<items><id>PRCV-001</id></items>
+<output><![CDATA[
+vpxuser:x:1000:1000::/home/vpxuser:/bin/false
+Name: vpxuser  Description: vSphere Administrator  Enabled: true  Locked: false
+]]></output>
+</dump>
+"""
+    path = _write(tmp_path, "vpxguard.xml", _server_xml(body=body))
+    evidence = server_xml.parse(path)[0][1][0].evidence
+    assert "vpxuser:x:1000:1000::/home/vpxuser:/bin/false" in evidence
+    assert "Description: vSphere Administrator" in evidence
+    assert "Enabled: true" in evidence
+    assert "<REDACTED>" not in evidence
+
+
+def test_saml_assertion_block_masked(tmp_path):
+    """vCenter SSO(STS) SAML 어서션 본문은 치환, 태그 마커는 보존된다."""
+    body = """
+<dump>
+<items><id>PRCV-000</id></items>
+<output><![CDATA[
+<saml2:Assertion ID="_abc123" IssueInstant="2026-07-11T00:00:00Z">
+<saml2:Subject>administrator@vsphere.local</saml2:Subject>
+<saml2:Signature>MIIB...secretsig...</saml2:Signature>
+</saml2:Assertion>
+]]></output>
+</dump>
+"""
+    path = _write(tmp_path, "saml.xml", _server_xml(body=body))
+    evidence = server_xml.parse(path)[0][1][0].evidence
+    assert "administrator@vsphere.local" not in evidence
+    assert "secretsig" not in evidence
+    assert "<saml2:Assertion" in evidence
+    assert "</saml2:Assertion>" in evidence
+    assert "<REDACTED>" in evidence
+
+
+def test_sso_bearer_token_masked(tmp_path):
+    """`Authorization: Bearer <token>` 헤더의 토큰 값만 마스킹된다."""
+    body = """
+<dump>
+<items><id>PRCV-000</id></items>
+<output><![CDATA[
+Authorization: Bearer eyJhbGciOiJSUzI1NiJ9.superlongtoken.sig
+]]></output>
+</dump>
+"""
+    path = _write(tmp_path, "bearer.xml", _server_xml(body=body))
+    evidence = server_xml.parse(path)[0][1][0].evidence
+    assert "eyJhbGciOiJSUzI1NiJ9.superlongtoken.sig" not in evidence
+    assert "Authorization: Bearer <REDACTED>" in evidence
+
+
+def test_vmware_api_session_id_masked(tmp_path):
+    """`vmware-api-session-id: <token>` 세션 헤더 값만 마스킹된다."""
+    body = """
+<dump>
+<items><id>PRCV-000</id></items>
+<output><![CDATA[
+vmware-api-session-id: 52a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5
+]]></output>
+</dump>
+"""
+    path = _write(tmp_path, "sessid.xml", _server_xml(body=body))
+    evidence = server_xml.parse(path)[0][1][0].evidence
+    assert "52a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5" not in evidence
+    # 32자 hex이므로 _LONG_HEX가 먼저 처리할 수 있으나 어느 경로든 평문 노출 없이
+    # REDACTED로 치환되면 된다.
+    assert "vmware-api-session-id: <REDACTED" in evidence
+
+
+def test_hypervisor_masking_overmasking_guard_esxcli_lines_preserved(tmp_path):
+    """과마스킹 가드(핵심): 판정에 쓰이는 vim-cmd/esxcli 실제 출력 라인은
+    새 하이퍼바이저 패턴으로 인해 전혀 손상되지 않는다."""
+    body = """
+<dump>
+<items><id>PRCV-005</id></items>
+<output><![CDATA[
+Security.PasswordMaxDays | 90
+Security.AccountLockFailures | 5
+Security.AccountUnlockTime | 900
+UserVars.HostClientSessionTimeout | 900
+Syslog.global.logHost | udp://loghost.example.com:514
+esxcli network vswitch standard policy security get --vswitch-name=vSwitch0
+   Allow Promiscuous: false
+   Forged Transmits: false
+   MAC Address Change: false
+vim-cmd hostsvc/auth/permissions
+Enabled: true
+Locked: false
+]]></output>
+</dump>
+"""
+    path = _write(tmp_path, "guard2.xml", _server_xml(body=body))
+    evidence = server_xml.parse(path)[0][1][0].evidence
+    assert "Security.PasswordMaxDays | 90" in evidence
+    assert "Security.AccountLockFailures | 5" in evidence
+    assert "UserVars.HostClientSessionTimeout | 900" in evidence
+    assert "Syslog.global.logHost | udp://loghost.example.com:514" in evidence
+    assert "Allow Promiscuous: false" in evidence
+    assert "Forged Transmits: false" in evidence
+    assert "MAC Address Change: false" in evidence
+    assert "Enabled: true" in evidence
+    assert "Locked: false" in evidence
+    assert "<REDACTED>" not in evidence
+
+
+def test_l2_double_masking_no_broken_quotes(tmp_path):
+    """패턴 A(따옴표 값)와 패턴 B(셸 KEY=VALUE)가 같은 라인에서 중복 치환되어
+    따옴표가 깨지지 않는다 — 패턴 B는 (?!["']) 가드로 이미 마스킹된 따옴표 값을
+    재매치하지 않는다."""
+    body = """
+<dump>
+<items><id>wasconf</id></items>
+<output><![CDATA[
+<user password="Sup3rSecretPW!23"/>
+]]></output>
+</dump>
+"""
+    path = _write(tmp_path, "doublemask.xml", _server_xml(body=body))
+    evidence = server_xml.parse(path)[0][1][0].evidence
+    assert 'password="<REDACTED>"' in evidence
+    assert "Sup3rSecretPW!23" not in evidence

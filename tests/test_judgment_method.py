@@ -15,7 +15,8 @@ from judge_tool.criteria_loader import classify_method, load_criteria
 from judge_tool.main import run, _summarize_one, JudgeContext
 from judge_tool.models import (
     Criterion, EvidenceItem, Judgment, ResourceEvidence)
-from judge_tool.profile import CLOUD, DB_MYSQL
+from judge_tool.profile import (
+    CLOUD, DB_MYSQL, DB_MARIADB, DB_ORACLE, DB_MSSQL, DB_POSTGRESQL)
 from judge_tool import writer
 
 FIX = os.path.join(os.path.dirname(__file__), "fixtures", "sample_db_mysql.txt")
@@ -64,6 +65,30 @@ def test_loader_assigns_method_db(criteria_xlsx_path):
     assert crit[("DBM-016", "mysql_rds")].judgment_method == "det_common" # D(patch), Phase4 det_common 부여
     assert crit[("DBM-003", "mysql_rds")].judgment_method == "det_common" # B+요약, Phase4 det_common 부여
     assert crit[("DBM-006", "mysql_rds")].judgment_method == "det_common" # A, Phase4 det_common 부여
+
+
+def test_dbm025_five_engines_route_det_not_det_common(criteria_xlsx_path):
+    """회귀핀(2026-07-03 falsegood-audit F2): DBM-025(EoS/EOL)는 label D →
+    classify_method='det'로 라우팅돼야 한다(→ main._defer_or_eol → judge_eol
+    권위경로). item_configs에 judgment_method: det_common이 되돌아오면
+    det 어댑터가 자동판정해 노후 eol.py 기준 없이 거짓양호를 낼 위험이 있다
+    (오라클 rules='12' 기준으로 12.1/12.2/18c 같은 EoS 버전이 양호로 새던 결함).
+    """
+    engines = [
+        (DB_MYSQL, "db_mysql", "mysql_native"),
+        (DB_MARIADB, "db_mariadb", "mariadb_native"),
+        (DB_ORACLE, "db_oracle", "oracle_native"),
+        (DB_MSSQL, "db_mssql", "mssql_native"),
+        (DB_POSTGRESQL, "db_postgresql", "pg_native"),
+    ]
+    for profile, profile_key, variant in engines:
+        crit = load_criteria(criteria_xlsx_path, profile, profile_key=profile_key)
+        c = crit[("DBM-025", variant)]
+        assert c.label == "D", f"{profile_key}/{variant}: DBM-025 label != D"
+        assert c.judgment_method == "det", (
+            f"{profile_key}/{variant}: DBM-025 judgment_method="
+            f"{c.judgment_method!r} — det_common으로 회귀(자동판정 부활) 의심"
+        )
 
 
 def test_loader_assigns_method_cloud_holdonly(criteria_xlsx_path):

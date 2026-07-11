@@ -107,6 +107,83 @@ _PRIVATE_KEY_BLOCK = re.compile(
 # 32+로 보수적 적용(MD5 32자·SHA1/256/512 이상 해시류만, 짧은 값 보존).
 _LONG_HEX = re.compile(r"[0-9A-Fa-f]{32,}")
 
+# ── L2 마스킹 확장 (2026-07-11, §1/§2 도커 자가수집 실증 결함 수정) ──────────
+# 실증(out/srv_lab, out/was_lab)에서 기존 3패턴이 놓친 평문 토큰:
+#   - 서버 /etc/profile류 셸 KEY=VALUE: `DB_PASSWORD=SuperSecretPassw0rd!`,
+#     `api_key=sk-live-...`
+#   - 웹WAS XML/속성형(같은 마스커를 webwas_xml.py가 체이닝):
+#     tomcat-users.xml `password="Sup3rSecretPW!23"`,
+#     server.xml `keystorePass="..."` / `certificateKeystorePassword="..."`
+#
+# 패턴 A(XML/속성형, 따옴표 값): 지정 속성명 + `=` + 따옴표로 감싼 값만 치환,
+# 속성명·따옴표는 보존한다. 대소문자 무시.
+_ATTR_SECRET = re.compile(
+    r"(?i)\b(password|passwd|pwd|keystorePass|certificateKeystorePassword|"
+    r"truststorePass|secret|token)(\s*=\s*)([\"'])(.*?)\3"
+)
+# 패턴 B(셸 KEY=VALUE, 따옴표 없는 값): 임의 접두/접미 단어문자를 허용하는
+# 키워드 앵커(PASSWORD|PASSWD|SECRET|API_KEY|TOKEN|CREDENTIAL) + `=` + 값(비공백
+# 연속) 을 매치, 값만 치환한다. 대소문자 무시.
+#
+# 과마스킹 가드: 값 앞에 부정형 전방탐색 `(?!["'])` 를 둬 패턴 A가 이미 처리한
+# 따옴표 값(예: `password="<REDACTED>"`)을 다시 건드리지 않는다(중복치환으로
+# 따옴표가 깨지는 것 방지) — 패턴 A를 먼저 적용한 뒤 패턴 B를 적용해야 한다.
+# `=` 가 없는 라인(예: `PASS_MAX_DAYS 99999`, `password requisite pam_unix.so`,
+# `PermitRootLogin yes`)은 애초에 `\s*=\s*` 요구조건에서 매치되지 않아
+# 판정에 필요한 login.defs/PAM/sshd 설정 라인이 보존된다(회귀테스트로 고정).
+_SHELL_KV_SECRET = re.compile(
+    r"(?i)\b(\w*(?:PASSWORD|PASSWD|SECRET|API_KEY|TOKEN|CREDENTIAL)\w*)"
+    r"(\s*=\s*)(?![\"'])(\S+)"
+)
+
+# ── 하이퍼바이저 특화 마스킹 (§4-2, 2026-07-11 초안 — 실수집 데이터 없음) ──────
+# osvirt_xml은 자체 마스커가 없고 이 함수를 그대로 체이닝한다(웹WAS와 동일 구조
+# — commit 0cc3239 선례 계승: 도메인 특화 패턴도 공유 마스커에 추가). ESXi
+# shell/vCenter 로그에서 나타날 수 있는 두 가지 공개문서 기반 토큰 형태를
+# 보수적으로 추가한다(실데이터 확보 전이므로 과탐 최소화 우선):
+#   1. vpxuser 자격증명: vCenter가 각 ESXi 호스트에 생성하는 내부 관리계정
+#      (VMware 문서상 자동 생성·주기 로테이션되는 임의 비밀번호). vpxa.cfg류
+#      설정 덤프나 계정 관리 스크립트 출력에 "vpxuser...password" 형태의
+#      키=값으로 노출될 수 있음.
+#   2. vCenter SSO(STS) SAML 토큰 / vSphere REST API 세션 토큰: vSphere
+#      Authentication Guide 기준 STS는 WS-Trust 기반 SAML 2.0 어서션
+#      (<saml2:Assertion>...</saml2:Assertion>)을 발급하고, REST/vSAN API는
+#      `vmware-api-session-id` 헤더 또는 `Authorization: Bearer <token>` 로
+#      세션 토큰을 전달(공식 API 문서).
+#
+# 과마스킹 가드(핵심 — 실데이터 부재 시 가장 중요한 안전장치):
+#   - vpxuser 패턴은 "vpxuser"와 password/secret 계열 키워드가 **하나의
+#     식별자 토큰**으로 결합된 경우에만 매치한다(예: vpxuserPassword,
+#     vpxuser_pwd, vpxuser.secret). "vpxuser" 단독 언급(계정명 표시,
+#     `Name: vpxuser` 등)이나 /etc/passwd류 콜론 구분 라인(`vpxuser:x:...`)은
+#     매치하지 않는다 — 후자는 판정에 필요한 UID/GID/셸 정보를 보존해야 하며
+#     이미 크랙된 shadow 해시는 기존 _CRYPT_HASH 패턴이 별도 처리한다.
+#   - SAML 어서션 블록은 `<Assertion>`/`<saml2:Assertion>` 같은 SAML 전용
+#     태그명만 앵커로 삼아 esxcli/vim-cmd 설정 판정용 일반 XML 출력과
+#     혼동되지 않는다(해당 태그명은 SAML/WS-Trust 맥락 외 등장 가능성 낮음).
+#   - 세션 토큰 패턴은 `Authorization: Bearer` / `vmware-api-session-id`
+#     헤더 키워드 자체를 앵커로 사용 — ESXi/vCenter 설정값 판정 라인
+#     (Enabled/Locked/lockdown mode 등)과 겹치지 않는다.
+_VPXUSER_SECRET = re.compile(
+    r"(?i)(\bvpxuser\w*(?:password|passwd|pwd|secret)\w*"
+    r"|\b\w*(?:password|passwd|pwd|secret)\w*vpxuser\w*)"
+    r"(\s*=\s*)([\"'])(.*?)\3"
+)
+_VPXUSER_KV_SECRET = re.compile(
+    r"(?i)(\bvpxuser\w*(?:password|passwd|pwd|secret)\w*"
+    r"|\b\w*(?:password|passwd|pwd|secret)\w*vpxuser\w*)"
+    r"(\s*[:=]\s*)(?![\"'])(\S+)"
+)
+_SAML_ASSERTION_BLOCK = re.compile(
+    r"(<(?:\w+:)?Assertion\b[^>]*>)"
+    r".*?"
+    r"(</(?:\w+:)?Assertion>)",
+    re.DOTALL,
+)
+_SSO_BEARER_TOKEN = re.compile(
+    r"(?i)\b(Authorization\s*:\s*Bearer\s+|vmware-api-session-id\s*:\s*)(\S+)"
+)
+
 
 def _mask_server_evidence(text: str) -> str:
     """서버 raw 명령출력에서 명백한 민감 토큰을 마스킹한다.
@@ -116,6 +193,11 @@ def _mask_server_evidence(text: str) -> str:
       1. SSH/PEM 개인키 블록 (DOTALL, 마커 보존·본문 치환) — ENCRYPTED 포함 M-a
       2. Unix crypt 해시 토큰 (알고리즘 ID 앵커, 길이 제한 없음 — H1·M-b 수정)
       3. 32+ 연속 hex (MD5·SHA1·SHA256 이상 해시류; 짧은 hex 주소 등은 보존)
+      4. XML/속성형 시크릿(password=".."/keystorePass=".." 등, 값만 치환) — L2 확장
+      5. 셸 KEY=VALUE형 시크릿(DB_PASSWORD=.. 등, 값만 치환) — L2 확장
+      6. SAML 어서션 블록(<Assertion>~</Assertion>, 마커 보존·본문 치환) — §4-2 초안
+      7. vpxuser 자격증명(quoted/unquoted, vpxuser+password류 결합 토큰만) — §4-2 초안
+      8. SSO/API 세션 토큰(Authorization: Bearer / vmware-api-session-id) — §4-2 초안
     """
     # 1) 개인키 블록: 마커는 유지, 사이 내용만 <REDACTED>로
     text = _PRIVATE_KEY_BLOCK.sub(
@@ -125,6 +207,19 @@ def _mask_server_evidence(text: str) -> str:
     text = _CRYPT_HASH.sub("<REDACTED 해시>", text)
     # 3) 긴 hex (32+)
     text = _LONG_HEX.sub("<REDACTED>", text)
+    # 4) XML/속성형 시크릿 (password="..", keystorePass="..", token='..' 등)
+    text = _ATTR_SECRET.sub(r"\1\2\3<REDACTED>\3", text)
+    # 5) 셸 KEY=VALUE형 시크릿 (DB_PASSWORD=.., api_key=.. 등) — 패턴 A가 이미
+    #    치환한 따옴표 값은 (?!["']) 가드로 재매치하지 않는다.
+    text = _SHELL_KV_SECRET.sub(r"\1\2<REDACTED>", text)
+    # 6) SAML 어서션 블록: 마커는 유지, 사이 내용만 <REDACTED>로 (vCenter SSO/STS)
+    text = _SAML_ASSERTION_BLOCK.sub(r"\1<REDACTED>\2", text)
+    # 7) vpxuser 자격증명: 따옴표 값 패턴을 먼저 적용해야 비따옴표 KV 패턴이
+    #    이미 치환된 값(`<REDACTED>`, 따옴표 보존)을 재매치하지 않는다.
+    text = _VPXUSER_SECRET.sub(r"\1\2\3<REDACTED>\3", text)
+    text = _VPXUSER_KV_SECRET.sub(r"\1\2<REDACTED>", text)
+    # 8) SSO/API 세션 토큰 (Authorization: Bearer .., vmware-api-session-id: ..)
+    text = _SSO_BEARER_TOKEN.sub(r"\1<REDACTED>", text)
     return text
 
 

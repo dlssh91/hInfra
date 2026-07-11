@@ -168,26 +168,18 @@ _SRV_025_VULN = (
 
 # SRV-028: telnet/ssh 서비스 + TMOUT 설정 — 서비스 없으면 양호, 있고 TMOUT<=900→양호, >900→취약
 # check_SRV_028: split_output(output, 4)
+#
+# ── 실포맷 승격 (2026-07-11) ──────────────────────────────────────────────
+# 도커 ubuntu:24.04 + fsi_unix.sh 원본 무수정 단일변수 재수집(out/srv_lab/promo/).
+# sshd 실제 기동 상태에서 TMOUT 값만 단일 변경(600 ↔ 미설정)해 good/vuln 확보.
+# 기존 out/srv_lab 실측 vuln 샘플은 PermitRootLogin+TMOUT 동시 변경(다변수 혼합)이라
+# 픽스처 승격에는 부적합 → 이번 재수집으로 SRV-028만 단독 플립한 실측 CDATA로 교체.
+# judge() 재검증: good→양호, vuln→취약 (verdict 플립 실확인, 아래 promo-*.xml 원본 보존).
 _SRV_028_GOOD = (
-    # 4섹션: telnet블록 / TMOUT체크 / ssh블록 / 추가체크
-    # telnet/ssh 모두 없음 → 양호
-    "-e [ telnet ][S]\n[ telnet ][E]\n"
-    f"{D}\n"
-    "$ echo $TMOUT\n900\n"           # TMOUT 체크 (섹션1, 서비스 없으면 체크 안 함)
-    f"{D}\n"
-    "-e [ ssh|ssh-server ][S]\n[ ssh|ssh-server ][E]\n"
-    f"{D}\n"
-    "# additional check\n"
+    '\n-e [ telnet ][S]\n[ telnet ][E]\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\n$ echo $TMOUT\n600\n------------\n \n[ Common /etc/profile Setting ]\n \n[ Common login Setting ]\n \n[ All Users ..*profile Setting ]\n \n[ Common .profile Setting ]\n \n[ Common .login Setting ]\n \n[ All Users .login Setting ]\n \n[ Common shrc Setting ]\n \n[ All Users shrc Setting ]\n \n[ Current User Setting ]\n \n[ Current User Environment Variables ]\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\n-e [ ssh|ssh-server ][S]\n$ cat /etc/services | egrep ssh|ssh-server\n-e \n-e ssh\t\t22/tcp\t\t\t\t# SSH Remote Login Protocol\n$ netstat -an 2>&1\n-e \ntcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN     \ntcp6       0      0 :::22                   :::*                    LISTEN     \n$ ps -ef | egrep sshd\n-e root        3931       1  0 00:49 ?        00:00:00 sshd: /usr/sbin/sshd [listener] 0 of 10-100 startups\n$ ps auxwww | egrep sshd\n-e root        3931  0.0  0.0  12048  2896 ?        Ss   00:49   0:00 sshd: /usr/sbin/sshd [listener] 0 of 10-100 startups\n[ ssh|ssh-server ][E]\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\n$ /etc/ssh/sshd_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"\n#ClientAliveInterval 0\n#ClientAliveCountMax 3\nClientAliveInterval 300\nClientAliveCountMax 0\n------------\n$ /opt/ssh/etc/sshd_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"\ncat: /opt/ssh/etc/sshd_config: No such file or directory\n------------\n$ /etc/sshd_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"\ncat: /etc/sshd_config: No such file or directory\n------------\n$ /usr/local/etc/sshd_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"\ncat: /usr/local/etc/sshd_config: No such file or directory\n------------\n$ /usr/local/sshd/etc/sshd_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"\ncat: /usr/local/sshd/etc/sshd_config: No such file or directory\n------------\n$ /usr/local/ssh/etc/sshd_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"\ncat: /usr/local/ssh/etc/sshd_config: No such file or directory\n------------\n$ /etc/ssh/ssh_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"\n------------\n\t\t\t\t'
 )
 _SRV_028_VULN = (
-    # 4섹션: telnet 있고 TMOUT 없음 → 취약
-    "-e [ telnet ][S]\ntelnetd 1234 root\n[ telnet ][E]\n"
-    f"{D}\n"
-    "# no TMOUT set\n"
-    f"{D}\n"
-    "-e [ ssh|ssh-server ][S]\nsshd 1234 root\n[ ssh|ssh-server ][E]\n"
-    f"{D}\n"
-    "# additional\n"
+    '\n-e [ telnet ][S]\n[ telnet ][E]\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\n$ echo $TMOUT\n\n------------\n \n[ Common /etc/profile Setting ]\n \n[ Common login Setting ]\n \n[ All Users ..*profile Setting ]\n \n[ Common .profile Setting ]\n \n[ Common .login Setting ]\n \n[ All Users .login Setting ]\n \n[ Common shrc Setting ]\n \n[ All Users shrc Setting ]\n \n[ Current User Setting ]\n \n[ Current User Environment Variables ]\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\n-e [ ssh|ssh-server ][S]\n$ cat /etc/services | egrep ssh|ssh-server\n-e \n-e ssh\t\t22/tcp\t\t\t\t# SSH Remote Login Protocol\n$ netstat -an 2>&1\n-e \ntcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN     \ntcp6       0      0 :::22                   :::*                    LISTEN     \n$ ps -ef | egrep sshd\n-e root        3931       1  0 00:49 ?        00:00:00 [sshd] <defunct>\nroot        9560       1  0 00:49 ?        00:00:00 [sshd] <defunct>\nroot       15193       1  0 00:49 ?        00:00:00 sshd: /usr/sbin/sshd [listener] 0 of 10-100 startups\n$ ps auxwww | egrep sshd\n-e root        3931  0.0  0.0      0     0 ?        Zs   00:49   0:00 [sshd] &lt;defunct&gt;\nroot        9560  0.0  0.0      0     0 ?        Zs   00:49   0:00 [sshd] &lt;defunct&gt;\nroot       15193  0.0  0.0  12048  2892 ?        Ss   00:49   0:00 sshd: /usr/sbin/sshd [listener] 0 of 10-100 startups\n[ ssh|ssh-server ][E]\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\n$ /etc/ssh/sshd_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"\n#ClientAliveInterval 0\n#ClientAliveCountMax 3\nClientAliveInterval 300\nClientAliveCountMax 0\n------------\n$ /opt/ssh/etc/sshd_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"\ncat: /opt/ssh/etc/sshd_config: No such file or directory\n------------\n$ /etc/sshd_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"\ncat: /etc/sshd_config: No such file or directory\n------------\n$ /usr/local/etc/sshd_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"\ncat: /usr/local/etc/sshd_config: No such file or directory\n------------\n$ /usr/local/sshd/etc/sshd_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"\ncat: /usr/local/sshd/etc/sshd_config: No such file or directory\n------------\n$ /usr/local/ssh/etc/sshd_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"\ncat: /usr/local/ssh/etc/sshd_config: No such file or directory\n------------\n$ /etc/ssh/ssh_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"\n------------\n\t\t\t\t'
 )
 
 # SRV-034: Automount 서비스 — inactive→양호, active→취약
@@ -566,23 +558,19 @@ _SRV_073_GOOD = (
 
 # SRV-026: linux=DET (SRV_Linux_parse) — 텔넷/SSH root 로그인 통제
 # check_SRV_026(Linux): split_output(output, 3), telnet/ssh 서비스 + securetty/PermitRootLogin
+#
+# ── 실포맷 승격 (2026-07-11) ──────────────────────────────────────────────
+# 도커 ubuntu:24.04 + fsi_unix.sh 원본 무수정 단일변수 재수집(out/srv_lab/promo/).
+# sshd 실제 기동 상태(ps -ef/netstat 리스닝 등 실측 라인 포함) 유지한 채
+# PermitRootLogin 값만 단일 변경(no ↔ yes)해 good/vuln 확보 — 기존 out/srv_lab
+# 실측 샘플은 good=서비스 자체 비활성(inactive), vuln=PermitRootLogin+TMOUT
+# 동시 변경이라 "서비스 활성 상태에서의 단일변수 검증"을 못 담았음 → 이번 재수집으로 대체.
+# judge() 재검증: good→양호, vuln→취약 (verdict 플립 실확인, 아래 promo-*.xml 원본 보존).
 _SRV_026_GOOD = (
-    # telnet/ssh 모두 inactive → 양호
-    "-e [ telnet ][S]\n[ telnet ][E]\n"
-    f"{D}\n"
-    "-e [ ssh|ssh-server ][S]\n[ ssh|ssh-server ][E]\n"
-    f"{D}\n"
-    "# no securetty/sshd_config needed\n"
+    '\n-e [ telnet ][S]\n[ telnet ][E]\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\n-e [ ssh|ssh-server ][S]\n$ cat /etc/services | egrep ssh|ssh-server\n-e \n-e ssh\t\t22/tcp\t\t\t\t# SSH Remote Login Protocol\n$ netstat -an 2>&1\n-e \ntcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN     \ntcp6       0      0 :::22                   :::*                    LISTEN     \n$ ps -ef | egrep sshd\n-e root        3931       1  0 00:49 ?        00:00:00 sshd: /usr/sbin/sshd [listener] 0 of 10-100 startups\n$ ps auxwww | egrep sshd\n-e root        3931  0.0  0.0  12048  2896 ?        Ss   00:49   0:00 sshd: /usr/sbin/sshd [listener] 0 of 10-100 startups\n[ ssh|ssh-server ][E]\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\n$ cat /etc/securetty | egrep -i "(ptyp1|^pts)"\ncat: /etc/securetty: No such file or directory\n------------\n$ cat /etc/pam.d/remote | egrep -i "pam_securetty.so"\ncat: /etc/pam.d/remote: No such file or directory\n------------\n$ cat /etc/pam.d/login | egrep -i "pam_securetty.so"\n------------\n$ /etc/ssh/sshd_config | egrep -i "(PermitRootLogin|denyuser)"\n#PermitRootLogin prohibit-password\n# the setting of "PermitRootLogin prohibit-password".\nPermitRootLogin no\n------------\n$ /opt/ssh/etc/sshd_config | egrep -i "(PermitRootLogin|denyuser)"\ncat: /opt/ssh/etc/sshd_config: No such file or directory\n------------\n$ /etc/sshd_config | egrep -i "(PermitRootLogin|denyuser)"\ncat: /etc/sshd_config: No such file or directory\n------------\n$ /usr/local/etc/sshd_config | egrep -i "(PermitRootLogin|denyuser)"\ncat: /usr/local/etc/sshd_config: No such file or directory\n------------\n$ /usr/local/sshd/etc/sshd_config | egrep -i "(PermitRootLogin|denyuser)"\ncat: /usr/local/sshd/etc/sshd_config: No such file or directory\n------------\n$ /usr/local/ssh/etc/sshd_config | egrep -i "(PermitRootLogin|denyuser)"\ncat: /usr/local/ssh/etc/sshd_config: No such file or directory\n------------\n$ /etc/ssh/ssh_config | egrep -i "(PermitRootLogin|denyuser)"\n------------\n\t\t\t\t'
 )
 _SRV_026_VULN = (
-    # SSH 있고 PermitRootLogin yes → 취약
-    "-e [ telnet ][S]\n[ telnet ][E]\n"
-    f"{D}\n"
-    "-e [ ssh|ssh-server ][S]\nsshd 1234 root\n[ ssh|ssh-server ][E]\n"
-    f"{D}\n"
-    "$ cat /etc/ssh/sshd_config\n"
-    "PermitRootLogin yes\n"
-    "------------\n"
+    '\n-e [ telnet ][S]\n[ telnet ][E]\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\n-e [ ssh|ssh-server ][S]\n$ cat /etc/services | egrep ssh|ssh-server\n-e \n-e ssh\t\t22/tcp\t\t\t\t# SSH Remote Login Protocol\n$ netstat -an 2>&1\n-e \ntcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN     \ntcp6       0      0 :::22                   :::*                    LISTEN     \n$ ps -ef | egrep sshd\n-e root        3931       1  0 00:49 ?        00:00:00 [sshd] <defunct>\nroot        9560       1  0 00:49 ?        00:00:00 sshd: /usr/sbin/sshd [listener] 0 of 10-100 startups\n$ ps auxwww | egrep sshd\n-e root        3931  0.0  0.0      0     0 ?        Zs   00:49   0:00 [sshd] &lt;defunct&gt;\nroot        9560  0.0  0.0  12048  2892 ?        Ss   00:49   0:00 sshd: /usr/sbin/sshd [listener] 0 of 10-100 startups\n[ ssh|ssh-server ][E]\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\n$ cat /etc/securetty | egrep -i "(ptyp1|^pts)"\ncat: /etc/securetty: No such file or directory\n------------\n$ cat /etc/pam.d/remote | egrep -i "pam_securetty.so"\ncat: /etc/pam.d/remote: No such file or directory\n------------\n$ cat /etc/pam.d/login | egrep -i "pam_securetty.so"\n------------\n$ /etc/ssh/sshd_config | egrep -i "(PermitRootLogin|denyuser)"\n#PermitRootLogin prohibit-password\n# the setting of "PermitRootLogin prohibit-password".\nPermitRootLogin yes\n------------\n$ /opt/ssh/etc/sshd_config | egrep -i "(PermitRootLogin|denyuser)"\ncat: /opt/ssh/etc/sshd_config: No such file or directory\n------------\n$ /etc/sshd_config | egrep -i "(PermitRootLogin|denyuser)"\ncat: /etc/sshd_config: No such file or directory\n------------\n$ /usr/local/etc/sshd_config | egrep -i "(PermitRootLogin|denyuser)"\ncat: /usr/local/etc/sshd_config: No such file or directory\n------------\n$ /usr/local/sshd/etc/sshd_config | egrep -i "(PermitRootLogin|denyuser)"\ncat: /usr/local/sshd/etc/sshd_config: No such file or directory\n------------\n$ /usr/local/ssh/etc/sshd_config | egrep -i "(PermitRootLogin|denyuser)"\ncat: /usr/local/ssh/etc/sshd_config: No such file or directory\n------------\n$ /etc/ssh/ssh_config | egrep -i "(PermitRootLogin|denyuser)"\n------------\n\t\t\t\t'
 )
 
 # SRV-069: linux=DET (SRV_Linux_parse) — 패스워드 최대변경기간+복잡도 설정
@@ -738,9 +726,17 @@ _SRV_006_INACTIVE_GOOD = (
 )
 
 # SRV-007: SMTP inactive → 양호 (DET-PARTIAL)
+#
+# ── 실포맷 정정 (2026-07-11 발견·수정) ──────────────────────────────────
+# 버그: 기존 합성 fixture는 delimiter 1개(2섹션)뿐이었으나 check_SRV_007은
+# split_output(output, 4) — 최소 3개 delimiter(4섹션) 필요. 부족분 split은
+# split_output()이 빈 리스트를 반환 → "(*) 수동 판단 필요: 출력 데이터가
+# 예상된 형식으로 분리되지 않았습니다" 경로로 빠져 handled=False가 됨.
+# 결과: 이 테스트는 SRV-007의 실제 "서비스 비활성→양호" 분기를 전혀 실행하지
+# 않은 채 handled=False→skip 처리로만 통과해 왔음(거짓양호는 아니나 미검증 갭).
+# out/srv_lab 실측 XML(SRV-007, 서비스 비활성) 기준 3-delimiter 구조로 교체.
 _SRV_007_INACTIVE_GOOD = (
-    "-e [ smtp|sendmail|postfix|exim ][S]\n[ smtp|sendmail|postfix|exim ][E]\n"
-    f"{D}\n"
+    '\n-e [ smtp|sendmail|postfix|exim ][S]\n[ smtp|sendmail|postfix|exim ][E]\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\n$ sendmail -d0.1 &lt; /dev/null | grep -i version\n./fsi_unix.sh: 1139: sendmail: not found\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\n$ postconf -d mail_version\n./fsi_unix.sh: 1149: postconf: not found\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\n$ exim -bV\n./fsi_unix.sh: 1152: exim: not found\n\t\t\t\t'
 )
 
 # SRV-013: FTP inactive → 양호 (DET-PARTIAL)

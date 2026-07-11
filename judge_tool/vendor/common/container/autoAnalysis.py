@@ -774,7 +774,10 @@ def autoAnalysis(sApp,vulKey,vulOutput):
                         autoResult["result"] = "Y"
                         autoResult["point"] = "기본 네트워크 인터페이스 사용이 설정됨"
 
-                    if "does not exist" not in vulOutput:
+                    # VENDOR-EDIT(bug, R-PRCC-NOTEXIST, 2026-07-11): 실 수집스크립트
+                    # 마커는 "does not exist"가 아닌 "[not exist]"("does" 없음) —
+                    # 구마커 유지 + 신마커 OR 추가 인식(KNOWN_BUGS.md R-PRCC-NOTEXIST).
+                    if "does not exist" not in vulOutput and "[not exist]" not in vulOutput:
                         autoResult["result"] = "Y"
                         autoResult["point"] = "기본 네트워크 인터페이스를 사용하는 컨테이너 존재,"+autoResult["point"]
 
@@ -974,7 +977,10 @@ def autoAnalysis(sApp,vulKey,vulOutput):
                             autoResult["point"] = dir+ "이(가) 마운트된 컨테이너 존재,"+autoResult["point"]
 
                 elif "docker" in sApp:
-                    if "[does not exist]" not in vulOutput:
+                    # VENDOR-EDIT(bug, R-PRCC-NOTEXIST, 2026-07-11): 실 수집스크립트
+                    # 마커는 "[does not exist]"가 아닌 "[not exist]"("does" 없음) —
+                    # 구마커 유지 + 신마커 OR 추가 인식(KNOWN_BUGS.md R-PRCC-NOTEXIST).
+                    if "[does not exist]" not in vulOutput and "[not exist]" not in vulOutput:
                         autoResult["result"] = "Y"
                         autoResult["point"] = "시스템 디렉터리가 마운트된 컨테이너 존재"
 
@@ -1006,7 +1012,10 @@ def autoAnalysis(sApp,vulKey,vulOutput):
                             autoResult["point"] = sock+ "이 마운트된 컨테이너 존재,"+autoResult["point"]
 
                 elif "docker" in sApp:
-                    if "[does not exist]" not in vulOutput:
+                    # VENDOR-EDIT(bug, R-PRCC-NOTEXIST, 2026-07-11): 실 수집스크립트
+                    # 마커는 "[does not exist]"가 아닌 "[not exist]"("does" 없음) —
+                    # 구마커 유지 + 신마커 OR 추가 인식(KNOWN_BUGS.md R-PRCC-NOTEXIST).
+                    if "[does not exist]" not in vulOutput and "[not exist]" not in vulOutput:
                         autoResult["result"] = "Y"
                         autoResult["point"] = "CRI 소켓 볼륨이 마운트된 컨테이너 존재"
 
@@ -1025,7 +1034,10 @@ def autoAnalysis(sApp,vulKey,vulOutput):
                         autoResult["point"] = "readOnlyRootFilesystem이 False로 설정된 컨테이너 존재,"+autoResult["point"]
 
                 elif "docker" in sApp:
-                    if "[does not exist]" not in vulOutput:
+                    # VENDOR-EDIT(bug, R-PRCC-NOTEXIST, 2026-07-11): 실 수집스크립트
+                    # 마커는 "[does not exist]"가 아닌 "[not exist]"("does" 없음) —
+                    # 구마커 유지 + 신마커 OR 추가 인식(KNOWN_BUGS.md R-PRCC-NOTEXIST).
+                    if "[does not exist]" not in vulOutput and "[not exist]" not in vulOutput:
                         autoResult["result"] = "Y"
                         autoResult["point"] = "'ReadonlyRootfs'가 false로 설정된 컨테이너 존재"
 
@@ -1041,7 +1053,10 @@ def autoAnalysis(sApp,vulKey,vulOutput):
                         autoResult["point"] = "mountPropagation:Bidirectional이 설정되어 있음"
 
                 elif "docker" in sApp:
-                    if "[does not exist]" not in vulOutput:
+                    # VENDOR-EDIT(bug, R-PRCC-NOTEXIST, 2026-07-11): 실 수집스크립트
+                    # 마커는 "[does not exist]"가 아닌 "[not exist]"("does" 없음) —
+                    # 구마커 유지 + 신마커 OR 추가 인식(KNOWN_BUGS.md R-PRCC-NOTEXIST).
+                    if "[does not exist]" not in vulOutput and "[not exist]" not in vulOutput:
                         autoResult["result"] = "Y"
                         autoResult["point"] = "마운트 전파 모드가 shared로 설정된 컨테이너 존재"
 

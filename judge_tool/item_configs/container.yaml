@@ -205,7 +205,9 @@ PRCC-044:
 
 PRCC-045:
   judgment_method: det_common
-  label: A  # DET(k8s_master + docker_linux + ocp_master)
+  label: A  # docker_linux + ocp_master DET, k8s_master=MANUAL(2026-07-11 강등,
+            # DET_SOURCE.yaml 참조: 수집 jsonpath 불일치+vanilla k8s 비표준 필드
+            # → gate 차단 시 이 label A로 LLM 폴백)
 
 PRCC-046:
   judgment_method: det_common
