@@ -390,15 +390,79 @@ _MODE_J_ITEMS: dict = {
             for x in r if isinstance(x, dict)
         ),
     },
-    "DBM-005": None,  # F7(T7): mssql_rds 'sample is not None' — 0행(샘플쿼리 실패)과
-                       # 샘플없음(실제 컬럼값 없음=양호)을 구분 못 해 0행→양호였음. 계정/
-                       # 컬럼 샘플 행은 수집되면 항상 존재 → 0행-only 가드로 충분.
-    "DBM-006": None,  # F6(T7): 실패잠금(mysql/mariadb/oracle/mssql det_common) — 계정/
-                       # 프로파일 RESULT 0행은 현실적으로 불가능(수집실패)인데 위반0→양호였음.
-                       # pg_native는 모드B(구조적취약)가 gate DET 이전에 선처리해 이 가드에
-                       # 도달하지 않음(간섭 없음, T7 회귀테스트로 고정).
-    "DBM-007": None,  # F6(T7): 비밀번호 복잡도(mysql/mariadb/oracle/mssql det_common) —
-                       # DBM-006과 동일 결함. pg_native는 모드B가 선처리(무간섭).
+    # F7(DBM-005 중요정보 암호화) — DET_SOURCE.yaml 전수 확인 결과 DBM-005가 DET인
+    # 변형은 mssql_rds(cloud) 유일(그 외 native/cloud 전 엔진은 STUB/ABSENT → gate 차단,
+    # db.py judge() 자체에 도달하지 않음). vendor cloud_analysis.py
+    # `datum['sample'] is not None` 은 "0행(쿼리 실패)"과 "행은 있으나 sample=null
+    # (샘플 없음=진짜 양호)"을 구분하지 못해 위반0→양호로 떨어진다(§F7).
+    # mssql 한정 checker: 'sample' 키 존재(=실제 점검행) 검사 — 이 필드가 없으면
+    # DBM-005와 무관한 다른 항목 행만 수집된 것이므로 판단보류.
+    # 다른 엔진(mysql/mariadb/oracle/pg)은 이 dict에 없으므로 0행 체크만 적용되나,
+    # 애초에 STUB/ABSENT라 judge()에 도달하지 않아 실질적으로 무관(방어적 등록).
+    "DBM-005": {
+        "mssql": lambda r: any(
+            isinstance(x, dict) and "sample" in x for x in r
+        ),
+    },
+    # F6(DBM-006 로그인 실패잠금 / DBM-007 비밀번호 복잡도) — 계정/정책 조회가 0행인
+    # 것은 현실적으로 불가능(계정 자체가 없는 DB는 없음) → 수집실패인데 위반0→양호로
+    # 떨어졌다(§F6). 엔진별 checker: 각 엔진 analysis.py/cloud_analysis.py가 실제로
+    # 참조하는 필드가 최소 1개 행에 있는지 확인(값의 취약 여부와 무관 — 존재 자체만 확인).
+    #   mysql: native='USER_ATTRIBUTES'(mysql.user), cloud='FAILED_LOGIN_ATTEMPTS'
+    #          (cloud_analysis.py, 컬럼명이 native와 다름 — 둘 다 인정해야 cloud
+    #          정상양호를 오탐하지 않음).
+    #   mariadb: 'VARIABLE_NAME'=='MAX_PASSWORD_ERRORS'(dict) 또는 동일 문자열이 포함된
+    #            bare str(플러그인 미탑재 안내문 등) — native/cloud 동일 스키마.
+    #   oracle: 'resource_name'=='FAILED_LOGIN_ATTEMPTS' — native/cloud 동일 스키마.
+    #   mssql: 'is_policy_checked' 키 존재 — native/cloud 동일 스키마.
+    # pg_native는 모드B(구조적취약)가 gate DET 이전에 선처리해 이 가드에 도달하지
+    # 않음(간섭 없음).
+    "DBM-006": {
+        "mysql": lambda r: any(
+            isinstance(x, dict) and ("USER_ATTRIBUTES" in x or "FAILED_LOGIN_ATTEMPTS" in x)
+            for x in r
+        ),
+        "mariadb": lambda r: any(
+            (isinstance(x, dict) and str(x.get("VARIABLE_NAME", "")).upper() == "MAX_PASSWORD_ERRORS")
+            or (isinstance(x, str) and "MAX_PASSWORD_ERRORS" in x)
+            for x in r
+        ),
+        "oracle": lambda r: any(
+            isinstance(x, dict) and x.get("resource_name") == "FAILED_LOGIN_ATTEMPTS"
+            for x in r
+        ),
+        "mssql": lambda r: any(
+            isinstance(x, dict) and "is_policy_checked" in x for x in r
+        ),
+    },
+    # DBM-007 — mysql/mssql은 DBM-006과 동일 근거로 checker 등록.
+    # oracle: exception 설정(oracle-config.json DBM-007 exception.profile/limit == [])이
+    #   비어있어 vendor 조건(`limit not in exception['limit']` 등, 빈 리스트에 대한
+    #   `not in`은 항상 True)이 사실상 항상 참이 되므로, DBM-007_1에 값이 있는 행이
+    #   하나라도 있으면 값과 무관하게 무조건 위반으로 계산된다(별도 발견 사항 —
+    #   거짓취약 방향 vendor 버그, KNOWN_BUGS.md 기록, 본 배치에서 vendor 수정은
+    #   범위 밖). 즉 oracle DBM-007은 "위반0 + 기대행 존재"인 진짜 양호 상태를
+    #   vendor 로직으로 재현할 수 없다 — 그래도 checker는 등록해 둔다(향후 vendor
+    #   exception 설정이 채워지면 즉시 유효해지고, 현재도 기형 행(예: limit/profile
+    #   키 자체가 없는 행)만 있는 경우를 판단보류로 보수적으로 처리하는 안전판 역할).
+    # mariadb: 이 dict에 없음 → 0행 체크만 적용(fallback). mariadb native DBM-007은
+    #   기존에 별도 R3 벤더버그(수집형식 불일치로 KeyError가 삼켜짐 → 결과가 항상
+    #   []이 되는 현상)가 있어 db_cov_contract에도 양극성 픽스처가 없다(§0 기존
+    #   미해결). 본 F6 배치는 그 버그를 흡수/확대하지 않기 위해 mariadb DBM-007에
+    #   엔진별 checker를 추가하지 않았다(관찰만, 수정 없음).
+    "DBM-007": {
+        "mysql": lambda r: any(
+            isinstance(x, dict)
+            and x.get("VARIABLE_NAME") in ("validate_password_policy", "validate_password.policy")
+            for x in r
+        ),
+        "oracle": lambda r: any(
+            isinstance(x, dict) and "limit" in x and "profile" in x for x in r
+        ),
+        "mssql": lambda r: any(
+            isinstance(x, dict) and "is_policy_checked" in x for x in r
+        ),
+    },
 }
 
 # 엔진별 "기대 변수 존재 여부" 검사 함수.

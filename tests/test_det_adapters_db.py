@@ -5775,14 +5775,31 @@ class TestF1Dbm008VendorDataKey:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestModeJRegistryF6F7Keys:
-    """모드J 테이블에 DBM-005/006/007 키가 등록돼 있어야 함(F6/F7, T7)."""
+    """모드J 테이블에 DBM-005/006/007 키가 등록돼 있어야 함(F6/F7).
+
+    T7 후속(재통합, 원격 기준)으로 0행-only 가드에서 엔진별 "기대 변수 존재"
+    checker 테이블로 승격됨 — DBM-005(mssql), DBM-006(mysql/mariadb/oracle/
+    mssql), DBM-007(mysql/oracle/mssql)이 rows-present-but-field-missing
+    거짓양호까지 차단한다(mariadb DBM-007은 별도 R3 벤더버그로 의도적 미등록).
+    """
 
     def test_registry_has_dbm005_006_007(self):
         for k in ("DBM-005", "DBM-006", "DBM-007"):
             assert k in _MODE_J_ITEMS, f"{k} 모드J 테이블 미등록"
-            assert _MODE_J_ITEMS[k] is None, (
-                f"{k}: 이번 태스크는 0행 가드만 등록 — checker 테이블이면 안 됨"
+            assert isinstance(_MODE_J_ITEMS[k], dict), (
+                f"{k}: 엔진별 checker 테이블(dict)이어야 함 — 0행-only(None)는 회귀"
             )
+
+    def test_dbm005_mssql_checker_registered(self):
+        assert "mssql" in _MODE_J_ITEMS["DBM-005"], "DBM-005 mssql checker 미등록"
+
+    def test_dbm006_all_four_engines_registered(self):
+        for engine in ("mysql", "mariadb", "oracle", "mssql"):
+            assert engine in _MODE_J_ITEMS["DBM-006"], f"DBM-006 {engine} checker 미등록"
+
+    def test_dbm007_three_engines_registered(self):
+        for engine in ("mysql", "oracle", "mssql"):
+            assert engine in _MODE_J_ITEMS["DBM-007"], f"DBM-007 {engine} checker 미등록"
 
 
 class TestModeJDbm006Hold:
