@@ -925,3 +925,331 @@ self.dbm_process_data(result_key, 'DBM-008_2', [
 - 1차 수정이 `"min" in tokens_val → 양호`로 두어 Min/Minimal/Minor(전체버전 Apache/2.4.x 노출)를 거짓양호로 신규 유입.
 - 정정: ServerTokens 안전값은 **Prod(ProductOnly)뿐** → `tokens_val == "prod"`만 양호, os/full/min/minimal/minor/major 전부 취약(Apache WST-102 및 함수 자기 메시지와 정합).
 - 회귀핀: test_wst102_webtob_min_is_vuln.
+
+## OBS-MY006 / OBS-OR007. 벤더 로직 관찰 사항(수정 없음) — F6/F7 배치 중 발견 (2026-07-11, §F6 falsegood-audit)
+
+본 배치의 실제 수정은 db.py 모드J(DBM-005/006/007 0행 fail-closed 가드) 등록뿐이다.
+아래 두 건은 조사 중 발견된 **별도** vendor 로직 결함으로, spec(§F6) 지시에 따라
+"관찰만 보고, 벤더 코드 수정은 범위 밖"으로 남긴다.
+
+### OBS-MY006. mysql `dbm_006` USER_ATTRIBUTES `int()` 변환 실패 시 R3가 조용히 흡수(부분 차단)
+
+`judge_tool/vendor/common/db/mysql/analysis.py:138-153`:
+```python
+self.dbm_process_data(result_key, 'DBM-006', [
+    lambda datum: datum['USER_ATTRIBUTES'] == "",
+    ...
+])
+self.dbm_process_data(result_key, 'DBM-006', [
+    lambda datum: datum['USER_ATTRIBUTES'] != "",
+    ...,
+    lambda datum: int(datum['USER_ATTRIBUTES']) > int(self.rules['DBM-006']['USER_ATTRIBUTES'][0])
+])
+```
+실제 MySQL 8의 `User_attributes`는 계정 잠금이 설정된 경우 순수 정수 문자열이 아니라
+JSON(`{"Password_locking": {"failed_login_attempts": N, ...}}`)이다. 이 경우 두 번째
+`dbm_process_data` 호출의 `int(datum['USER_ATTRIBUTES'])`가 `ValueError`를 던지고,
+`dbm_process_data`의 try/except(R3)가 예외를 print만 하고 삼켜 해당 행은 위반으로
+집계되지 않는다 — **계정 잠금이 실제로 설정돼 있어도(비어있지 않은 값) 그 값이 순수
+정수가 아니면 조용히 통과**하는 부분 차단 상태다. db.py의 R3 exc_keys 메커니즘은 이
+예외를 탐지해 `handled=False`로 폴백시키므로 거짓양호(verdict=양호)로 이어지지는
+않지만(LLM 경로로 위임됨), 결정론 판정 자체가 무력화된다.
+**docker 실증(mysql:8, 2026-07-11)**: 기본 설치에서 `User_attributes`는 전 계정 NULL(빈
+값)이라 이 경로 자체가 트리거되지 않음을 확인 — 실제 트리거는 관리자가 계정별
+`FAILED_LOGIN_ATTEMPTS`/`PASSWORD_LOCK_TIME`을 명시적으로 설정한 서버에서만 발생.
+**수정 여부**: 벤더 코드 미수정(§F6 spec 명시: "벤더버그는 R3가 부분 차단 — 벤더 코드
+수정 금지, 관찰 결과만 보고"). db.py 모드J DBM-006 등록과는 독립적인 문제(모드J는
+0행/기대필드부재만 다루고, 이 건은 필드가 존재하되 파싱 실패하는 경우).
+
+### OBS-OR007. oracle `dbm_007` exception 설정이 빈 리스트라 값과 무관하게 상시 위반(거짓취약 위험)
+
+`judge_tool/vendor/common/db/config/oracle-config.json`의 `DBM-007` 항목:
+```json
+"exception": {"username": [], "profile": [], "resource_name": [], "limit": []},
+"rules":     {"username": [], "profile": [], "resource_name": [], "limit": []}
+```
+`judge_tool/vendor/common/db/oracle/analysis.py:223-228`(native)과
+`cloud_analysis.py:201-206`(cloud) 동일:
+```python
+def dbm_007(self, result_key='DBM-007'):
+    self.dbm_result[result_key] = []
+    self.dbm_process_data(result_key, 'DBM-007_1', [
+        lambda datum: datum['limit'] not in self.exception[result_key]['limit'],
+        lambda datum: datum['profile'] not in self.exception[result_key]['profile']
+    ])
+```
+`exception['limit']`/`exception['profile']`가 둘 다 빈 리스트이므로 `not in []`는 항상
+`True`다 — 즉 `DBM-007_1`에 `profile`/`limit` 필드를 가진 행이 하나라도 있으면 **그
+값(실제로 PASSWORD_VERIFY_FUNCTION이 설정돼 있든 아니든)과 무관하게 무조건 위반으로
+집계**된다. 실수집(`collected/db/oracle_native/oracle_native_result.json`)에서는
+`DBM-007_1` 4행 모두 `limit="NULL"`(미설정, 실제로도 취약)이라 이 버그가 결과를
+왜곡하지 않았지만, 만약 DBA가 `PASSWORD_VERIFY_FUNCTION`을 실제로 설정한 서버라면
+`limit`에 함수명이 채워져도 여전히 위반으로 집계돼 **거짓취약**이 발생한다.
+**db.py 모드J와의 상호작용**: 이 버그 때문에 oracle DBM-007은 "행이 있고 위반이 0"인
+진짜 양호 상태를 결정론적으로 재현할 방법이 없다 — 도달 가능한 결과는 0행(모드J →
+판단보류) 또는 행 존재(항상 취약) 둘뿐이다. `tests/db_cov_contract.py`의 oracle
+`DBM-007` good_verdict를 양호→판단보류로 정정한 근거이자(§F6 배치),
+`tests/test_mode_j_hold.py::TestModeJDbm007OracleAlwaysHoldOrVuln`이 이 상한 동작을
+회귀 고정한다.
+**수정 여부**: 벤더 config/코드 미수정(§F6 spec 범위 밖 — exception 설정을 채우려면
+"Oracle 12c+ 기본 제공 `ORA12C_VERIFY_FUNCTION` 계열을 exception으로 인정할지" 등
+정책 판단이 필요해 별도 배치로 분리 권고).
+- 최근 비밀번호 변경(정상) → 양호 회귀 (과탐 방지)
+
+## R-PRCC-NOTEXIST. 컨테이너 PRCC-023/035/036/037/038 docker_linux "미존재" 마커
+불일치 — 거짓취약 (2026-07-11, VENDOR-EDIT(bug) 완료, §3-3 항목1)
+
+**id**: `R-PRCC-NOTEXIST`
+**위치**: `judge_tool/vendor/common/container/autoAnalysis.py`
+`PRCC-023`(:777), `PRCC-035`(:980), `PRCC-036`(:1015), `PRCC-037`(:1037),
+`PRCC-038`(:1056) — 각 `elif "docker" in sApp:` 분기.
+**상태**: VENDOR-EDIT(bug) 완료 (2026-07-11)
+**관련**: `tests/container_cov_contract.py`, `tests/test_container_cov_fixtures.py`
+
+### 증상 (마커 리터럴 불일치 → "미존재" 판정 영구 미매치 → 거짓취약)
+
+autoAnalysis.py는 컨테이너 목록이 비어있음(위반 없음)을 나타내는 마커로
+`"[does not exist]"`(PRCC-035/036/037/038) 또는 `"does not exist"`(PRCC-023,
+대괄호 없음)만 인식했다:
+```python
+# 버그 코드 (수정 전, 5곳 공통 패턴)
+elif "docker" in sApp:
+    if "[does not exist]" not in vulOutput:      # PRCC-035/036/037/038
+        autoResult["result"] = "Y"
+        ...
+```
+그러나 실 수집 스크립트(`out/kind_lab/829d2152a3d6-docker-*.xml` 실측, kind 클러스터
+docker_linux 실수집)가 실제로 방출하는 마커는 `"[not exist]"`("does" 없음)이며, 해당
+XML 7곳(PRC-C-023/035/036/037/038 각 출력 블록)에서 확인된다. 즉 **실 데이터에서는
+"[does not exist]"/"does not exist"가 절대 매치되지 않아, docker_linux는 이 5항목에서
+실제 상태(위반 컨테이너 존재 여부)와 무관하게 항상 `result='Y'`(취약)로 판정**되었다
+(방향=과판정/거짓취약 — 안전 방향이지만 정확도 붕괴, real 도커 환경 5항목 전수 오탐).
+
+### Corrected 동작 (VENDOR-EDIT(bug))
+
+기존 리터럴은 회귀 보존을 위해 유지하고, 실 마커 `"[not exist]"`를 OR로 추가 인식:
+```python
+# 수정 후 (VENDOR-EDIT(bug): R-PRCC-NOTEXIST) — 5곳 동일 패턴
+elif "docker" in sApp:
+    if "[does not exist]" not in vulOutput and "[not exist]" not in vulOutput:
+        autoResult["result"] = "Y"
+        ...
+```
+PRCC-023만 대괄호 없는 `"does not exist"` 리터럴이라 동일하게
+`if "does not exist" not in vulOutput and "[not exist]" not in vulOutput:`로 수정.
+
+각 항목의 판단기준(criteria xlsx '컨테이너 가상화 시스템' 시트, PRCC-023/035/036/
+037/038 Docker-Linux 판단기준)을 개별 확인한 결과, 5항목 모두 동일 극성이다 —
+**해당 위반 컨테이너 목록이 비어있음(마커 존재) = 양호, 목록에 항목 존재(마커 부재)
+= 취약**. 즉 `"[not exist]"`는 5항목 전부에서 **양호 신호**이며 일괄 OR 추가가
+안전하다(항목별 정독 완료, 일괄 처리가 아닌 개별 판단기준 확인 후 동일 결론).
+
+실측 검증(`out/kind_lab/829d2152a3d6-docker-*.xml` 실데이터로 autoAnalysis 직접 호출):
+- PRCC-035/036/037/038: 수정 전 전부 `result='Y'`(거짓취약) → 수정 후 전부
+  `result='N'`(양호, 실환경에 위반 컨테이너 없음 — 정답).
+- PRCC-023: 수정 후에도 `result='Y'` 유지 — 단 이는 마커 버그가 아닌 **별개의
+  독립 조건**(`"default_bridge:true" in vulOutput`, 이 클러스터의 docker 기본
+  브릿지가 실제로 `default_bridge:true`로 설정되어 있음)에 의한 것으로, 참 양성이다.
+  마커 관련 두 번째 조건("브릿지 사용 컨테이너 목록" 부재 확인)은 정정 후 정상적으로
+  거짓(→미기여)으로 평가됨(수정 전에는 이 조건도 상시 참이라 point 문구에 부정확한
+  이유가 덧붙었으나 판정 자체는 이미 Y였음 — 수정으로 근거 문구 정확도 개선).
+
+### 회귀테스트 핀 (tests/container_cov_contract.py + test_container_cov_fixtures.py)
+
+- PRCC-023/035/036/037/038 docker_linux `good` 픽스처를 실 마커 `"[not exist]"`로
+  재작성 — 실 데이터 기준 양호 경로 도달 확인(수정 전에는 도달 불가능했음).
+  `vuln` 픽스처(마커 완전 부재)는 기존 그대로 유지 — 취약 경로 회귀 보존.
+
+## PRCC-045-k8s-hostuts. 컨테이너 PRCC-045 k8s_master 수집 jsonpath 불일치 —
+거짓양호, DET→MANUAL 강등 (2026-07-11, 라우팅 조정 완료, §3-3 항목2)
+
+**id**: `PRCC-045-k8s-hostuts`
+**위치**:
+- 코드: `judge_tool/vendor/common/container/autoAnalysis.py:1136` (`elif "PRCC-045" in vulKey:` → `if "k8s_master" in sApp ...`)
+- 조치: `judge_tool/vendor/common/DET_SOURCE.yaml` `PRCC-045.variants.k8s_master`
+**상태**: 강등 완료 (2026-07-11) — **코드 자체는 수정하지 않음**(아래 "수정하지 않은
+이유" 참조), DET_SOURCE.yaml 분류 변경으로 gate 차단만 적용.
+**관련**: `tests/container_cov_contract.py`, `tests/test_container_cov_fixtures.py`
+
+### 증상 (수집 jsonpath와 코드 마커 문자열 불일치 → 마커 영구 부재 → 항상 양호)
+
+`autoAnalysis.py:1136`:
+```python
+elif "PRCC-045" in vulKey:
+    if "k8s_master" in sApp or "k8s_master" in sApp:   # (중복조건, 별개 관찰사항 — 무해)
+        if "spec.hostUTS:'true'" in vulOutput:
+            autoResult["result"] = "Y"
+            ...
+```
+코드는 `"spec.hostUTS:'true'"` 문자열을 검사하지만, 실 수집 스크립트(out/kind_lab/
+prcc-lab-control-plane-k8s_master-*.xml 실측, PRC-C-045 output)의 실제 jsonpath는
+```
+$ kubectl get pod [POD] -n [namespaces] -o jsonpath=" -securityContext.hostUTS:'{.securityContext.hostUTS}'"
+```
+로 **`securityContext.hostUTS`** 접두를 사용한다(`spec.hostUTS`가 아니다).
+PRCC-042/043/044(hostPID/hostIPC/hostNetwork)는 실 스크립트가 `spec.xxx` 접두를
+정확히 쓰는 반면(코드와 일치, 정상 동작), PRCC-045만 접두가 달라 코드 문자열이 실
+데이터에서 **절대 매치되지 않는다** → k8s_master는 실제 hostUTS 공유 여부와 무관하게
+항상 `result='N'`(양호)로 고정된다(**거짓양호, High** — DET 항목이 실제로는 아무
+것도 검증하지 못하면서 매번 "양호"를 반환).
+
+추가로, hostUTS는 vanilla Kubernetes Pod API의 표준 필드가 아니다 —
+`kubectl explain pod.spec` / `pod.spec.securityContext` 어디에도 `hostUTS`가 없으며,
+호스트 네임스페이스 공유 관련 표준 필드는 `hostPID`/`hostIPC`/`hostNetwork` 3종뿐이다.
+즉 수집 스크립트 자체가 애초 존재하지 않는 필드를 조회하고 있어, jsonpath를 code와
+일치시켜도(`securityContext.hostUTS`로 코드를 고쳐도) 실 데이터에서 항상 빈 값만
+나올 것으로 예상된다 — **이 항목은 k8s_master에서 결정론 검증이 구조적으로 불가능**.
+
+### 수정하지 않은 이유 (마커 문자열만 맞추지 않은 이유)
+
+R-PRCC-NOTEXIST(위 항목)처럼 코드의 마커 문자열을 실 데이터에 맞춰 고치는 방식은
+여기서는 **채택하지 않았다** — jsonpath가 조회하는 필드 자체가 vanilla Kubernetes에
+존재하지 않으므로, 문자열만 맞춰도 수집값이 항상 비어 있어 실질적으로 여전히
+"검증 불가능한 결정론"이 된다(문자열 수정은 겉보기 정합성만 회복하고 실제 판정
+능력은 회복하지 못함). 따라서 fail-closed 원칙에 따라 **DET_SOURCE.yaml에서
+k8s_master 분류를 DET→MANUAL로 강등**해 gate가 이 조합을 결정론 경로에서 완전히
+차단하도록 했다.
+
+### Corrected 라우팅 (DET_SOURCE.yaml 변경)
+
+```yaml
+PRCC-045:
+  variants:
+    k8s_master: MANUAL   # 2026-07-11 DET→MANUAL 강등 — gate 차단→LLM(label A)
+    docker_linux: DET    # 변경 없음(docker --uts=host 실재, 마커 정상 일치)
+    ocp_master: DET       # 변경 없음
+```
+
+실 라우팅 확인(코드 경로 추적, `judge_tool/det_adapters/base.py::classify/gate`,
+`judge_tool/main.py::_det_common_handler/_det_common_label_route`):
+1. `classify("PRCC-045", "k8s_master")` → `"MANUAL"`.
+2. `gate()`가 `handled=False` ForcedVerdict(verdict="판단보류") 반환 —
+   raw_output 내용과 무관(§18.1 C1).
+3. `main.py::_det_common_handler`가 `gate_result.handled is False`를 보고
+   `_det_common_label_route()`로 위임 → `container.yaml` PRCC-045 `label: A`이므로
+   `_judge_one`(LLM 판정) 경로로 폴백.
+4. 즉 k8s_master PRCC-045는 더 이상 "항상 양호"가 아니라 LLM이 실제 raw_output
+   (예: `"[not exist]"` 마커 포함 출력)을 보고 판단한다. PROGRESS.md 문서화된
+   LLM 프롬프트 가드(`[not exist]`=양호 신호로 해석)에 따라 결과적으로 "양호"에
+   도달할 수 있으나, 이는 **결정론 마커 매칭이 아닌 LLM의 근거 있는 판단**이며
+   증거 부재/모호 시에는 판단보류로 흡수된다 — 항상-양호 거짓양호 구조가 제거됨.
+   (⚠️ 로컬 LLM을 실제로 기동해 end-to-end 실행 검증은 이 배치 범위에서 수행하지
+   않았다 — 위 4단계는 코드 경로 추적으로 확인.)
+
+### 회귀테스트 핀 (tests/container_cov_contract.py + test_container_cov_fixtures.py)
+
+- `CONTAINER_COV["PRCC-045"]`에서 `"k8s_master"` 키 제거(DET 양극성 대상 아님).
+- `CONTAINER_MANUAL_HOLD_ITEMS`에 `("PRCC-045", "k8s_master", ...)` 추가 —
+  `test_container_manual_hold_items_no_false_positive`가 dummy 증거 raw로도
+  `handled=False` + `verdict != '양호'`를 회귀 고정.
+- `test_container_cov_contract_completeness`의 k8s_master 최소 개수를 33→32로 조정
+  (DET_SOURCE.yaml 실제 분류 변경 반영).
+- docker_linux PRCC-045(good/vuln)는 변경 없이 유지 — 회귀 보존.
+
+## R-WST033. 웹서버-WAS WST-033 Apache 서비스 조기반환 죽은 코드 → 허위근거 거짓양호
+(2026-07-11, VENDOR-EDIT(bug) 완료, §1/§2 도커 자가수집 실증)
+
+**id**: `BUG-WST033-apache`
+**위치**: `judge_tool/vendor/common/webwas/WST_Apache_parse.py` `check_WST_033()`
+(서비스 조기반환부 원래 line 19-22, 버전 미검출 폴백부 원래 line 60-61)
+**상태**: 수정 완료 (2026-07-11)
+**관련**: `tests/web_cov_contract.py`, `tests/test_web_cov_fixtures.py`
+
+### 증상 (헤더가 패턴과 항상 매치 → 조기반환 도달불가 → 허위근거 양호)
+
+`out/was_lab/tomcat-good.xml`(Apache 미설치 호스트) 실측 WST-033 raw:
+
+```
+[ http|https|http-alt|www|www-http|apache|apache2 ][S]
+[ http|https|http-alt|www|www-http|apache|apache2 ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ rpm -qa httpd
+/tmp/fsi_unix.sh: line 2670: rpm: command not found
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ dpkg -l | grep apache
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ apache2 -v
+/tmp/fsi_unix.sh: line 2678: apache2: command not found
+```
+
+수정 전 코드:
+
+```python
+# 현재 버그 코드 (WST_Apache_parse.py:19-22, 원본)
+service_pattern = "http\\|https\\|http-alt\\|www\\|www-http\\|apache\\|apache2"
+if not re.search(service_pattern, output_arr[0], re.IGNORECASE):
+    auto_result_reason = "(+) Apache 서비스가 실행 중이지 않은 것으로 탐지되어 양호로 판단\n" + output_arr[0]
+    return result, auto_result_reason, vulnerability_condition_result_model_list
+```
+
+`output_arr[0]`은 fDumpS 진단 헤더(`[ http|https|http-alt|www|www-http|apache|
+apache2 ][S]` ~ `[E]`)를 **항상** 포함하며, 이 헤더 문자열 자체가 점검 대상
+서비스 토큰을 그대로 echo한다. 게다가 `service_pattern`은 `\|`(이스케이프된
+리터럴 파이프)로 토큰을 이었기 때문에 정규식 교대(alternation)가 아니라
+`"http|https|http-alt|www|www-http|apache|apache2"` 라는 **하나의 긴 리터럴
+문자열**을 찾는 패턴이었다 — 이 리터럴은 헤더 자체에만 등장한다(우연히도
+헤더 포맷과 100% 일치). 결과적으로 `re.search(service_pattern, output_arr[0])`
+는 Apache 설치/실행 여부와 **무관하게 항상 매치** → 이 조기반환은 도달
+불가능한 죽은 코드였다.
+
+조기반환이 죽었으므로 처리는 계속 진행되어 `httpd_pattern`(output_arr[1] =
+rpm 출력)·`apache_pattern`(output_arr[2] = dpkg 출력) 모두 미매치 →
+`vulnerability_condition_result_model_list`가 비고 `apache_version`도 빈
+문자열(`""`)로 남는데, 다음 폴백이 무조건 실행된다:
+
+```python
+# 현재 버그 코드 (WST_Apache_parse.py:60-61, 원본)
+if not vulnerability_condition_result_model_list:
+    auto_result_reason = "(+) Apache 버전이 2.1 이상인 것으로 탐지되어 양호로 판단\n" + apache_version + "\n"
+```
+
+즉 Apache가 아예 설치되지 않아 버전을 전혀 탐지하지 못했는데도
+**"버전이 2.1 이상인 것으로 탐지되어"라는 허위 근거**로 `result='N'`(양호)를
+반환한다(`tomcat-good.xml`로 재현 확인, High — 근거 없는 자동 양호).
+
+### Corrected 동작 명세
+
+1. **서비스 조기반환 복구**: `output_arr[0]`에서 fDumpS 헤더 라인
+   (`^(?:-e\s+)?\[.*?\]\[[SE]\]\s*$`, MULTILINE)만 제거한 나머지(`$ ps -ef |
+   egrep apache` 등 실제 명령 출력)에서 서비스 존재를 판정한다. 이와 함께
+   `service_pattern`의 이스케이프도 진짜 교대(`|`)로 고쳐, 헤더를 제외한
+   뒤에도 실제 프로세스 라인(`apache2` 등)과 정상적으로 매치되도록 한다.
+   Apache 부재 시(헤더만 남고 실 데이터가 비거나 토큰 미포함) 조기반환이
+   실제로 발동해 "(+) Apache 서비스가 실행 중이지 않은 것으로 탐지되어
+   양호로 판단"이라는 **정직한 사유**로 양호를 반환한다.
+2. **허위근거 폴백 제거**: 취약 조건 미발견 + `apache_version` 실제 탐지 시
+   → 기존과 동일하게 "(+) Apache 버전이 2.1 이상인 것으로 탐지되어 양호로
+   판단" 유지(참 근거). 취약 조건 미발견 + `apache_version`이 끝내 빈 문자열
+   (서비스는 확인됐지만 rpm/dpkg/apache2 -v 어디서도 버전을 못 뽑은 경우) →
+   `"(*) Apache 서비스는 확인되었으나 버전 문자열이 탐지되지 않아 수동 확인
+   필요"`로 **판단보류**시킨다. `"(*)"` 마커 + `result != "Y"` 조합은
+   `judge_tool/det_adapters/webwas.py::_map_result`의 Low-1 가드가
+   `handled=False`(판단보류)로 흡수한다 — 버전 미검출을 "2.1 이상"으로
+   추정하는 거짓양호 경로를 제거.
+3. `output_arr` 길이 방어(`len(output_arr) > 1`/`> 2` 가드)도 함께 추가해
+   구분자 수가 기대(4섹션)보다 적은 비정상 캡처에서 IndexError 없이
+   안전하게 미검출로 처리되도록 했다(동작 변경 없음, 방어적 보강).
+
+### 형제 체크 점검 결과 (같은 파일)
+
+같은 파일의 `check_WST_034`/`check_WST_044`는 순수 MANUAL 스텁(항상 `(*)
+수동 분석/점검 필요` 반환)이라 `output_arr[0]`/`service_pattern` 헤더매칭
+로직 자체가 없다. config-항목 체크(`check_WST_031/035/036/037/038/039/102`)는
+`outputData`가 아니라 `configData`(설정파일 본문)를 직접 검사하며 구분자/헤더
+분할이 없다. 따라서 **이 파일 안에서는 WST-033 외 동일 결함이 없음**을
+확인했다(사실 보고, 수정 없음).
+
+### 회귀테스트 핀 (tests/test_wst033_apache_service_detection.py)
+
+- **헤더-only(Apache 부재, tomcat-good.xml 실측 형상)** → `result='N'`,
+  reason에 "실행 중이지 않은" 문구(정직한 조기반환 사유) — 종전엔 죽은 코드라
+  도달 불가능했던 경로가 실제로 발동함을 고정.
+- **실제 Apache 구버전(rpm httpd-1.3.42)** → `result='Y'`(취약) 회귀.
+- **실제 Apache 신버전(dpkg apache2 2.4.52 / apache2 -v Apache/2.4.52)** →
+  `result='N'`(양호), reason에 실제 탐지된 버전 문자열 포함 회귀.
+- **서비스 존재 + 버전 미검출**(rpm/dpkg/apache2 -v 모두 실패) →
+  `result='N'` + reason에 `"(*)"` 마커 포함 → 어댑터 경유 시 `handled=False`
+  (판단보류) 확인.
+- `tests/web_cov_contract.py` `_APACHE["WST-033"]`(good/vuln) 기존 픽스처가
+  새 헤더-스트립 게이트에서도 그대로 통과하는지 재확인(회귀 없음).
+
