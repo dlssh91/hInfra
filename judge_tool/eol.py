@@ -64,9 +64,15 @@ def _series(product: str, version: str) -> str:
 
     mysql/mariadb는 마이너까지(8.4), postgresql/oracle은 주버전(17/19),
     mssql은 연도(2019)가 시리즈 단위다.
+
+    예외: PostgreSQL 10 이전(9.x)은 벤더 버전체계상 마이너까지가 주버전
+    단위였다(9.6/9.5/9.4 등은 서로 다른 시리즈). 10 이후만 단일 정수
+    주버전(10/11/.../18)이므로, 9.x만 mysql/mariadb처럼 마이너까지 취한다.
     """
     parts = version.split(".")
     if product in ("mysql", "mariadb"):
+        return ".".join(parts[:2])
+    if product == "postgresql" and parts[0] == "9":
         return ".".join(parts[:2])
     return parts[0]
 

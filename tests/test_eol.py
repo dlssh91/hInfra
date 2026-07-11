@@ -22,6 +22,15 @@ def test_series_mapping():
     assert _series("mssql", "2019") == "2019"
 
 
+def test_series_mapping_postgresql_9x_uses_two_part_major():
+    """PostgreSQL 10 이전(9.x)은 마이너까지가 시리즈 단위(9.6 != 9.5),
+    parts[0]만 취하면 전부 '9'로 뭉개져 eol.yaml '9.6' 키를 못 찾는 버그가
+    있었다(2026-07-11 EoS 커버리지 보강 중 발견 → _series() 예외 처리 추가)."""
+    assert _series("postgresql", "9.6.24") == "9.6"
+    assert _series("postgresql", "9.5.25") == "9.5"
+    assert _series("postgresql", "10.23") == "10"
+
+
 def test_mysql_supported_version_good():
     items = _items("DBM-016",
                    '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.4.4"}')
@@ -109,8 +118,10 @@ def test_admin_tls_version_not_false_positive():
 
 
 def test_unknown_series_returns_none():
+    """mysql 5.7은 2026-07-11 갱신으로 eol.yaml에 등재됐으므로(EoS 커버리지
+    보강), 진짜 미등재 시리즈(4.1)로 '테이블 미수록→None' 계약을 검증한다."""
     items = _items("DBM-016",
-                   '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "5.7.44"}')
+                   '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "4.1.44"}')
     assert judge_eol("db_mysql", items, today=TODAY) is None
 
 
@@ -308,14 +319,14 @@ def test_staleness_demotion_as_of_none_yields_defer(monkeypatch):
 
 
 def test_staleness_demotion_realdata_1day_still_good():
-    """실데이터: eol.yaml as_of=2026-06-17, today=2026-06-18 → 1일 경과(신선) → 양호 불변."""
-    today = datetime.date(2026, 6, 18)
+    """실데이터: eol.yaml as_of=2026-07-11, today=2026-07-12 → 1일 경과(신선) → 양호 불변."""
+    today = datetime.date(2026, 7, 12)
     items = _items("DBM-016",
                    '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "8.4.4"}')
     r = judge_eol("db_mysql", items, today=today)
     assert r is not None
     assert r["verdict"] == "양호", (
-        f"실데이터 1일 경과(신선) → 양호 기대. eol.yaml as_of=2026-06-17. got {r['verdict']}"
+        f"실데이터 1일 경과(신선) → 양호 기대. eol.yaml as_of=2026-07-11. got {r['verdict']}"
     )
 
 
@@ -347,3 +358,154 @@ def test_defer_or_eol_preserves_verdict_with_empty_own_section():
     assert "[자동 판단보류" not in j.rationale
     # 테이블 기반 자동판정은 파서 status 동작과 무관하게 항상 검토 대상
     assert j.needs_review is True
+
+
+# ---------------------------------------------------------------------------
+# EoS 커버리지 보강 (2026-07-11, [[patch-eol-baseline-policy]])
+# 미등재였던 주요 EoS 경과 버전(oracle 11g/18c, mysql 5.6/5.7, mssql 2012,
+# postgresql 9.6~12, mariadb 10.1~10.5) 등재 회귀핀.
+# 실데이터 today는 eol.yaml as_of(2026-07-11)와 같은 날 기준으로 검증한다.
+# ---------------------------------------------------------------------------
+
+REAL_TODAY = datetime.date(2026, 7, 11)
+
+
+def test_oracle_11g_now_registered_eol_passed_defers():
+    """oracle 11.2(11g) EoS(2020-12-31 경과) 신규 등재 → 판단보류(사유 명확화),
+    구버전은 '테이블 미수록'이 아니라 'EoS 확인'으로 귀결되어야 한다."""
+    items = _items("DBM-016",
+                   '{"description":"Database Release Update : 11.2.0.4.250121"}')
+    r = judge_eol("db_oracle", items, today=REAL_TODAY)
+    assert r is not None
+    assert r["verdict"] == "판단보류"
+    assert "서비스 지원 종료(EoS) 확인" in r["rationale"]
+    assert "2020-12-31" in r["rationale"]
+
+
+def test_oracle_18c_now_registered_eol_passed_defers():
+    """oracle 18c EoS(2021-06-30 경과) 신규 등재 → 판단보류(사유 명확화)."""
+    items = _items("DBM-016", '{"description":"Oracle Database 18c Enterprise"}')
+    r = judge_eol("db_oracle", items, today=REAL_TODAY)
+    assert r is not None
+    assert r["verdict"] == "판단보류"
+    assert "서비스 지원 종료(EoS) 확인" in r["rationale"]
+    assert "2021-06-30" in r["rationale"]
+
+
+def test_mysql57_now_registered_eol_passed_defers():
+    """mysql 5.7 EoS(2023-10-31 경과) 신규 등재 → 판단보류(사유 명확화)."""
+    items = _items("DBM-016",
+                   '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "5.7.44"}')
+    r = judge_eol("db_mysql", items, today=REAL_TODAY)
+    assert r is not None
+    assert r["verdict"] == "판단보류"
+    assert "서비스 지원 종료(EoS) 확인" in r["rationale"]
+    assert "2023-10-31" in r["rationale"]
+
+
+def test_mysql56_now_registered_eol_passed_defers():
+    """mysql 5.6 EoS(2021-02-05 경과) 신규 등재 → 판단보류(사유 명확화)."""
+    items = _items("DBM-016",
+                   '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "5.6.51"}')
+    r = judge_eol("db_mysql", items, today=REAL_TODAY)
+    assert r is not None
+    assert r["verdict"] == "판단보류"
+    assert "2021-02-05" in r["rationale"]
+
+
+def test_mssql2012_now_registered_eol_passed_defers():
+    """mssql 2012 EoS(2022-07-12 경과) 신규 등재 → 판단보류(사유 명확화)."""
+    items = _items("DBM-016",
+                   '{"version_info": "Microsoft SQL Server 2012 (SP4)"}')
+    r = judge_eol("db_mssql", items, today=REAL_TODAY)
+    assert r is not None
+    assert r["verdict"] == "판단보류"
+    assert "2022-07-12" in r["rationale"]
+
+
+def test_postgresql12_now_registered_eol_passed_defers():
+    """postgresql 12 EoS(2024-11-14 경과) 신규 등재 → 판단보류(사유 명확화)."""
+    items = _items("DBM-016", '{"version": "PostgreSQL 12.20 on x86_64"}')
+    r = judge_eol("db_postgresql", items, today=REAL_TODAY)
+    assert r is not None
+    assert r["verdict"] == "판단보류"
+    assert "2024-11-14" in r["rationale"]
+
+
+def test_postgresql96_now_registered_eol_passed_defers():
+    """postgresql 9.6 EoS(2021-11-11 경과) 신규 등재 → 판단보류(사유 명확화)."""
+    items = _items("DBM-016", '{"version": "PostgreSQL 9.6.24 on x86_64"}')
+    r = judge_eol("db_postgresql", items, today=REAL_TODAY)
+    assert r is not None
+    assert r["verdict"] == "판단보류"
+    assert "2021-11-11" in r["rationale"]
+
+
+def test_mariadb104_now_registered_eol_passed_defers():
+    """mariadb 10.4 EoS(2024-06-18 경과) 신규 등재 → 판단보류(사유 명확화)."""
+    items = _items("DBM-016",
+                   '{"VARIABLE_NAME": "VERSION","VARIABLE_VALUE": "10.4.34-MariaDB"}')
+    r = judge_eol("db_mariadb", items, today=REAL_TODAY)
+    assert r is not None
+    assert r["verdict"] == "판단보류"
+    assert "2024-06-18" in r["rationale"]
+
+
+def test_mariadb101_now_registered_eol_passed_defers():
+    """mariadb 10.1 EoS(2020-10-17 경과) 신규 등재 → 판단보류(사유 명확화)."""
+    items = _items("DBM-016",
+                   '{"VARIABLE_NAME": "VERSION","VARIABLE_VALUE": "10.1.48-MariaDB"}')
+    r = judge_eol("db_mariadb", items, today=REAL_TODAY)
+    assert r is not None
+    assert r["verdict"] == "판단보류"
+    assert "2020-10-17" in r["rationale"]
+
+
+def test_oracle_12x_still_unregistered_by_design():
+    """oracle 12.1/12.2는 시리즈 키 충돌(_series가 parts[0]만 취해 둘 다 '12')
+    + 소스별 종료일 확신 부족으로 의도적으로 미등재 상태를 유지한다."""
+    items = _items("DBM-016",
+                   '{"description":"Database Release Update : 12.1.0.2.250121"}')
+    assert judge_eol("db_oracle", items, today=REAL_TODAY) is None
+
+
+def test_mariadb106_still_unregistered_by_design():
+    """mariadb 10.6은 현재일(2026-07-11)에 근접한 EoS라 일자 확신 부족으로
+    의도적으로 미등재 상태를 유지한다(오탐 방지)."""
+    items = _items("DBM-016",
+                   '{"VARIABLE_NAME": "VERSION","VARIABLE_VALUE": "10.6.20-MariaDB"}')
+    assert judge_eol("db_mariadb", items, today=REAL_TODAY) is None
+
+
+# --- 신규 등재 항목의 '지원중 fresh→양호' / 'stale as_of→강등' 분기 회귀 ---
+# (신규 등재는 전부 과거 EoS 사례이므로, 로직 경로 자체를 검증하기 위해
+#  today를 해당 항목의 eol 이전으로 앞당겨 '가상 지원중' 상태를 만든다.)
+
+def test_newly_registered_series_fresh_before_eol_yields_good(monkeypatch):
+    """mysql 5.7(신규 등재, eol=2023-10-31) — today를 eol 이전(2023-06-01)으로
+    앞당기고 as_of를 그 하루 전(신선)으로 맞추면 '지원중+fresh' 분기로 양호."""
+    import judge_tool.eol as eol_mod
+    today = datetime.date(2023, 6, 1)
+    as_of = today - datetime.timedelta(days=1)
+    monkeypatch.setattr(eol_mod, "_table_cache", _make_table_with_as_of(as_of))
+    items = _items("DBM-016",
+                   '{"VARIABLE_NAME": "version","VARIABLE_VALUE": "5.7.30"}')
+    r = judge_eol("db_mysql", items, today=today)
+    assert r is not None
+    assert r["verdict"] == "양호", f"신규 등재+지원중+fresh → 양호 기대, got {r['verdict']}"
+    assert r["confidence"] == 0.9
+
+
+def test_newly_registered_series_stale_as_of_demotes_to_defer(monkeypatch):
+    """mssql 2012(신규 등재, eol=2022-07-12) — today를 eol 이전으로 앞당기되
+    as_of를 200일 넘게 오래된 상태로 맞추면 '지원중'이어도 stale 강등→판단보류."""
+    import judge_tool.eol as eol_mod
+    today = datetime.date(2022, 1, 1)
+    as_of = today - datetime.timedelta(days=200)
+    monkeypatch.setattr(eol_mod, "_table_cache", _make_table_with_as_of(as_of))
+    items = _items("DBM-016",
+                   '{"version_info": "Microsoft SQL Server 2012 (SP4)"}')
+    r = judge_eol("db_mssql", items, today=today)
+    assert r is not None
+    assert r["verdict"] == "판단보류", f"stale as_of → 판단보류 기대, got {r['verdict']}"
+    assert "기준선 노후" in r["rationale"]
