@@ -37,10 +37,9 @@ import re
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional, Tuple
 
-from judge_tool.errors import ReportError
 from judge_tool.models import ResourceEvidence
-from judge_tool.parsers.cloud_xml import sanitize
-from judge_tool.parsers.server_xml import _mask_server_evidence, _read_text
+from judge_tool.parsers import _common
+from judge_tool.parsers.server_xml import _mask_server_evidence
 
 # ─ 변형 식별 매핑 ─────────────────────────────────────────────────────────────
 
@@ -129,13 +128,9 @@ def _mask_container_evidence(text: str) -> str:
 # ─ XML 파싱 헬퍼 ──────────────────────────────────────────────────────────────
 
 def _parse_root(xml_path: str) -> ET.Element:
-    try:
-        return ET.fromstring(sanitize(_read_text(xml_path)))
-    except ET.ParseError as e:
-        raise ReportError(
-            f"컨테이너 XML 파싱 실패: {xml_path} ({e}). "
-            "보고서가 손상되었을 수 있습니다."
-        ) from e
+    return _common.parse_root(
+        xml_path, "컨테이너 XML",
+        "보고서가 손상되었을 수 있습니다.")
 
 
 # ─ 변형 식별 ──────────────────────────────────────────────────────────────────
@@ -196,29 +191,7 @@ def parse(xml_path: str) -> List[Tuple[str, List[ResourceEvidence], Optional[str
     output이 공백뿐이면 ResourceEvidence를 만들지 않는다(빈 리스트).
     """
     root = _parse_root(xml_path)
-    out: List[Tuple[str, List[ResourceEvidence], Optional[str]]] = []
-    cid_counter: Dict[str, int] = {}
-
-    for dump in root.findall(".//dump"):
-        ids = [(i.text or "").strip() for i in dump.findall("./items/id")]
-        ids = [i for i in ids if i]
-        raw_output = (dump.findtext("./output") or "").strip()
-        masked = _mask_container_evidence(raw_output) if raw_output else raw_output
-        # §7 raw_evidence 분리: 빈 출력이면 raw_evidence=None(det_common 공급 없음)
-        raw_ev = raw_output if raw_output else None
-
-        for cid in ids:
-            n = cid_counter.get(cid, 0)
-            cid_counter[cid] = n + 1
-            resources = []
-            if masked:
-                resources.append(ResourceEvidence(
-                    resource_id=f"{cid}#{n}", status="", detail="",
-                    evidence=masked,
-                    raw_evidence=raw_ev))
-            out.append((cid, resources, None))
-
-    if not out:
-        raise ReportError(
-            f"컨테이너 결과 파싱 실패: {xml_path} 에 유효한 dump 항목이 없습니다.")
+    # §7 raw_evidence 분리: attach_raw_evidence=True로 마스킹 전 원문을 실음.
+    out = _common.parse_dumps(root, _mask_container_evidence, attach_raw_evidence=True)
+    _common.require_nonempty(out, xml_path, "컨테이너")
     return out

@@ -50,10 +50,9 @@ import re
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional, Tuple
 
-from judge_tool.errors import ReportError
 from judge_tool.models import ResourceEvidence
-from judge_tool.parsers.cloud_xml import sanitize
-from judge_tool.parsers.server_xml import _mask_server_evidence, _read_text
+from judge_tool.parsers import _common
+from judge_tool.parsers.server_xml import _mask_server_evidence
 
 # ── Cisco 변형 식별 정규식 ────────────────────────────────────────────────────
 # vendor/os/model 텍스트(lower)에서 Cisco 제품을 식별하는 토큰들.
@@ -279,13 +278,9 @@ def _mask_network_evidence(text: str,
 
 
 def _parse_root(xml_path: str) -> ET.Element:
-    try:
-        return ET.fromstring(sanitize(_read_text(xml_path)))
-    except ET.ParseError as e:
-        raise ReportError(
-            f"네트워크 XML 파싱 실패: {xml_path} ({e}). "
-            "보고서가 손상되었을 수 있습니다(예: 닫히지 않은 태그)."
-        ) from e
+    return _common.parse_root(
+        xml_path, "네트워크 XML",
+        "보고서가 손상되었을 수 있습니다(예: 닫히지 않은 태그).")
 
 
 def detect_variant(xml_path: str) -> str:
@@ -314,32 +309,14 @@ def parse(xml_path: str) -> List[Tuple[str, List[ResourceEvidence], Optional[str
     동등성 dict는 parse 레벨에서 1개 생성해 전 dump 공유(NET-009 중복탐지).
     """
     root = _parse_root(xml_path)
-    out: List[Tuple[str, List[ResourceEvidence], Optional[str]]] = []
-    cid_counter: Dict[str, int] = {}
     # 파일 전체 동등성 dict: 같은 비밀값 → 같은 <REDACTED #N>
     secret_index: Dict[str, str] = {}
     # M1 수정: community 전용 동등성 dict — secret_index와 분리하여 타입 혼용·카운터 오염 방지
     community_index: Dict[str, str] = {}
 
-    for dump in root.findall(".//dump"):
-        ids = [(i.text or "").strip() for i in dump.findall("./items/id")]
-        ids = [i for i in ids if i]
-        raw_output = (dump.findtext("./output") or "").strip()
-        masked_output = (
-            _mask_network_evidence(raw_output, secret_index, community_index)
-            if raw_output else raw_output
-        )
-        for cid in ids:
-            n = cid_counter.get(cid, 0)
-            cid_counter[cid] = n + 1
-            resources = []
-            if masked_output:
-                resources.append(ResourceEvidence(
-                    resource_id=f"{cid}#{n}", status="", detail="",
-                    evidence=masked_output))
-            out.append((cid, resources, None))
+    def mask_fn(raw_output: str) -> str:
+        return _mask_network_evidence(raw_output, secret_index, community_index)
 
-    if not out:
-        raise ReportError(
-            f"네트워크 결과 파싱 실패: {xml_path} 에 유효한 dump 항목이 없습니다.")
+    out = _common.parse_dumps(root, mask_fn)
+    _common.require_nonempty(out, xml_path, "네트워크")
     return out

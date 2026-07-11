@@ -39,12 +39,10 @@ fsi_unix.sh / fsi_win.bat 가 출력하는 동일 포맷을 처리한다:
 """
 import re
 import xml.etree.ElementTree as ET
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
-from judge_tool.errors import ReportError
 from judge_tool.models import ResourceEvidence
-from judge_tool.parsers.cloud_xml import sanitize
-from judge_tool.preflight import read_text as _preflight_read_text
+from judge_tool.parsers import _common
 
 # <asset><os> 텍스트(lower) → 변형 키. 구체 토큰을 먼저 검사한다.
 # 변형 키는 profile.SERVER.variants 키와 일치해야 한다.
@@ -223,26 +221,16 @@ def _mask_server_evidence(text: str) -> str:
     return text
 
 
-def _read_text(xml_path: str) -> str:
-    """인코딩 자동 교정 후 텍스트를 반환한다(preflight.read_text 위임).
-
-    preflight.read_text 는 strict 프로빙(utf-8-sig → utf-8 → cp949 → replace
-    폴백)으로 실제 인코딩을 확정하며, XML 선언 제거·sanitize까지 적용한다.
-    이전에 선언 인코딩을 신뢰하던 구현(mojibake 원인)을 대체한다.
-    """
-    text, _meta = _preflight_read_text(xml_path)
-    return text
+# _read_text: 다른 파서(network/osvirt/webwas/iss/container)가 이 이름으로
+# import 하므로 그대로 유지(공용 구현은 _common.read_text에 위임).
+_read_text = _common.read_text
 
 
 def _parse_root(xml_path: str) -> ET.Element:
-    try:
-        return ET.fromstring(sanitize(_read_text(xml_path)))
-    except ET.ParseError as e:
-        # XML 본문/민감 evidence는 메시지에 싣지 않는다(경로·위치 요약만).
-        raise ReportError(
-            f"서버 XML 파싱 실패: {xml_path} ({e}). "
-            "보고서가 손상되었을 수 있습니다(예: 닫히지 않은 태그)."
-        ) from e
+    # XML 본문/민감 evidence는 메시지에 싣지 않는다(경로·위치 요약만).
+    return _common.parse_root(
+        xml_path, "서버 XML",
+        "보고서가 손상되었을 수 있습니다(예: 닫히지 않은 태그).")
 
 
 def detect_variant(xml_path: str) -> Optional[str]:
@@ -269,27 +257,7 @@ def parse(xml_path: str) -> List[Tuple[str, List[ResourceEvidence], Optional[str
     evidence: _mask_server_evidence()로 shadow 해시·SSH 개인키·긴 hex를 마스킹.
     """
     root = _parse_root(xml_path)
-    out: List[Tuple[str, List[ResourceEvidence], Optional[str]]] = []
-    # cid별 출현 횟수 카운터 — 전역(파일 전체) 기준으로 #0, #1, ... 부여
-    cid_counter: Dict[str, int] = {}
-    for dump in root.findall(".//dump"):
-        ids = [(i.text or "").strip() for i in dump.findall("./items/id")]
-        ids = [i for i in ids if i]
-        raw_output = (dump.findtext("./output") or "").strip()
-        masked_output = _mask_server_evidence(raw_output) if raw_output else raw_output
-        # §7 raw_evidence 분리: 빈 출력이면 raw_evidence=None(det_common 공급 없음)
-        raw_ev = raw_output if raw_output else None
-        for cid in ids:
-            n = cid_counter.get(cid, 0)
-            cid_counter[cid] = n + 1
-            resources = []
-            if masked_output:
-                resources.append(ResourceEvidence(
-                    resource_id=f"{cid}#{n}", status="", detail="",
-                    evidence=masked_output,
-                    raw_evidence=raw_ev))
-            out.append((cid, resources, None))
-    if not out:
-        raise ReportError(
-            f"서버 결과 파싱 실패: {xml_path} 에 유효한 dump 항목이 없습니다.")
+    # §7 raw_evidence 분리: attach_raw_evidence=True로 마스킹 전 원문을 실음.
+    out = _common.parse_dumps(root, _mask_server_evidence, attach_raw_evidence=True)
+    _common.require_nonempty(out, xml_path, "서버")
     return out

@@ -37,15 +37,10 @@ if _PROJ not in sys.path:
 
 from judge_tool.det_adapters.db_pwcrack import (
     _verify_mysql_native,
-    _generate_mysql_native,
     _verify_mssql,
-    _generate_mssql_0200,
     _verify_postgres_scram,
-    _generate_postgres_scram,
     _verify_postgres_md5,
-    _generate_postgres_md5,
     _verify_oracle_11g,
-    _generate_oracle_11g,
     _parse_mariadb_accounts,
     _parse_mysql_accounts,
     _parse_mssql_accounts,
@@ -68,6 +63,13 @@ from judge_tool.det_adapters.db_pwcrack import (
     clear_hashcat_opts,
 )
 from judge_tool.det_adapters.base import ForcedVerdict
+from pwcrack_kat_helpers import (
+    _generate_mysql_native,
+    _generate_mssql_0200,
+    _generate_postgres_scram,
+    _generate_postgres_md5,
+    _generate_oracle_11g,
+)
 
 # ── 실데이터 경로 ─────────────────────────────────────────────────────────────
 _DB_BASE = os.path.join(_PROJ, "collected", "db")

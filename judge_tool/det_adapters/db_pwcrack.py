@@ -441,14 +441,6 @@ def _verify_mysql_native(password: str, hash_str: str) -> bool:
         return False
 
 
-def _generate_mysql_native(password: str) -> str:
-    """KAT/테스트용 mysql_native 해시 생성."""
-    pw_bytes = password.encode("utf-8")
-    inner = hashlib.sha1(pw_bytes).digest()
-    outer = hashlib.sha1(inner).digest()
-    return "*" + outer.hex().upper()
-
-
 def _verify_mssql(password: str, hash_hex: str) -> bool:
     """MSSQL 비밀번호 해시 검증.
 
@@ -518,13 +510,6 @@ def _verify_mssql(password: str, hash_hex: str) -> bool:
     return False
 
 
-def _generate_mssql_0200(password: str, salt: bytes) -> str:
-    """KAT/테스트용 MSSQL 0x0200 해시 생성 (salt 4bytes)."""
-    h = hashlib.sha512(password.encode("utf-16-le") + salt).digest()
-    raw = b"\x02\x00" + salt + h
-    return "0x" + raw.hex().upper()
-
-
 def _verify_postgres_scram(password: str, hash_str: str) -> bool:
     """PostgreSQL SCRAM-SHA-256 비밀번호 검증.
 
@@ -558,19 +543,6 @@ def _verify_postgres_scram(password: str, hash_str: str) -> bool:
         return False
 
 
-def _generate_postgres_scram(password: str, salt: bytes, iterations: int = 4096) -> str:
-    """KAT/테스트용 SCRAM-SHA-256 해시 생성."""
-    pw_bytes = password.encode("utf-8")
-    salted_password = hashlib.pbkdf2_hmac("sha256", pw_bytes, salt, iterations)
-    client_key = hmac.new(salted_password, b"Client Key", "sha256").digest()
-    stored_key = hashlib.sha256(client_key).digest()
-    server_key = hmac.new(salted_password, b"Server Key", "sha256").digest()
-    b64salt = base64.b64encode(salt).decode()
-    b64stored = base64.b64encode(stored_key).decode()
-    b64server = base64.b64encode(server_key).decode()
-    return f"SCRAM-SHA-256${iterations}:{b64salt}${b64stored}:{b64server}"
-
-
 def _verify_postgres_md5(password: str, hash_str: str, rolname: str = "") -> bool:
     """PostgreSQL md5 비밀번호 검증: md5<hex(md5(pw+rolname))>."""
     if not hash_str.startswith("md5") or len(hash_str) != 35:
@@ -581,12 +553,6 @@ def _verify_postgres_md5(password: str, hash_str: str, rolname: str = "") -> boo
         return hmac.compare_digest(expected, hash_str.lower())
     except Exception:  # noqa: BLE001
         return False
-
-
-def _generate_postgres_md5(password: str, rolname: str = "") -> str:
-    """KAT/테스트용 postgres md5 해시 생성."""
-    combined = (password + rolname).encode("utf-8")
-    return "md5" + hashlib.md5(combined).hexdigest()
 
 
 def _verify_oracle_11g(password: str, hash_str: str) -> bool:
@@ -618,15 +584,6 @@ def _verify_oracle_11g(password: str, hash_str: str) -> bool:
         return hmac.compare_digest(computed, stored_hash)
     except Exception:  # noqa: BLE001
         return False
-
-
-def _generate_oracle_11g(password: str, salt: bytes) -> str:
-    """KAT/테스트용 Oracle 11g S: 해시 생성.
-
-    알고리즘: SHA1(pw.encode('utf-8') + salt) — 대소문자 보존, raw UTF-8.
-    """
-    h = hashlib.sha1(password.encode("utf-8") + salt).digest()
-    return "S:" + h.hex().upper() + salt.hex().upper()
 
 
 # ══════════════════════════════════════════════════════════════════════════════

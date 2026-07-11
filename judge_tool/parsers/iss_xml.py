@@ -38,11 +38,9 @@ import re
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional, Tuple
 
-from judge_tool.errors import ReportError
 from judge_tool.models import ResourceEvidence
-from judge_tool.parsers.cloud_xml import sanitize
+from judge_tool.parsers import _common
 from judge_tool.parsers.network_xml import _mask_network_evidence
-from judge_tool.parsers.server_xml import _read_text
 
 # ── 장비 타입 토큰 (검사 순서 = 첫 매칭 승리) ────────────────────────────────
 # 다단어 구문을 단일 토큰보다 앞에 배치 — "intrusion"끼리 충돌 방지.
@@ -68,14 +66,10 @@ _TOKEN_RES: Tuple[Tuple, ...] = tuple(
 
 
 def _parse_root(xml_path: str) -> ET.Element:
-    try:
-        return ET.fromstring(sanitize(_read_text(xml_path)))
-    except ET.ParseError as e:
-        raise ReportError(
-            f"정보보호시스템 XML 파싱 실패: {xml_path} ({e}). "
-            "보고서가 손상되었을 수 있습니다. "
-            "FW 정책 xlsx는 --profile iss 를 사용하세요."
-        ) from e
+    return _common.parse_root(
+        xml_path, "정보보호시스템 XML",
+        "보고서가 손상되었을 수 있습니다. "
+        "FW 정책 xlsx는 --profile iss 를 사용하세요.")
 
 
 def detect_variant(xml_path: str) -> str:
@@ -104,30 +98,12 @@ def parse(xml_path: str) -> List[Tuple[str, List[ResourceEvidence], Optional[str
     동등성 dict는 parse 레벨에서 1개 생성해 전 dump 공유.
     """
     root = _parse_root(xml_path)
-    out: List[Tuple[str, List[ResourceEvidence], Optional[str]]] = []
-    cid_counter: Dict[str, int] = {}
     secret_index: Dict[str, str] = {}
     community_index: Dict[str, str] = {}
 
-    for dump in root.findall(".//dump"):
-        ids = [(i.text or "").strip() for i in dump.findall("./items/id")]
-        ids = [i for i in ids if i]
-        raw_output = (dump.findtext("./output") or "").strip()
-        masked_output = (
-            _mask_network_evidence(raw_output, secret_index, community_index)
-            if raw_output else raw_output
-        )
-        for cid in ids:
-            n = cid_counter.get(cid, 0)
-            cid_counter[cid] = n + 1
-            resources = []
-            if masked_output:
-                resources.append(ResourceEvidence(
-                    resource_id=f"{cid}#{n}", status="", detail="",
-                    evidence=masked_output))
-            out.append((cid, resources, None))
+    def mask_fn(raw_output: str) -> str:
+        return _mask_network_evidence(raw_output, secret_index, community_index)
 
-    if not out:
-        raise ReportError(
-            f"정보보호시스템 결과 파싱 실패: {xml_path} 에 유효한 dump 항목이 없습니다.")
+    out = _common.parse_dumps(root, mask_fn)
+    _common.require_nonempty(out, xml_path, "정보보호시스템")
     return out

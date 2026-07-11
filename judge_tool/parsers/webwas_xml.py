@@ -46,11 +46,9 @@ OS/웹 이중성(활성화 게이트): 한 호스트가 OS 변형 1개 + 웹서�
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional, Tuple
 
-from judge_tool.errors import ReportError
 from judge_tool.models import ResourceEvidence
-from judge_tool.parsers.cloud_xml import sanitize
-from judge_tool.parsers.server_xml import (
-    _OS_VARIANTS, _mask_server_evidence, _read_text)
+from judge_tool.parsers import _common
+from judge_tool.parsers.server_xml import _OS_VARIANTS, _mask_server_evidence
 
 # ─ 변형 식별 매핑 ─────────────────────────────────────────────────────────────
 
@@ -86,13 +84,9 @@ _WEBSERVER_TOKENS: Tuple[Tuple[str, str], ...] = (
 
 
 def _parse_root(xml_path: str) -> ET.Element:
-    try:
-        return ET.fromstring(sanitize(_read_text(xml_path)))
-    except ET.ParseError as e:
-        raise ReportError(
-            f"웹서버-WAS XML 파싱 실패: {xml_path} ({e}). "
-            "보고서가 손상되었을 수 있습니다(예: 닫히지 않은 태그)."
-        ) from e
+    return _common.parse_root(
+        xml_path, "웹서버-WAS XML",
+        "보고서가 손상되었을 수 있습니다(예: 닫히지 않은 태그).")
 
 
 def detect_variant(xml_path: str) -> Optional[str]:
@@ -133,26 +127,7 @@ def parse(xml_path: str) -> List[Tuple[str, List[ResourceEvidence], Optional[str
     evidence: _mask_server_evidence()로 crypt 해시·PEM 개인키·긴 hex 마스킹.
     """
     root = _parse_root(xml_path)
-    out: List[Tuple[str, List[ResourceEvidence], Optional[str]]] = []
-    cid_counter: Dict[str, int] = {}
-    for dump in root.findall(".//dump"):
-        ids = [(i.text or "").strip() for i in dump.findall("./items/id")]
-        ids = [i for i in ids if i]
-        raw_output = (dump.findtext("./output") or "").strip()
-        masked_output = (
-            _mask_server_evidence(raw_output) if raw_output else raw_output)
-        for cid in ids:
-            n = cid_counter.get(cid, 0)
-            cid_counter[cid] = n + 1
-            resources = []
-            if masked_output:
-                resources.append(ResourceEvidence(
-                    resource_id=f"{cid}#{n}", status="", detail="",
-                    evidence=masked_output,
-                    raw_evidence=raw_output or None,  # §6.1 Phase3: 결정론 전용 비마스킹
-                ))
-            out.append((cid, resources, None))
-    if not out:
-        raise ReportError(
-            f"웹서버-WAS 결과 파싱 실패: {xml_path} 에 유효한 dump 항목이 없습니다.")
+    # §6.1 Phase3: 결정론 전용 비마스킹 raw_evidence 실음
+    out = _common.parse_dumps(root, _mask_server_evidence, attach_raw_evidence=True)
+    _common.require_nonempty(out, xml_path, "웹서버-WAS")
     return out

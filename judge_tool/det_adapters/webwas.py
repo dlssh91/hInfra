@@ -48,30 +48,10 @@ _INFER_WEB_PATTERNS = (
     (re.compile(r"webtob|wsm\b|htl\b", re.IGNORECASE), "webtob"),
 )
 
-# 증거 존재 판정 패턴 (server.py 동형)
-_RE_CMD_PROMPT = re.compile(r"^\s*[$#]\s+\S", re.MULTILINE)
-_RE_SVC_BLOCK = re.compile(r"\[\s*\S.*?\s*\]\[S\]")
-
-
-def _has_collection_evidence(raw_output: str) -> bool:
-    """raw_output에 점검 수집이 실제로 이루어진 증거가 있는지 판정 (server.py 동형)."""
-    if not raw_output or not raw_output.strip():
-        return False
-    return bool(_RE_CMD_PROMPT.search(raw_output) or _RE_SVC_BLOCK.search(raw_output))
-
-
-def _citations_from_vul_list(vul_list) -> list:
-    """common vul_list에서 citation 문자열 리스트 추출 (최대 20개, server.py 동형)."""
-    citations = []
-    for item in (vul_list or []):
-        if not isinstance(item, dict):
-            continue
-        text = str(item.get("vulnerabilityConditionOutput", "")).strip()
-        if text:
-            citations.append(text)
-        if len(citations) >= 20:
-            break
-    return citations
+# 증거 존재 판정(_has_collection_evidence)·citation 추출(_citations_from_vul_list)은
+# server.py 정의와 완전히 동일(AST 비교로 확인)하므로 재정의하지 않고 그대로 참조한다.
+# _has_collection_evidence는 하위 모듈 import 호환을 위해 별칭으로 유지.
+_has_collection_evidence = _server._has_collection_evidence
 
 
 def _absent(reason: str) -> ForcedVerdict:
@@ -188,7 +168,7 @@ def _map_result(
             verdict="취약",
             confidence=0.9,
             rationale=reason[:200] if reason else "(-) 취약으로 판단",
-            citations=_citations_from_vul_list(vul_list),
+            citations=_server._citations_from_vul_list(vul_list),
             ev_status="bad",
             handled=True,
         )
