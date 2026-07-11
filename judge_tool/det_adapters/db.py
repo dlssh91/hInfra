@@ -1066,6 +1066,25 @@ def _dbm004_hold_info(engine: str, violations: list) -> tuple:
         return _mask_violations(violations), ""
 
 
+def _guard_missing_evidence(log_fmt: str, *log_args, rationale: str) -> ForcedVerdict:
+    """모드 D~J 공통 반환 골격: RESULT 0행/기대변수 부재 → 판단보류(ForcedVerdict).
+
+    반복되는 것은 이 5개 고정 필드(verdict/confidence/citations/ev_status/handled)와
+    "log.warning 후 return" 순서뿐이다. 로그 포맷·인자, rationale 문구는 모드마다
+    다르므로 호출부가 원문 그대로 조립해 넘긴다 — 이 함수는 문구를 전혀 가공하지 않는다
+    (순수 반환문 보일러플레이트 추출, 판단 로직/문구 변경 없음).
+    """
+    log.warning(log_fmt, *log_args)
+    return ForcedVerdict(
+        verdict="판단보류",
+        confidence=0.0,
+        rationale=rationale,
+        citations=[],
+        ev_status="review",
+        handled=True,
+    )
+
+
 def judge(
     item_id: str,
     raw_output: str,
@@ -1355,41 +1374,27 @@ def judge(
     if base in _EMPTY_RESULT_HOLD and not violations:
         raw_result_rows = data.get(base, {}).get("RESULT", [])
         if not raw_result_rows:
-            log.warning(
+            return _guard_missing_evidence(
                 "모드D 가드: base=%s engine=%s RESULT 완전 비어있음 → 판단보류(설정 미수집)",
                 base, engine,
-            )
-            return ForcedVerdict(
-                verdict="판단보류",
-                confidence=0.0,
                 rationale=(
                     f"[재사용방지 설정 미수집: RESULT 0행] "
                     f"비밀번호 재사용 방지 설정 데이터를 수집하지 못함 — "
                     f"자동 양호 판정 불가 (engine={engine}, item={base})"
                 ),
-                citations=[],
-                ev_status="review",
-                handled=True,
             )
         # (2) 행은 있지만 기대 변수 부재 → 판단보류
         expected_checker = _DBM019_EXPECTED_CHECKER.get(engine)
         if expected_checker is not None and not expected_checker(raw_result_rows):
-            log.warning(
+            return _guard_missing_evidence(
                 "모드D 가드(확장): base=%s engine=%s RESULT %d행 존재하나 기대변수 미수집 → 판단보류",
                 base, engine, len(raw_result_rows),
-            )
-            return ForcedVerdict(
-                verdict="판단보류",
-                confidence=0.0,
                 rationale=(
                     f"[재사용방지 설정 변수 미수집 → 판단보류] "
                     f"RESULT에 {len(raw_result_rows)}행이 있으나 "
                     f"재사용 방지 기대 변수가 포함되지 않음 — "
                     f"자동 양호 판정 불가 (engine={engine}, item={base})"
                 ),
-                citations=[],
-                ev_status="review",
-                handled=True,
             )
 
     # ── 모드 E: DBM-022 파일권한 미수집 거짓양호 가드 ────────────────────────
@@ -1401,32 +1406,21 @@ def judge(
         raw_result_rows = data.get(base, {}).get("RESULT", [])
         # (1) RESULT 빈배열 → 파일권한 미수집
         if not raw_result_rows:
-            log.warning(
+            return _guard_missing_evidence(
                 "모드E 가드: base=%s engine=%s RESULT 0행(빈배열) → 판단보류(파일권한 미수집)",
                 base, engine,
-            )
-            return ForcedVerdict(
-                verdict="판단보류",
-                confidence=0.0,
                 rationale=(
                     f"[파일권한 미수집 → 판단보류] "
                     f"RESULT가 빈 배열(0행) — "
                     f"파일 권한 수집 자체가 이루어지지 않아 자동 양호 판정 불가 "
                     f"(engine={engine}, item={base})"
                 ),
-                citations=[],
-                ev_status="review",
-                handled=True,
             )
         # (2) RESULT 행 있으나 권한 패턴 0건 → 접근 실패 또는 수집 오류
         if not _dbm022_has_perm_line(raw_result_rows):
-            log.warning(
+            return _guard_missing_evidence(
                 "모드E 가드: base=%s engine=%s RESULT %d행 존재하나 권한라인 0건 → 판단보류(파일권한 미수집)",
                 base, engine, len(raw_result_rows),
-            )
-            return ForcedVerdict(
-                verdict="판단보류",
-                confidence=0.0,
                 rationale=(
                     f"[파일권한 미수집 → 판단보류] "
                     f"RESULT에 {len(raw_result_rows)}행이 있으나 "
@@ -1434,9 +1428,6 @@ def judge(
                     f"파일 접근 실패 또는 수집 오류 가능성, 자동 양호 판정 불가 "
                     f"(engine={engine}, item={base})"
                 ),
-                citations=[],
-                ev_status="review",
-                handled=True,
             )
 
     # ── 모드 F: DBM-026 umask 미수집/파싱불가 거짓양호 가드 ──────────────────────
@@ -1449,32 +1440,21 @@ def judge(
         raw_result_rows = data.get(base, {}).get("RESULT", [])
         # (1) RESULT 빈배열 → umask 미수집
         if not raw_result_rows:
-            log.warning(
+            return _guard_missing_evidence(
                 "모드F 가드: base=%s engine=%s RESULT 0행(빈배열) → 판단보류(umask 미수집)",
                 base, engine,
-            )
-            return ForcedVerdict(
-                verdict="판단보류",
-                confidence=0.0,
                 rationale=(
                     f"[umask 미수집 → 판단보류] "
                     f"RESULT가 빈 배열(0행) — "
                     f"umask 수집 자체가 이루어지지 않아 자동 양호 판정 불가 "
                     f"(engine={engine}, item={base})"
                 ),
-                citations=[],
-                ev_status="review",
-                handled=True,
             )
         # (2) RESULT 행 있으나 8진수 umask 토큰 0건 → umask 미파싱
         if not _dbm026_has_umask_token(raw_result_rows):
-            log.warning(
+            return _guard_missing_evidence(
                 "모드F 가드: base=%s engine=%s RESULT %d행 존재하나 umask 8진 토큰 0건 → 판단보류(umask 미파싱)",
                 base, engine, len(raw_result_rows),
-            )
-            return ForcedVerdict(
-                verdict="판단보류",
-                confidence=0.0,
                 rationale=(
                     f"[umask 미파싱 → 판단보류] "
                     f"RESULT에 {len(raw_result_rows)}행이 있으나 "
@@ -1482,9 +1462,6 @@ def judge(
                     f"umask 수집 실패(command not found 등) 또는 포맷 오류, 자동 양호 판정 불가 "
                     f"(engine={engine}, item={base})"
                 ),
-                citations=[],
-                ev_status="review",
-                handled=True,
             )
 
     # ── 모드 G: DBM-032 pg_hba.conf 미수집 거짓양호 가드 ──────────────────────
@@ -1497,32 +1474,21 @@ def judge(
         raw_result_rows = data.get(base, {}).get("RESULT", [])
         # (1) RESULT 빈배열 → pg_hba 미수집
         if not raw_result_rows:
-            log.warning(
+            return _guard_missing_evidence(
                 "모드G 가드: base=%s engine=%s RESULT 0행(빈배열) → 판단보류(pg_hba 미수집)",
                 base, engine,
-            )
-            return ForcedVerdict(
-                verdict="판단보류",
-                confidence=0.0,
                 rationale=(
                     f"[pg_hba.conf 미수집 → 판단보류] "
                     f"RESULT가 빈 배열(0행) — "
                     f"pg_hba.conf 수집 자체가 이루어지지 않아 자동 양호 판정 불가 "
                     f"(engine={engine}, item={base})"
                 ),
-                citations=[],
-                ev_status="review",
-                handled=True,
             )
         # (2) RESULT 행 있으나 pg_hba connection type 라인 0건 → pg_hba 포맷 미확인
         if not _dbm032_has_pghba_line(raw_result_rows):
-            log.warning(
+            return _guard_missing_evidence(
                 "모드G 가드: base=%s engine=%s RESULT %d행 존재하나 pg_hba 라인 0건 → 판단보류(pg_hba 미수집)",
                 base, engine, len(raw_result_rows),
-            )
-            return ForcedVerdict(
-                verdict="판단보류",
-                confidence=0.0,
                 rationale=(
                     f"[pg_hba.conf 미수집 → 판단보류] "
                     f"RESULT에 {len(raw_result_rows)}행이 있으나 "
@@ -1530,9 +1496,6 @@ def judge(
                     f"pg_hba.conf 수집 실패 또는 포맷 오류, 자동 양호 판정 불가 "
                     f"(engine={engine}, item={base})"
                 ),
-                citations=[],
-                ev_status="review",
-                handled=True,
             )
 
     # ── 모드 H: DBM-034 구동 프로세스 미탐지 거짓양호 가드 ──────────────────────
@@ -1545,32 +1508,21 @@ def judge(
         raw_result_rows = data.get(base, {}).get("RESULT", [])
         # (1) RESULT 빈배열 → ps 미수집
         if not raw_result_rows:
-            log.warning(
+            return _guard_missing_evidence(
                 "모드H 가드: base=%s engine=%s RESULT 0행(빈배열) → 판단보류(ps 미수집)",
                 base, engine,
-            )
-            return ForcedVerdict(
-                verdict="판단보류",
-                confidence=0.0,
                 rationale=(
                     f"[구동 프로세스 미수집 → 판단보류] "
                     f"RESULT가 빈 배열(0행) — "
                     f"ps 출력 수집 자체가 이루어지지 않아 자동 양호 판정 불가 "
                     f"(engine={engine}, item={base})"
                 ),
-                citations=[],
-                ev_status="review",
-                handled=True,
             )
         # (2) RESULT 행 있으나 DB 데몬 키워드 라인 0건 → 데몬 미탐지
         if not _dbm034_has_daemon_line(raw_result_rows, engine):
-            log.warning(
+            return _guard_missing_evidence(
                 "모드H 가드: base=%s engine=%s RESULT %d행 존재하나 데몬 라인 0건 → 판단보류(구동 프로세스 미탐지)",
                 base, engine, len(raw_result_rows),
-            )
-            return ForcedVerdict(
-                verdict="판단보류",
-                confidence=0.0,
                 rationale=(
                     f"[구동 프로세스 미탐지 → 판단보류] "
                     f"RESULT에 {len(raw_result_rows)}행이 있으나 "
@@ -1578,9 +1530,6 @@ def judge(
                     f"ps 수집 실패 또는 데몬 미기동, 자동 양호 판정 불가 "
                     f"(engine={engine}, item={base})"
                 ),
-                citations=[],
-                ev_status="review",
-                handled=True,
             )
 
     # ── 모드 I: DBM-035 xp_cmdshell 미수집 거짓양호 가드 ──────────────────────────
@@ -1591,35 +1540,24 @@ def judge(
     if base in _XCMDSHELL_GUARD and not violations:
         raw_result_rows = data.get(base, {}).get("RESULT", [])
         if not raw_result_rows:
-            log.warning(
+            return _guard_missing_evidence(
                 "모드I 가드: base=%s engine=%s RESULT 0행(빈배열) → 판단보류(xp_cmdshell 미수집)",
                 base, engine,
-            )
-            return ForcedVerdict(
-                verdict="판단보류",
-                confidence=0.0,
                 rationale=(
                     f"[xp_cmdshell 설정 미수집 → 판단보류] "
                     f"RESULT가 빈 배열(0행) — "
                     f"xp_cmdshell 설정 수집 자체가 이루어지지 않아 자동 양호 판정 불가 "
                     f"(engine={engine}, item={base})"
                 ),
-                citations=[],
-                ev_status="review",
-                handled=True,
             )
         has_xcmdshell_row = any(
             isinstance(r, dict) and r.get("name") == "xp_cmdshell"
             for r in raw_result_rows
         )
         if not has_xcmdshell_row:
-            log.warning(
+            return _guard_missing_evidence(
                 "모드I 가드: base=%s engine=%s RESULT %d행 존재하나 xp_cmdshell 행 없음 → 판단보류",
                 base, engine, len(raw_result_rows),
-            )
-            return ForcedVerdict(
-                verdict="판단보류",
-                confidence=0.0,
                 rationale=(
                     f"[xp_cmdshell 설정 미수집 → 판단보류] "
                     f"RESULT에 {len(raw_result_rows)}행이 있으나 "
@@ -1627,9 +1565,6 @@ def judge(
                     f"수집 실패 또는 쿼리 포맷 오류, 자동 양호 판정 불가 "
                     f"(engine={engine}, item={base})"
                 ),
-                citations=[],
-                ev_status="review",
-                handled=True,
             )
 
     # ── 모드 I2: DBM-036 xp_reg 미수집 거짓양호 가드 ──────────────────────────────
@@ -1644,22 +1579,15 @@ def judge(
         if raw_result_rows is None:
             raw_result_rows = []
         if not raw_result_rows:
-            log.warning(
+            return _guard_missing_evidence(
                 "모드I2 가드: base=%s engine=%s RESULT 0행(빈배열) → 판단보류(xp_reg 미수집)",
                 base, engine,
-            )
-            return ForcedVerdict(
-                verdict="판단보류",
-                confidence=0.0,
                 rationale=(
                     f"[xp_reg 권한 미수집 → 판단보류] "
                     f"RESULT가 빈 배열(0행) — "
                     f"xp_reg* 확장프로시저 권한 수집이 이루어지지 않아 자동 양호 판정 불가 "
                     f"(engine={engine}, item={base})"
                 ),
-                citations=[],
-                ev_status="review",
-                handled=True,
             )
 
     # ── 모드 J: 테이블 주도 fail-closed 미수집 가드 (DBM-009/014, 008/013 키등록) ──
@@ -1667,41 +1595,27 @@ def judge(
     if base in _MODE_J_ITEMS and not violations:
         _mj_rows = _base_result_rows(base, data)
         if not _mj_rows:
-            log.warning(
+            return _guard_missing_evidence(
                 "모드J 가드: base=%s engine=%s RESULT 0행(빈배열) → 판단보류(미수집)",
                 base, engine,
-            )
-            return ForcedVerdict(
-                verdict="판단보류",
-                confidence=0.0,
                 rationale=(
                     f"[{base} 설정 미수집 → 판단보류] "
                     f"RESULT가 빈 배열(0행) — 수집 실패/0행을 양호로 단정할 수 없음 "
                     f"(engine={engine}, item={base})"
                 ),
-                citations=[],
-                ev_status="review",
-                handled=True,
             )
         _mj_checker_table = _MODE_J_ITEMS[base]
         _mj_checker = _mj_checker_table.get(engine) if _mj_checker_table else None
         if _mj_checker is not None and not _mj_checker(_mj_rows):
-            log.warning(
+            return _guard_missing_evidence(
                 "모드J 가드: base=%s engine=%s 기대 변수행 없음(RESULT %d행) → 판단보류",
                 base, engine, len(_mj_rows),
-            )
-            return ForcedVerdict(
-                verdict="판단보류",
-                confidence=0.0,
                 rationale=(
                     f"[{base} 기대 변수 미수집 → 판단보류] "
                     f"RESULT에 {len(_mj_rows)}행이 있으나 해당 엔진의 기대 변수 행이 "
                     f"포함되지 않음 — 수집 실패 가능성, 자동 양호 판정 불가 "
                     f"(engine={engine}, item={base})"
                 ),
-                citations=[],
-                ev_status="review",
-                handled=True,
             )
 
     # ── 결과 매핑: 빈 위반 = 양호, 비어있지 않음 = 취약 ─────────────────────
