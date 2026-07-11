@@ -3,19 +3,16 @@
 > ═══ 재개 안내 (pull 후 "진행해줘"/"개발진행해"라고 하면 여기부터) ═══
 > **★★ 다음 착수 — 우선순위 순, 각 항목 착수에 필요한 정보를 아래에 전부 기재(재유도 불필요)**:
 >
-> **① DB Tibero 활성화** (가장 저비용·즉시 착수 가능 — 코드 배선만 남음, 샘플/스크립트 이미 확보)
->   - 현황: `judge_tool/vendor/common/db/tibero/analysis.py`(315줄)에 `dbm_001/003/004/005/006/007/008/009/011...`
->     등 다수 `dbm_XXX` 메서드가 **이미 구현되어 있음**(다른 4엔진과 동형 패턴). `tibero-config.json`(176줄)도 존재.
->     그런데 `judge_tool/item_configs/db_tibero.yaml`이 **아예 없고**, `judge_tool/det_adapters/db.py` 최하단
->     레지스트리 등록 루프(`for _k in ("db_mysql","db_oracle","db_mssql","db_mariadb","db_postgresql"):`) 주석에
->     `"db_tibero excluded"`로 **명시적으로 제외**돼 있음(등록 안 하면 label 분류 자체가 안 되어 전 항목 LLM 기본으로 흘러감).
->   - 절차: (1) `db_mariadb.yaml`(115줄, 구조가 가장 단순해 템플릿으로 적합)을 참조해 `db_tibero.yaml` 신규 작성 —
->     tibero/analysis.py의 `dbm_XXX` 메서드 목록과 1:1 대응하는 항목만 label/judgment_method 부여(다른 엔진과
->     동일 항목 번호는 동일 라벨 유지가 기본, tibero 고유 차이는 기준xlsx 원문 재확인 후 반영).
->     (2) db.py 레지스트리 루프에 `"db_tibero"` 추가(제외 사유 주석 제거).
->     (3) `tests/db_cov_contract.py`에 tibero 양극성 픽스처 추가(기존 5엔진 패턴 재사용).
->     (4) `python3 -m pytest tests/ -q` 전체 통과 확인. **Fable 설계 → Sonnet 구현 → Opus 리뷰** 사이클 그대로 적용.
->     참고: [[domain-script-sample-status]] 메모리에 8도메인 전체 현황 기록됨.
+> **① DB Tibero — ✅ 배선 완료(2026-07-11 맥세션, 휴면상태) / ⚠️ 활성화 전 실샘플 검증 필수**
+>   - 완료(db5c954, Opus SHIP): `db_tibero.yaml` 신규(5엔진 라벨 일관), db.py 레지스트리 등록+모드C2 tibero 확장,
+>     DET_SOURCE 21항목, cov 픽스처 12항목(+29 tests). DBM-030은 vendor가 Oracle `AUD$` 테이블명 하드코딩→Tibero
+>     `SYS._DD_AUD` 불일치 구조적 거짓양호 위험이라 oracle(DET)과 달리 **STUB(label B) 안전라우팅**. DBM-034=ABSENT(메서드부재).
+>   - **🚨 활성화 게이트(FW환경/실샘플 보유자 필독)**: `profile.py`의 `DB_TIBERO.excluded=True`가 여전히 CLI를 막고 있음
+>     (=휴면, 프로덕션 도달 경로 없음). **실 Tibero 수집샘플로 vendor 필드가정 검증 전에는 `excluded=False` 금지.**
+>     이유(Opus 리뷰): DBM-006/008/009/013/019는 tibero 전용 기대필드 checker가 없어 **0행 가드만** 적용 → 실수집이
+>     "행은 있으나 vendor 가정과 다른 필드명"이면 위반0→양호(rows-but-wrong-field 거짓양호) 이론상 가능.
+>     활성화 절차: (a) 실 tibero 샘플 확보 → (b) vendor tibero/analysis.py 필드가정 검증 or 해당 항목 강등/checker 추가
+>     → (c) `excluded=False` + 파일마커/guess 등록 → (d) 실샘플 양극성 cov로 재검증. **DB 도메인=FW환경 분담.**
 >
 > **② FW B-2 (ISS-038/039 --aux 연계)** — 설계 원문: `docs/superpowers/specs/2026-07-02-fw-implementation-design.md`
 >   Phase B "### B-2. ISS-038/039 --aux 연계" 섹션(그대로 구현).
@@ -33,8 +30,8 @@
 >     `analysis.py`/`cloud_analysis.py` `dbm_007` `limit in rules['limit']`로 정정 + db.py **mode C2**(oracle 전용:
 >     limit=='NULL'→취약 / 함수 지정(limit!=NULL)→판단보류, **양호 없음** — 검증함수 내용 적정성은 결정론 불가).
 >     실수집 5엔진 verdict 변화 0, Opus 리뷰 대기. 검증함수 내용판정이 필요하면 향후 label B 승격 여지(현재는 판단보류 안전).
->   - F9(DBM-033 이중화 평문, 우선순위 낮음 — 설계상 문서화된 한계), F10(server 명령실패 출력→N, 백로그, 컨테이너
->     F8과 동형 패턴으로 접근 가능).
+>   - F9(DBM-033 이중화 평문, 우선순위 낮음 — 설계상 문서화된 한계). ✅ **F10 완료(2026-07-11, 00f4d35)** — server/webwas
+>     명령실패 출력 가드, 연결/세션레벨 실패만(과트리거0 실증), 양호→판단보류 방향만.
 >   - container 다변형(docker/ocp/eks/aks) 실샘플 확보 시 `tests/test_det_adapters_container.py`의
 >     `TestErrorGuardNoOvertrigger` corpus에 추가해 F8 과트리거 재검증(현재 corpus=k8s_master 1대뿐).
 >
@@ -72,8 +69,13 @@
 > - **컨테이너 §3 완주**: kind 실증 → cov 계약 169테스트 → R-PRCC-NOTEXIST(5항목 거짓취약)·PRCC-045 거짓양호 fail-closed.
 > - **서버/웹WAS 자가수집 실증**(§1/§2): L2 마스킹 확장·R-WST033 Apache 거짓양호. §4 osvirt 마스킹+라벨 3건(B), §5 네트워크 수집기 초안.
 > - **웹UI**: 판정근거=xlsx 판단기준 표시 + 다중업로드(Playwright 실증). **ponytail 정리**: 죽은코드/실험스크립트 10개 삭제·파서 dedup(_common.py)·가드 보일러플레이트 헬퍼(-약1200줄). **Opus 리뷰 SHIP ×3**.
-> - 테스트 2005→**2556 passed / 100 skipped / 0 failed**.
+> - 테스트 2005→2556 passed(라운드1).
+> - **라운드2(2026-07-11 후반, +7커밋, Opus SHIP)**: eol.yaml EoS 14버전 등재(출처URL, DBM-025 회귀0) + FW 정밀도
+>   (IPv6 교차버전·any포트 미러링·ADMIN_PORTS 기준정합) + **F10 server/webwas 명령실패 가드**(연결레벨만, 과트리거0
+>   실증 server1053·webwas351) + **Tibero 휴면배선**(활성화 게이트=위 ①). → **2666 passed / 102 skipped / 0 failed**.
 > - 막힘(사용자 게이트): qwen3-coder:30b 미설치(호스트 디스크 3~4GB뿐), production LLM 품질 실검증 보류.
+>   비차단 백로그: F10 `bash:`(dash없음) 앵커 미매치(additive라 무해), FW VULN_PORTS/ISS-041 포트목록(기준상 부재→축소는
+>   별도 Fable 태스크), oracle 12.1/12.2 eol(_series 키충돌로 미등재), OBS-MY006, F9(DBM-033 문서화 한계).
 > ═══════════════════════════════════════════════════
 >
 > **✅ 2026-07-10 세션(라운드3) — FW B′-4 정밀도 보정 완주 (1커밋, 2230 passed / 0 failed)**
