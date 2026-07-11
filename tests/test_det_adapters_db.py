@@ -50,7 +50,7 @@ import os
 import pytest
 
 # ── 어댑터 임포트 (import 시 레지스트리 등록 부작용) ──────────────────────────
-import judge_tool.det_adapters.db  # noqa: F401,E402 — 5개 키 등록 부작용
+import judge_tool.det_adapters.db  # noqa: F401,E402 — 6개 키 등록 부작용(db_tibero 포함)
 from judge_tool.det_adapters.db import (  # noqa: E402
     judge,
     _normalize_base,
@@ -122,8 +122,16 @@ class TestEngineMapping:
         assert _engine_of("pg_rds") == "postgresql"
 
     def test_unknown_variant_returns_none(self):
-        assert _engine_of("tibero_native") is None
+        # "tibero_native"는 실제 profile.py variant가 아니다(진짜는 "tibero", 접미사
+        # 없음) — db_tibero 배선(2026-07-11) 이후 토큰폴백으로 'tibero'가 매칭되므로
+        # 더 이상 "미지원"의 예시가 아니다(아래 test_tibero_variant_maps_to_tibero 참조).
+        # 진짜 미지원 엔진 예시로 교체.
+        assert _engine_of("db2_native") is None
         assert _engine_of("unknown_xyz") is None
+
+    def test_tibero_variant_maps_to_tibero(self):
+        """db_tibero 배선(2026-07-11): 실제 variant "tibero"(접미사 없음) → engine "tibero"."""
+        assert _engine_of("tibero") == "tibero"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -675,16 +683,22 @@ class TestModuleCache:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestRegistry:
-    """_DET_ADAPTERS에 5개 프로파일 키가 등록되어야 한다."""
+    """_DET_ADAPTERS에 6개 프로파일 키가 등록되어야 한다(db_tibero 2026-07-11 배선)."""
 
-    def test_five_db_profiles_registered(self):
-        for key in ("db_mysql", "db_oracle", "db_mssql", "db_mariadb", "db_postgresql"):
+    def test_six_db_profiles_registered(self):
+        for key in ("db_mysql", "db_oracle", "db_mssql", "db_mariadb", "db_postgresql",
+                    "db_tibero"):
             assert key in _DET_ADAPTERS, f"{key} 미등록"
             assert callable(_DET_ADAPTERS[key])
 
-    def test_tibero_not_registered(self):
-        """tibero excluded → 미등록."""
-        assert "db_tibero" not in _DET_ADAPTERS
+    def test_tibero_registered(self):
+        """tibero DET 어댑터 배선(2026-07-11): _DET_ADAPTERS에 등록됨.
+
+        profile.py DB_TIBERO.excluded=True는 main.run() CLI 진입점만 차단하고,
+        어댑터 레지스트리 자체는 무관하게 등록된다(별도 관심사).
+        """
+        assert "db_tibero" in _DET_ADAPTERS
+        assert _DET_ADAPTERS["db_tibero"] is judge
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -307,6 +307,10 @@ items:
       pg_rds: ABSENT        # cloud pg에 dbm_001 없음 → ABSENT
       pg_aurora: ABSENT     # cloud pg에 dbm_001 없음 → ABSENT
       pg_azure: ABSENT      # cloud pg에 dbm_001 없음 → ABSENT
+      # tibero(2026-07-11 배선): crack_judge 엔진분기에 "tibero" 없음 → 항상
+      # handled=False(canned 폴백). 실크랙 없음(안전한 갭) — DET로 두어 gate 통과
+      # 후 crack_judge가 자체 안전 처리하게 한다(다른 엔진과 동일 설계).
+      tibero: DET
     default: ABSENT
 
   DBM-003:                          # 불필요 계정
@@ -326,6 +330,10 @@ items:
       pg_rds: DET      # cloud pg dbm_003: datum['rolvaliduntil']/rolname 필드 직접 비교 → DET
       pg_aurora: DET
       pg_azure: DET
+      # tibero(2026-07-11 배선): username/account_status/expiry_date 실질 필터 존재(DET
+      # 자격 있음) — 단 db.py _dbm003_classify_account에 engine=="tibero" 분기가 없어
+      # 모드A2가 항상 "미수집" 안전 판단보류로 폴백한다(db_tibero.yaml DBM-003 주석 참조).
+      tibero: DET
     # pg native: 수집 형식 {"*": python_repr_str} — analysis가 'rolvaliduntil' KeyError 삼킴 → [] → 거짓양호(R3)
     # pg cloud: cloud_analysis에서 rolvaliduntil/rolname 필드 직접 접근 → DET (native와 다른 데이터 스키마)
 
@@ -346,6 +354,9 @@ items:
       pg_rds: DET      # cloud pg dbm_004: rolsuper/rolcreatedb/rolcreaterole 직접 비교 → DET
       pg_aurora: DET
       pg_azure: DET
+      # tibero(2026-07-11 배선): grantee/admin_option 실질 필터 존재 → DET(모드A
+      # detect-then-hold, base-only frozenset이라 엔진 무관 자동 적용).
+      tibero: DET
     # pg native: 수집 형식 {"*": python_repr_str} — analysis가 'rolsuper' KeyError 삼킴 → [] → 거짓양호(R3)
 
   DBM-005:                          # 중요정보 암호화 — 결정론 부적합(검증TODO) → 전엔진 LLM (Batch1)
@@ -365,6 +376,9 @@ items:
       pg_rds: ABSENT       # cloud pg: dbm_005 메서드 없음(run()에 미호출) → ABSENT
       pg_aurora: ABSENT
       pg_azure: ABSENT
+      # tibero(2026-07-11 배선): table_name not in {DBA_ROLES,DBA_USERS} 필터일 뿐
+      # 암호화 여부 검사가 아님(Batch1 정책과 동일하게 결정론 부적합) → STUB.
+      tibero: STUB
 
   DBM-006:                          # 로그인 실패 제한
     variants:
@@ -383,6 +397,9 @@ items:
       pg_rds: ABSENT       # cloud pg: dbm_006 메서드 없음(run()에 미호출) → ABSENT
       pg_aurora: ABSENT
       pg_azure: ABSENT
+      # tibero(2026-07-11 배선): profile/resource_name(FAILED_LOGIN_ATTEMPTS)/limit
+      # (UNLIMITED) — oracle DBM-006과 동일 스키마 → DET.
+      tibero: DET
     # pg native: 빈 본문(body=[] only) → STUB
 
   DBM-007:                          # 비밀번호 복잡도
@@ -402,6 +419,10 @@ items:
       pg_rds: STUB         # cloud pg: 빈본문 + 주석 "평가 기준과 상이" → STUB
       pg_aurora: STUB
       pg_azure: STUB
+      # tibero(2026-07-11 배선): rules.DBM-007.limit=["NULL_VERIFY_FUNCTION"](함수
+      # 미할당 sentinel) — oracle과 동일 스키마·동일 기준xlsx 문구 확인(2단계: 할당여부
+      # + 내용). db.py 모드C2를 engine=="tibero"까지 확장(위반0→판단보류, 양호 도달 불가).
+      tibero: DET
     # pg native: 빈 본문 + 주석 "현재 평가 기준과 상이하므로 확인 필요" → STUB
     # mariadb native: 수집형식 {"*": python_repr} — analysis 'VARIABLE_NAME' KeyError 삼킴 → [] → 거짓양호(R3)
 
@@ -422,6 +443,11 @@ items:
       pg_rds: DET          # cloud pg: rolvaliduntil 직접 비교 → DET(native와 다른 데이터 스키마)
       pg_aurora: DET
       pg_azure: DET
+      # tibero(2026-07-11 배선): 기준xlsx 원문 "Tibero는 비밀번호 변경일자 조회 기능
+      # 미제공 → 만료정책으로 판단"과 일치. vendor username/profile(exception, 항상
+      # 통과)+limit in rules(["UNLIMITED"]) 검사 → DET(실샘플 미검증 갭 있음, data_key
+      # ='DBM-008' 접미사 없음).
+      tibero: DET
     # pg native: 수집 형식 {"*": python_repr_str} — analysis가 'rolvaliduntil' KeyError 삼킴 → [] → 거짓양호(R3)
 
   DBM-009:                          # 세션 종료(900초) — mssql은 lambda True=STUB(거짓취약 위험)
@@ -441,6 +467,8 @@ items:
       pg_rds: STUB         # cloud pg: idle_in_transaction_session_timeout <= 900 polarity 의심 버그 → STUB
       pg_aurora: STUB
       pg_azure: STUB
+      # tibero(2026-07-11 배선): name/value, int(value)<900 실질 검사 → DET.
+      tibero: DET
 
   DBM-011:                          # 감사로그
     variants:
@@ -459,6 +487,11 @@ items:
       pg_rds: DET          # cloud pg: pgaudit 설정 복합 로직(AWS/Azure 분기) → DET
       pg_aurora: DET
       pg_azure: DET
+      # tibero(2026-07-11 배선): audit_trail 값 전부 NONE→취약 확정, 일부라도 NONE
+      # 아니면 위반0(백업주기 미검증)→판단보류 — oracle과 동일 패턴(모드C, base-only
+      # frozenset이라 엔진 무관 자동 적용). _extract_audit_detail에 tibero 분기는
+      # 없어 판단보류 rationale에 감사 상세 문구는 붙지 않음(비검증 갭, cosmetic).
+      tibero: DET
     # Phase 4d/4e DBM-011 분류 근거:
     #   mysql/oracle native: DET — 미수집 탐지→취약 확정, 위반0→판단보류(백업주기 미검증, DETECT_VULN_ELSE_HOLD)
     #   mariadb native: DET 복원 — analysis에 "not loaded" + SERVER_AUDIT_FILE_PATH 검사 실재.
@@ -491,6 +524,10 @@ items:
       pg_rds: STUB         # cloud pg: 빈본문 + NOTE 주석만 → STUB
       pg_aurora: STUB
       pg_azure: STUB
+      # tibero(2026-07-11 배선): value=='' 실질 검사 존재(mysql/mariadb HOST와일드카드,
+      # oracle STUB 중 어느 쪽과도 다른 tibero 고유 구현) → DET. 모드J에 tibero 전용
+      # checker 없음(0행 가드만), 실샘플로 'value' 필드 포맷 미검증(갭).
+      tibero: DET
     # oracle: [lambda datum: True](무조건 위반) → STUB (§B=ABSENT였으나 코드 확인 후 STUB 정정)
     # oracle cloud: cloud_analysis.py run()에 dbm_013 없음(미호출) → ABSENT(M-1 수정)
     # mssql native: 빈 본문 → STUB (§B=MANUAL, 빈본문이므로 STUB이 보수적)
@@ -516,6 +553,9 @@ items:
       pg_rds: DET          # cloud pg: privilege_type.upper() in [...] → DET(native와 다른 데이터 스키마)
       pg_aurora: DET
       pg_azure: DET
+      # tibero(2026-07-11 배선): 015_1/015_2/015_3 전부 [lambda datum: True](oracle
+      # native와 동일한 무조건-위반 패턴) → STUB, label B 이관.
+      tibero: STUB
     default: ABSENT
     # oracle native: 015_1/2: [lambda datum: True] → STUB (§B=DET였으나 코드 확인 후 STUB 정정)
     # oracle 015_3: DET이지만 _1/_2가 STUB이므로 oracle 전체 STUB(보수적)
@@ -544,6 +584,8 @@ items:
       pg_rds: STUB       # 구 DET → STUB(관리형 패치채널 차이 + 정책)
       pg_aurora: STUB    # 구 DET → STUB
       pg_azure: STUB     # 구 DET → STUB
+      # tibero(2026-07-11 배선): vendor dbm_016은 빈 본문(결정론 시도조차 없음) → STUB.
+      tibero: STUB
 
   DBM-017:                          # 시스템테이블 접근권한
     # ★ 정책(2026-06-17): native 5종 전부 label B(인터뷰) 이관 → native DET → STUB.
@@ -570,6 +612,9 @@ items:
       pg_rds: DET          # cloud pg: grantee == 'PUBLIC' 비교 → DET(native와 다른 데이터 스키마)
       pg_aurora: DET
       pg_azure: DET
+      # tibero(2026-07-11 배선): vendor dbm_017도 [lambda datum: True](DBM-015와 동일
+      # 무조건-위반 패턴) → STUB, label B 이관(5엔진과 동일).
+      tibero: STUB
 
   DBM-019:                          # 비밀번호 재사용
     variants:
@@ -588,6 +633,9 @@ items:
       pg_rds: ABSENT       # cloud pg: dbm_019 메서드 없음(run()에 미호출) → ABSENT
       pg_aurora: ABSENT
       pg_azure: ABSENT
+      # tibero(2026-07-11 배선): limit=='UNLIMITED' + username/profile exception 필터
+      # — oracle DBM-019(PASSWORD_REUSE_TIME/MAX)와 동일 스키마 → DET.
+      tibero: DET
     # pg native: 비밀번호 재사용 방지 native 지원 없음(passwordcheck 확장/외부 필요) → label C 기능부재 안내
     # mariadb native: analysis.py PASSWORD_REUSE_CHECK_INTERVAL/"not loaded" 검사 정상 — DET 복원
 
@@ -608,6 +656,8 @@ items:
       pg_rds: DET          # cloud pg: rolname 직접 비교 → DET(native와 다른 데이터 스키마)
       pg_aurora: DET
       pg_azure: DET
+      # tibero(2026-07-11 배선): vendor dbm_020은 빈 본문(결정론 시도 자체 없음) → STUB.
+      tibero: STUB
     # pg native: 수집 형식 {"*": python_repr_str} — analysis가 'rolname' KeyError 삼킴 → [] → 거짓양호(R3)
 
   DBM-021:                          # mssql ODBC — 빈 본문
@@ -636,6 +686,10 @@ items:
       pg_rds: STUB         # cloud pg: 빈본문 + 주석 "설치형DB:서버스크립트 참고" → STUB
       pg_aurora: STUB
       pg_azure: STUB
+      # tibero(2026-07-11 배선): tibero 전용 700 대상 바이너리(/bin/tbboot 등) 정규식
+      # 기반 실질 로직(mysql/oracle/mariadb/pg native와 동형) → DET. 모드E(_PERM_GUARD)
+      # 가 base-only(엔진 무관)라 tibero도 자동 적용됨.
+      tibero: DET
     # mssql native: 빈 본문(dbm_result=[]만) → STUB
 
   DBM-024:                          # WITH GRANT OPTION
@@ -655,6 +709,9 @@ items:
       pg_rds: DET          # cloud pg: privilege_type.upper() in [...] → DET
       pg_aurora: DET
       pg_azure: DET
+      # tibero(2026-07-11 배선): ADMIN_OPTION=="YES" 실질 조건 존재 → DET(다른 4엔진과
+      # 동일 분류). item_configs는 label B 이관(det_common 미부여, DBM-020/024/028 교훈).
+      tibero: DET
 
   DBM-025:                          # EOL
     variants:
@@ -680,6 +737,9 @@ items:
       pg_rds: ABSENT
       pg_aurora: ABSENT
       pg_azure: ABSENT
+      # tibero(2026-07-11 배선): vendor dbm_025는 빈 본문 → STUB(5엔진 정책과 동일,
+      # judgment_method 미지정으로 judge_eol 권위경로).
+      tibero: STUB
     # mariadb native: 빈 본문 → STUB
 
   DBM-026:                          # umask
@@ -699,6 +759,9 @@ items:
       pg_rds: ABSENT       # cloud pg run()에 dbm_026 없음 → ABSENT
       pg_aurora: ABSENT    # cloud pg run()에 dbm_026 없음 → ABSENT
       pg_azure: ABSENT     # cloud pg run()에 dbm_026 없음 → ABSENT
+      # tibero(2026-07-11 배선): _umask_is_violation 헬퍼가 mysql/oracle/mariadb/pg와
+      # 동일 로직 공유(VENDOR-EDIT(c) R-026 수정 반영됨) → DET.
+      tibero: DET
     default: ABSENT
 
   DBM-028:                          # 불필요 Object (pg lambda True=STUB)
@@ -718,6 +781,9 @@ items:
       pg_rds: STUB         # cloud pg: [lambda datum: True] × 3 → STUB(거짓취약 위험)
       pg_aurora: STUB
       pg_azure: STUB
+      # tibero(2026-07-11 배선): owner 기반 실질 필터 존재(rules.DBM-028.default 마커도
+      # 항상 append) → DET. item_configs는 label B 이관(다른 4엔진과 동일).
+      tibero: DET
     # pg native+cloud: [lambda datum: True] × 3 → STUB
 
   DBM-029:                          # oracle 전용
@@ -730,6 +796,14 @@ items:
     variants:
       oracle: DET
       oracle_rds: DET      # cloud oracle: dbm_030 있음 → DET
+      # ⚠️ tibero(2026-07-11 배선): vendor dbm_030이 oracle 원본을 복사한 것으로 보이며
+      # `datum['table'] == "AUD$"`(Oracle 감사테이블명)를 그대로 쓴다. 기준xlsx는 Tibero
+      # 감사테이블을 "SYS._DD_AUD"로 명시 — 실수집 'table' 필드가 그와 다르면(십중팔구
+      # "AUD$"가 아님) 이 조건은 항상 거짓이 되어 위반이 전혀 안 잡힌다(구조적 거짓양호
+      # 위험, R-OR030급 vendor 버그 의심). vendor 무변경 원칙상 이번 배선은 DET 승격을
+      # 보류하고 STUB(label B 인터뷰, oracle과 동일 라우팅)으로 고정한다. 실샘플 확보 후
+      # 'table' 필드 실값 확인 및 vendor 수정 여부 재검토 필요(db_tibero.yaml 주석 참조).
+      tibero: STUB
     default: ABSENT
 
   DBM-031:                          # mssql 비활성계정 정책

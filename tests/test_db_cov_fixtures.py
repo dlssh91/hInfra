@@ -186,6 +186,13 @@ def test_db_det_polarity(engine, item_id, polarity):
     # pg label B
     ("pg_native", "DBM-017", "pg_native"),
     ("pg_native", "DBM-015", "pg_native"),
+    # tibero label B(인터뷰) — 2026-07-11 배선. DBM-024/028은 DET_SOURCE=DET이라
+    # (item_configs가 judgment_method 미부여로 라우팅만 차단) 여기 미포함 — STUB인
+    # 항목만 gate 레벨에서 검증한다(다른 엔진과 동일 원칙).
+    ("tibero", "DBM-017", "tibero"),
+    ("tibero", "DBM-015", "tibero"),
+    ("tibero", "DBM-020", "tibero"),
+    ("tibero", "DBM-030", "tibero"),
 ])
 def test_label_b_gate_block_no_false_positive(engine, item_id, variant):
     """label B 항목: STUB → gate 차단 → handled=False, verdict != '양호' 확인.
@@ -220,6 +227,8 @@ def test_label_b_gate_block_no_false_positive(engine, item_id, variant):
     ("pg_native",     "DBM-019", "pg_native", "label C 기능부재"),
     ("mssql_native",  "DBM-021", "mssql_native", "label C ODBC"),
     ("mssql_native",  "DBM-022", "mssql_native", "label C 파일ACL"),
+    ("tibero",        "DBM-025", "tibero", "label D EOL(tibero, 2026-07-11 배선)"),
+    ("tibero",        "DBM-016", "tibero", "label D 패치버전(tibero, 2026-07-11 배선)"),
 ])
 def test_label_cd_no_false_positive(engine, item_id, variant, note):
     """label C/D 항목: STUB/canned → handled=False, verdict != '양호' 확인.
@@ -480,6 +489,7 @@ def test_db_cov_contract_completeness():
         "oracle": 8,
         "mssql": 8,
         "postgresql": 7,
+        "tibero": 8,
     }
     for engine, min_count in minimums.items():
         actual = len(DB_COV[engine])

@@ -5,7 +5,9 @@
   - §18.1 C1: gate() 선확인 — DET가 아니면 handled=False (거짓양호 구조 차단)
   - 결정1(R1 해소): raw_output = 전체 비마스킹 data dict JSON (db_json.parse()가 주입)
   - 결정2: engine Analysis(config, data).run 1회 + 모듈 캐시 (키=engine+is_cloud+data지문)
-  - 결정3: _DET_ADAPTERS에 db_mysql/db_oracle/db_mssql/db_mariadb/db_postgresql 5개 동시 등록
+  - 결정3: _DET_ADAPTERS에 db_mysql/db_oracle/db_mssql/db_mariadb/db_postgresql/db_tibero
+    6개 동시 등록(db_tibero는 2026-07-11 DB Tibero 배선에서 추가 — profile.excluded=True라
+    main.run() CLI 경로는 여전히 차단되지만, 어댑터 자체는 준비해 둔다)
   - 결정4(Phase 4b): variant suffix로 클래스 선택 — _native→{Engine}Analysis, _rds/_aurora/_azure→{Engine}CloudAnalysis
   - 결정5(Phase 4c): base=="DBM-001"이면 db_pwcrack.crack_judge로 라우팅 (사전공격 어댑터)
   - 결정6(Phase 4d/4e): _DETECT_VULN_ELSE_HOLD 모드(DBM-011) — 취약 탐지 → 취약 확정,
@@ -20,8 +22,8 @@
     citations/interview_summary로 동반한다. LLM 호출 없음(det가 직접 생성).
   - §7 누출경계: citation = _mask_row 처리된 위반행만, raw data dict 미포함
 
-레지스트리 등록: 모듈 import 시 db_mysql/db_oracle/db_mssql/db_mariadb/db_postgresql 5개 자동 등록.
-main.py에서 `import judge_tool.det_adapters.db` 로 부작용 임포트.
+레지스트리 등록: 모듈 import 시 db_mysql/db_oracle/db_mssql/db_mariadb/db_postgresql/db_tibero
+6개 자동 등록. main.py에서 `import judge_tool.det_adapters.db` 로 부작용 임포트.
 """
 import contextlib
 import hashlib
@@ -47,6 +49,9 @@ _ENGINE_MAP: dict = {
     "mariadb":    "mariadb",
     "pg":         "postgresql",
     "postgresql": "postgresql",   # full name도 수용
+    # tibero: profile.py DB_TIBERO.variants 키가 "tibero"(접미사 없음, 언더스코어 無) —
+    # _engine_of의 '_' 유무 분기상 토큰 전체가 "tibero" 그대로 조회된다.
+    "tibero":     "tibero",
 }
 
 # ── 엔진별 Analysis class 이름 (native) ─────────────────────────────────────
@@ -56,6 +61,7 @@ _ENGINE_CLASS: dict = {
     "mssql":      "MssqlAnalysis",
     "mariadb":    "MariaDBAnalysis",
     "postgresql": "PostgreSQLAnalysis",
+    "tibero":     "TiberoAnalysis",   # judge_tool.vendor.common.db.tibero.analysis
 }
 
 # ── 엔진별 CloudAnalysis class 이름 (Phase 4b — rds/aurora/azure 변형) ──────
@@ -1664,7 +1670,8 @@ def judge(
                 ),
             )
 
-    # ── 모드 C2: oracle DBM-007 한정 detect-vuln-else-hold (OBS-OR007, 2026-07-11) ──
+    # ── 모드 C2: oracle/tibero DBM-007 한정 detect-vuln-else-hold (OBS-OR007, 2026-07-11;
+    #    tibero 확장 2026-07-11 DB Tibero 배선) ──────────────────────────────────
     # oracle DBM-007_1(PASSWORD_VERIFY_FUNCTION) vendor 조건은 exception config 기본값
     # (빈 리스트)이라 `not in []`이 항상 True → 값과 무관하게 행이 있으면 무조건 위반
     # (거짓취약, §F6/F7 감사 발견). vendor를 rules.DBM-007.limit=["NULL"]로 고쳐
@@ -1675,21 +1682,27 @@ def judge(
     # (판단방법 ②: "검증함수의 내용이 복잡도를 만족하지 못할 경우 취약")을 만족하는지는
     # 결정론으로 확인할 수 없다 — DBM-007_2(검증함수 소스 조회)는 벤더 스스로도
     # "7-2는 어떤 용도인지 문의"라는 주석을 남긴 미구현 상태(cloud_analysis.py 참조).
+    # tibero DBM-007도 동일 스키마다: rules.DBM-007.limit=["NULL_VERIFY_FUNCTION"](함수
+    # 미할당 sentinel), 기준 xlsx 원문(tibero 컬럼 판단방법)이 oracle과 문구까지 거의
+    # 동일("① 검증함수 할당여부 ② 함수 내용이 복잡도를 만족하는지")하게 2단계 확인을
+    # 요구한다 — oracle과 동일한 이유로 "함수 할당됨=내용 미확인"을 양호로 단정할 수
+    # 없어 tibero도 이 모드로 확장한다(2026-07-11, DB Tibero 배선, 실샘플 미검증 —
+    # db_tibero.yaml DBM-007 주석 참조).
     # mysql/mariadb/mssql DBM-007은 plugin 로드여부/is_policy_checked 이진값 자체가
     # criteria 전체를 커버하므로(내용판단 불필요) 기존 det_common 정상경로(양호/취약
-    # 직접판정)를 그대로 유지한다 — 이 모드는 (base, engine)==("DBM-007","oracle")에만
-    # 적용해 다른 엔진에 영향을 주지 않는다.
-    # 모드J가 이미 위에서 0행/기대필드(profile+limit) 부재를 가로챘으므로, 여기 도달
-    # 했다는 것은 "행이 있고 profile/limit 필드도 있음"이 보장된 상태다.
-    if base == "DBM-007" and engine == "oracle":
+    # 직접판정)를 그대로 유지한다 — 이 모드는 (base, engine) in {("DBM-007","oracle"),
+    # ("DBM-007","tibero")}에만 적용해 다른 엔진에 영향을 주지 않는다.
+    # 모드J가 이미 위에서 0행/기대필드(profile+limit, tibero는 checker 미등록이라 0행
+    # 가드만)를 가로챘으므로, 여기 도달했다는 것은 최소 "행이 있음"이 보장된 상태다.
+    if base == "DBM-007" and engine in ("oracle", "tibero"):
         if violations:
             citations = _mask_violations(violations)
             return ForcedVerdict(
                 verdict="취약",
                 confidence=0.9,
                 rationale=(
-                    f"(-) 결정론 판정: PASSWORD_VERIFY_FUNCTION 미할당(NULL) 프로파일 "
-                    f"{len(violations)}건 (engine=oracle)"
+                    f"(-) 결정론 판정: 비밀번호 검증함수 미할당 프로파일 "
+                    f"{len(violations)}건 (engine={engine})"
                 ),
                 citations=citations,
                 ev_status="bad",
@@ -1699,10 +1712,10 @@ def judge(
             verdict="판단보류",
             confidence=0.0,
             rationale=(
-                "PASSWORD_VERIFY_FUNCTION이 활성 프로파일에 할당되어 있음 확인됨 — "
+                f"비밀번호 검증함수가 활성 프로파일에 할당되어 있음 확인됨(engine={engine}) — "
                 "검증함수 내용이 비밀번호 복잡도(2종조합 10자리 이상/3종조합 8자리 이상) "
                 "기준을 만족하는지는 결정론으로 확인 불가(함수 소스 조회 미구현) — "
-                "담당자가 함수 정의(DBMS_METADATA.GET_DDL/USER_SOURCE) 내용 확인 필요"
+                "담당자가 함수 정의 내용 확인 필요"
             ),
             citations=[],
             ev_status="review",
@@ -1733,6 +1746,10 @@ def judge(
 
 
 # ── 레지스트리 등록 (모듈 import 시 자동 실행) ──────────────────────────────
-# 결정3: 5개 profile_key 동시 등록 (db_tibero excluded)
-for _k in ("db_mysql", "db_oracle", "db_mssql", "db_mariadb", "db_postgresql"):
+# 결정3: 6개 profile_key 동시 등록. db_tibero 활성화(2026-07-11, DB Tibero 배선):
+# 어댑터 레벨(judge()/gate()/DET_SOURCE)은 이제 tibero를 완전 지원하지만,
+# profile.py DB_TIBERO.excluded=True(main.run()의 CLI 진입점 가드)는 그대로 유지된다
+# (test_profile.py/test_main_db_e2e.py에 excluded=True 고정 회귀 테스트 존재 — 이번
+# 태스크 범위는 판정 엔진 배선까지이며 CLI 활성화는 별도 후속 과제).
+for _k in ("db_mysql", "db_oracle", "db_mssql", "db_mariadb", "db_postgresql", "db_tibero"):
     _DET_ADAPTERS[_k] = judge

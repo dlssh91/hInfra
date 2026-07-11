@@ -916,6 +916,182 @@ _POSTGRESQL = {
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
+# tibero DET 항목 (2026-07-11 DB Tibero 배선 — collected/db에 실샘플 없음)
+#
+# ⚠️ 아래 good/vuln RESULT는 vendor/common/db/tibero/analysis.py(315줄) 코드 정독으로
+# 유추한 "포맷 가정"이며, 실수집 tibero_result 샘플로 검증되지 않았다(실샘플 검증
+# 대기 — 후속 과제). 각 항목의 필드명 근거는 judge_tool/item_configs/db_tibero.yaml
+# 항목별 주석 참조.
+# ──────────────────────────────────────────────────────────────────────────────
+_TIBERO = {
+    # DBM-001: crack_judge — 엔진분기에 "tibero" 없음 → 항상 handled=False(미지원
+    # 엔진). 양호 판정 없음(설계 계약과 무관하게 tibero는 크랙 자체가 발생하지 않음).
+    "DBM-001": {
+        "uncovered": True,
+        "uncovered_reason": "db_pwcrack.crack_judge 엔진분기에 tibero 없음 → 항상 "
+                             "handled=False(미지원 엔진). 실크랙 불가, 양극성 불가.",
+    },
+
+    # DBM-003: 업무상 불필요한 계정 — 모드A2(classify-then-hold).
+    # db.py _dbm003_classify_account에 engine=="tibero" 분기가 없어 rows/classified가
+    # 항상 빈 리스트 → overview=None → "계정목록 미수집" 판단보류로 안전 폴백(활성/잠김
+    # 분류 정리정보는 제공되지 않음, 갭 — db_tibero.yaml DBM-003 주석 참조). good/vuln
+    # 모두 동일하게 판단보류로 귀결됨을 고정한다(거짓양호/거짓취약 없음 확인).
+    "DBM-003": {
+        "good": {"DBM-003": {"RESULT": [
+            {"username": "SYS", "account_status": "OPEN", "expiry_date": ""}
+        ]}},
+        "vuln": {"DBM-003": {"RESULT": [
+            {"username": "TEST_API", "account_status": "OPEN", "expiry_date": ""}
+        ]}},
+        "good_verdict": "판단보류",
+        "vuln_verdict": "판단보류",
+        "note": "모드A2: tibero는 classify 엔진분기 없음 → 항상 '미수집' 안전 판단보류 "
+                "(계정분류 정리정보 없음, 후속 과제). 거짓취약/거짓양호 없음만 고정.",
+    },
+
+    # DBM-004: 관리자 권한 — 모드A(detect-then-hold).
+    # good: grantee가 exception에 포함(SYS) → 후보0 + RESULT 비어있지 않음 → 양호.
+    # vuln: grantee가 exception 밖 + admin_option=="YES" → 후보 탐지 → 판단보류.
+    "DBM-004": {
+        "good": {"DBM-004_1": {"RESULT": [
+            {"grantee": "SYS", "admin_option": "YES"}
+        ]}},
+        "vuln": {"DBM-004_1": {"RESULT": [
+            {"grantee": "APP_USER", "admin_option": "YES"}
+        ]}},
+        "good_verdict": "양호",
+        "vuln_verdict": "판단보류",
+        "note": "모드A: 후보 탐지 → 판단보류(자동 취약 아님). good은 exception 계정만 "
+                "존재(진짜 양호), RESULT 비어있지 않아 수집실패 가드 회피.",
+    },
+
+    # DBM-006: 로그인 실패 제한 — profile/resource_name(FAILED_LOGIN_ATTEMPTS)/limit.
+    # tibero-config rules.DBM-006.limit=["UNLIMITED"]. good: limit='5'(UNLIMITED 아님).
+    "DBM-006": {
+        "good": {"DBM-006": {"RESULT": [
+            {"profile": "DEFAULT", "resource_name": "FAILED_LOGIN_ATTEMPTS", "limit": "5"}
+        ]}},
+        "vuln": {"DBM-006": {"RESULT": [
+            {"profile": "DEFAULT", "resource_name": "FAILED_LOGIN_ATTEMPTS", "limit": "UNLIMITED"}
+        ]}},
+        "good_verdict": "양호",
+        "vuln_verdict": "취약",
+    },
+
+    # DBM-007: 비밀번호 복잡도 — vendor data_key는 'DBM-007_1'(result_key 'DBM-007'과
+    # 다름 — R-MY008/R-OR008급 data_key 불일치 패턴과 동일 주의사항).
+    # rules.DBM-007.limit=["NULL_VERIFY_FUNCTION"](함수 미할당 sentinel). db.py 모드C2를
+    # engine=="tibero"까지 확장(oracle과 동일 근거, 기준xlsx 문구 확인 — db_tibero.yaml
+    # DBM-007 주석 참조).
+    # good: 함수 할당됨(limit!='NULL_VERIFY_FUNCTION') → 위반0이나 내용 미확인 →
+    #       판단보류(양호 아님, 의도된 설계 — oracle DBM-007과 동일 계약).
+    # vuln: limit=='NULL_VERIFY_FUNCTION'(미할당) → 실제 위반 → 취약.
+    "DBM-007": {
+        "good": {"DBM-007_1": {"RESULT": [
+            {"profile": "DEFAULT", "limit": "CUSTOM_VERIFY_FUNCTION"}
+        ]}},
+        "vuln": {"DBM-007_1": {"RESULT": [
+            {"profile": "DEFAULT", "limit": "NULL_VERIFY_FUNCTION"}
+        ]}},
+        "good_verdict": "판단보류",
+        "vuln_verdict": "취약",
+        "note": "모드C2(tibero 확장): 함수 할당됨 → 위반0이나 내용 미확인 → 판단보류"
+                "(양호 아님, 의도된 설계 — 거짓양호 회피 최우선). data_key='DBM-007_1'"
+                "(result_key 'DBM-007'과 다름) 주의.",
+    },
+
+    # DBM-008: 비밀번호 주기변경 — vendor는 username/profile(exception 필터, 둘 다 빈
+    # 리스트라 항상 통과) + limit in rules.limit(["UNLIMITED"]) 조건(data_key='DBM-008',
+    # 접미사 없음). limit=='UNLIMITED'(비밀번호 만료 정책 없음) → 위반.
+    "DBM-008": {
+        "good": {"DBM-008": {"RESULT": [
+            {"username": "app_user", "profile": "DEFAULT", "limit": "90"}
+        ]}},
+        "vuln": {"DBM-008": {"RESULT": [
+            {"username": "app_user", "profile": "DEFAULT", "limit": "UNLIMITED"}
+        ]}},
+        "good_verdict": "양호",
+        "vuln_verdict": "취약",
+        "note": "실샘플 미검증: 'limit' 필드가 실제 PASSWORD_LIFE_TIME류 프로파일 설정을 "
+                "나타내는지 확인 못함(갭, db_tibero.yaml DBM-008 주석 참조).",
+    },
+
+    # DBM-009: 세션 종료 — name/value, int(value) < 900.
+    "DBM-009": {
+        "good": {"DBM-009": {"RESULT": [
+            {"name": "ACTIVE_SESSION_TIMEOUT", "value": "900"}
+        ]}},
+        "vuln": {"DBM-009": {"RESULT": [
+            {"name": "ACTIVE_SESSION_TIMEOUT", "value": "0"}
+        ]}},
+        "good_verdict": "양호",
+        "vuln_verdict": "취약",
+    },
+
+    # DBM-011: 감사로그 — 모드C(detect-vuln-else-hold). value 전부 'NONE'이면 취약
+    # 확정, 하나라도 NONE 아니면 위반0(백업주기 미검증) → 판단보류.
+    "DBM-011": {
+        "good": {"DBM-011": {"RESULT": [
+            {"name": "audit_trail", "value": "DB"}
+        ]}},
+        "vuln": {"DBM-011": {"RESULT": [
+            {"name": "audit_trail", "value": "NONE"}
+        ]}},
+        "good_verdict": "판단보류",
+        "vuln_verdict": "취약",
+        "note": "모드C: good=수집됨→판단보류(백업여부 미검증), vuln=NONE→취약.",
+    },
+
+    # DBM-013: 원격접근통제 — vendor value=='' 검사(LSNR_DENIED_IP/LSNR_INVITED_IP
+    # 등 설정 여부로 추정, 실샘플 미검증).
+    "DBM-013": {
+        "good": {"DBM-013": {"RESULT": [
+            {"name": "LSNR_INVITED_IP", "value": "192.168.1.0/24"}
+        ]}},
+        "vuln": {"DBM-013": {"RESULT": [
+            {"name": "LSNR_INVITED_IP", "value": ""}
+        ]}},
+        "good_verdict": "양호",
+        "vuln_verdict": "취약",
+        "note": "실샘플 미검증: 'value' 필드 포맷 확인 못함(갭, db_tibero.yaml DBM-013 "
+                "주석 참조). 모드J tibero 전용 checker 없음(0행 가드만 적용).",
+    },
+
+    # DBM-019: 비밀번호 재사용 — limit=='UNLIMITED' + username/profile exception 필터.
+    "DBM-019": {
+        "good": {"DBM-019": {"RESULT": [
+            {"username": "app", "profile": "DEFAULT", "limit": "365"}
+        ]}},
+        "vuln": {"DBM-019": {"RESULT": [
+            {"username": "app", "profile": "DEFAULT", "limit": "UNLIMITED"}
+        ]}},
+        "good_verdict": "양호",
+        "vuln_verdict": "취약",
+    },
+
+    # DBM-022: 파일 권한 — tibero 전용 700 대상 바이너리(/bin/tbboot 등).
+    "DBM-022": {
+        "good": {"DBM-022": {"RESULT": [
+            {"output": "-rwx------  1 tibero dba 102400 Jun 1 2024 /bin/tbboot"}
+        ]}},
+        "vuln": {"DBM-022": {"RESULT": [
+            {"output": "-rwxr-xr-x  1 tibero dba 102400 Jun 1 2024 /bin/tbctl"}
+        ]}},
+        "good_verdict": "양호",
+        "vuln_verdict": "취약",
+    },
+
+    # DBM-026: umask — _umask_is_violation 헬퍼(mysql/oracle/mariadb/pg와 동일 로직).
+    "DBM-026": {
+        "good": {"DBM-026": {"RESULT": [{"output": "0022"}]}},
+        "vuln": {"DBM-026": {"RESULT": [{"output": "0000"}]}},
+        "good_verdict": "양호",
+        "vuln_verdict": "취약",
+    },
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
 # 통합 딕셔너리
 # ──────────────────────────────────────────────────────────────────────────────
 DB_COV: dict[str, dict] = {
@@ -924,6 +1100,7 @@ DB_COV: dict[str, dict] = {
     "oracle":     _ORACLE,
     "mssql":      _MSSQL,
     "postgresql": _POSTGRESQL,
+    "tibero":     _TIBERO,
 }
 
 # 엔진 → variant(native) 매핑
@@ -933,4 +1110,6 @@ ENGINE_TO_VARIANT: dict[str, str] = {
     "oracle":     "oracle_native",
     "mssql":      "mssql_native",
     "postgresql": "pg_native",
+    # tibero: profile.py DB_TIBERO.variants 키가 "tibero"(접미사 없음).
+    "tibero":     "tibero",
 }
