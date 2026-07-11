@@ -889,6 +889,7 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
             judgment = handler(crit, item, ctx)
             if judgment is not None:
                 judgment.judgment_method = crit.judgment_method  # 정적 전파
+                judgment.standard = crit.standard  # 판정 근거: xlsx 판단기준 전파
                 judgments.append(judgment)
                 judged_ids.add(item_id)
 
@@ -925,6 +926,7 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
                     judgment = _missing_evidence_defer(crit, variant, profile)
             if judgment is not None:
                 judgment.judgment_method = crit.judgment_method  # 정적 전파
+                judgment.standard = crit.standard  # 판정 근거: xlsx 판단기준 전파
                 judgments.append(judgment)
                 judged_ids.add(crit_id)
 
