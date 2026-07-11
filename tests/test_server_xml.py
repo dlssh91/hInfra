@@ -535,6 +535,44 @@ PermitRootLogin yes
     assert "<REDACTED>" not in evidence
 
 
+# ── L2 마스킹 패턴 B 정밀화 (2026-07-11, 2차 Opus 리뷰 지적 — 저심각/표시전용) ──
+# `\S+` 값 캡처가 URL 쿼리스트링/인접 토큰까지 과치환하던 문제를
+# `[^\s&'";]+`(공백·&·따옴표·세미콜론 경계 인식)로 좁혔다. raw_evidence(det
+# 입력)는 무관 — evidence(표시/LLM 투입) 전용 마스커만 대상.
+
+def test_l2_shell_kv_url_query_param_boundary_preserved(tmp_path):
+    """URL 쿼리스트링 `token=AbC123&x=1`에서 시크릿 값만 마스킹되고 뒤따르는
+    파라미터 `&x=1`은 손상되지 않는다(과치환 정밀화)."""
+    body = """
+<dump>
+<items><id>/var/log/access.log</id></items>
+<output><![CDATA[
+GET /api/resource?token=AbC123&x=1 HTTP/1.1
+]]></output>
+</dump>
+"""
+    path = _write(tmp_path, "url_query.xml", _server_xml(body=body))
+    evidence = server_xml.parse(path)[0][1][0].evidence
+    assert "AbC123" not in evidence
+    assert "token=<REDACTED>&x=1" in evidence
+
+
+def test_l2_shell_kv_adjacent_token_boundary_preserved(tmp_path):
+    """`PASSWORD=val extra_word` 형태에서 값(`val`)만 마스킹되고 인접 단어
+    (`extra_word`)는 보존된다(회귀 확인 — 공백 경계는 기존에도 보존됨)."""
+    body = """
+<dump>
+<items><id>/etc/profile.d/app.sh</id></items>
+<output><![CDATA[
+PASSWORD=val extra_word
+]]></output>
+</dump>
+"""
+    path = _write(tmp_path, "adjacent_token.xml", _server_xml(body=body))
+    evidence = server_xml.parse(path)[0][1][0].evidence
+    assert "PASSWORD=<REDACTED> extra_word" in evidence
+
+
 # ── 하이퍼바이저 특화 마스킹 초안 (§4-2, 2026-07-11 — 실데이터 없음, 공개문서 기반) ──
 # osvirt_xml이 이 마스커를 그대로 체이닝하므로 여기서 회귀 고정한다.
 # vpxuser 자격증명(quoted/unquoted, 결합토큰만) + SAML 어서션 + Bearer/

@@ -120,8 +120,8 @@ _ATTR_SECRET = re.compile(
     r"truststorePass|secret|token)(\s*=\s*)([\"'])(.*?)\3"
 )
 # 패턴 B(셸 KEY=VALUE, 따옴표 없는 값): 임의 접두/접미 단어문자를 허용하는
-# 키워드 앵커(PASSWORD|PASSWD|SECRET|API_KEY|TOKEN|CREDENTIAL) + `=` + 값(비공백
-# 연속) 을 매치, 값만 치환한다. 대소문자 무시.
+# 키워드 앵커(PASSWORD|PASSWD|SECRET|API_KEY|TOKEN|CREDENTIAL) + `=` + 값을
+# 매치, 값만 치환한다. 대소문자 무시.
 #
 # 과마스킹 가드: 값 앞에 부정형 전방탐색 `(?!["'])` 를 둬 패턴 A가 이미 처리한
 # 따옴표 값(예: `password="<REDACTED>"`)을 다시 건드리지 않는다(중복치환으로
@@ -129,9 +129,18 @@ _ATTR_SECRET = re.compile(
 # `=` 가 없는 라인(예: `PASS_MAX_DAYS 99999`, `password requisite pam_unix.so`,
 # `PermitRootLogin yes`)은 애초에 `\s*=\s*` 요구조건에서 매치되지 않아
 # 판정에 필요한 login.defs/PAM/sshd 설정 라인이 보존된다(회귀테스트로 고정).
+#
+# 2차 Opus 리뷰 지적(저심각, 표시 전용) 정밀화: 값 캡처를 `\S+`(공백까지 전부
+# 소거) 에서 `[^\s&\"';]+`(공백·`&`·따옴표·세미콜론 전까지)로 좁힌다. URL
+# 쿼리스트링(`token=AbC123&x=1`)에서 뒤 파라미터(`&x=1`)까지, `KEY=val;other`
+# 류 구분자 뒤 인접 토큰까지 삼키던 과치환을 막는다. det 입력(raw_evidence)엔
+# 영향 없음 — 이 함수는 evidence(표시/LLM 투입)에만 적용된다. 실제 시크릿 값
+# 문자셋(영숫자·`-`·`_`·`.`·`!`·`+`·`/` 등)은 제외 목록에 없어 기존 통과
+# 케이스(DB_PASSWORD=SuperSecretPassw0rd!, api_key=sk-live-...)는 그대로
+# 전체가 마스킹된다.
 _SHELL_KV_SECRET = re.compile(
     r"(?i)\b(\w*(?:PASSWORD|PASSWD|SECRET|API_KEY|TOKEN|CREDENTIAL)\w*)"
-    r"(\s*=\s*)(?![\"'])(\S+)"
+    r"(\s*=\s*)(?![\"'])([^\s&\"';]+)"
 )
 
 # ── 하이퍼바이저 특화 마스킹 (§4-2, 2026-07-11 초안 — 실수집 데이터 없음) ──────
