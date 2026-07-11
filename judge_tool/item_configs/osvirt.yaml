@@ -4,20 +4,43 @@
 # label C: 기술적 한계 — 자동 판단보류, canned_message 출력 (LLM 호출 없음)
 # label D: 외부지식 필요(EOL·패치 등) — 자동 판단보류, canned_message 출력 (LLM 호출 없음)
 #
-# 현재 상태: 항목 미등재 → 전 항목(35개 PRCV) 기본 label A(LLM 판정).
+# 현재 상태: 35항목 중 3항목(PRCV-003/022/023) label B 등재(2026-07-11, 사용자 승인,
+# 근거: docs/superpowers/reports/2026-07-11-osvirt-label-proposal.md). 나머지 32항목은
+# 미등재 → 기본 label A(LLM 판정).
 # variant 키: vcenter / esxi / xen (variants: 오버라이드 가능).
 #
 # 변형별 적용 차이: ESXi가 35항목 전부 'o'(슈퍼셋), vCenter·Xen은 부분집합
 # (PRCV-008/010/014~021/024/026~031/033~036 등 21개 항목이 변형마다 다름).
 # 적용 차이는 평가기준 시트 평가대상 컬럼('o')으로 criteria_loader가 자동 처리.
 #
+# label B 3항목 근거(위 제안 문서 §변경 제안 요약 참조):
+#   PRCV-003: 판단기준 원문 "※ 업무상 사용 여부 확인 필요" + SRV-074(동일 항목명) 교차검증(B).
+#   PRCV-022: 설계문서 §4 힌트 채택. 원격 로그 서버/스토리지 연동 적정성은 운영 맥락 필요.
+#   PRCV-023: SRV-109(동일 항목명) 교차검증(B, "내부정책 확인" 패턴) — 신규 발견.
+#   3항목 모두 summary_instruction 부여(interview, holdonly 아님): 계정/설정 값을
+#   집계요약해 인터뷰를 보조할 수 있는 증거가 있음(순수 맥락판단이 아님).
+#   judgment_method는 미지정(기본 llm 미적용 아님 — classify_method가 label B +
+#   summary_instruction 유무로 "interview" 도출. det_common 어댑터가 osvirt에는
+#   등록되어 있지 않아(judge_tool/det_adapters/base.py _DET_ADAPTERS) 자동판정 우회
+#   위험 없음 — DBM-020/024류 교훈과 달리 이 3항목은 det_common을 참조하지 않는다.
+#
 # TODO(후속 과제 — 실수집 샘플 데이터 확보 후):
 # - 평가기준 'OS 가상화 시스템' 시트의 판단기준/판단방법을 변형별로 정독하여
-#   C(기술한계)/D(EOL·패치 결정론)/B(인터뷰) 항목을 분류·등재한다.
-# - 후보 메모(추정, 샘플 확보 전 미확정):
-#     PRCV-003 (계정 정기점검): B 인터뷰 후보 (분기별 점검 절차)
-#     PRCV-022 (원격 로그 서버): B 인터뷰 후보
-#     하이퍼바이저 패치/버전성 항목: D patch_check 후보 (eol.yaml 확장 선행)
+#   나머지 32항목 중 C(기술한계)/D(EOL·패치 결정론) 후보를 추가 분류·등재한다.
 # - empty_means_good(빈 출력=양호) 후보도 수집 스크립트 분석 후 profile.OS_VIRT에 보강.
 # - 하이퍼바이저 특화 민감 마스킹(vpxuser 비밀번호·API 세션 토큰)은 실데이터 확인 후
 #   osvirt_xml에 패턴 추가(현재 server_xml crypt/PEM/hex 체이닝만).
+
+# ─── B 라벨 — 인터뷰 필수 (verdict=판단보류 고정, LLM은 summary_instruction으로 증거 요약만) ───
+
+PRCV-003:
+  label: B                        # 판단기준 원문 "업무상 사용 여부 확인 필요" — SRV-074 교차검증
+  summary_instruction: "이 항목의 불필요/미관리 계정 판정 증거를 정리하라: 분기별 1회 이상 로그인 기록이 없는 계정, 비밀번호 90일 초과 미변경 계정 목록을 집계하고, 해당 계정의 업무상 사용 여부 확인이 필요한 계정을 담당자 인터뷰를 위해 요약하라"
+
+PRCV-022:
+  label: B                        # 원격 로그 서버/스토리지 연동 적정성 — 운영 맥락 필요(설계문서 §4 힌트)
+  summary_instruction: "이 항목의 원격 로그 서버 설정 증거를 정리하라: 원격 로그 호스트(Syslog.global.logHost) 또는 vCenter의 원격 로그 서버/스토리지 연동 설정값과 설정 여부를 요약하고, 연동 방식의 운영 적정성 확인이 필요한 사항을 담당자 인터뷰를 위해 정리하라"
+
+PRCV-023:
+  label: B                        # SRV-109(동일 항목명 "시스템 주요 이벤트 로그 설정") 교차검증
+  summary_instruction: "이 항목의 내부정책/운영절차 관련 증거를 정리하라: 정책 문서 참조, 담당자 확인이 필요한 사항을 요약하라"

@@ -150,6 +150,39 @@ def test_applicable_but_empty_standard_not_judgeable(tmp_path):
     assert c.is_judgeable is False
 
 
+# ── label B 회귀핀 (2026-07-11 PRCV-003/022/023 A→B 전환) ────────────────────
+# 근거: docs/superpowers/reports/2026-07-11-osvirt-label-proposal.md.
+# item_configs/osvirt.yaml에 실제 등재된 label/summary_instruction을
+# load_criteria가 그대로 반영하는지 확인(회귀 방지) — 이 3항목은 osvirt cov
+# 계약 테스트가 별도로 없으므로 이 파일에 최소 핀으로 정착시킨다.
+
+def test_prcv_003_022_023_label_b_interview(tmp_path):
+    """PRCV-003/022/023: item_configs/osvirt.yaml의 label B + summary_instruction이
+    classify_method를 거쳐 judgment_method='interview'로 라우팅되는지 확인.
+
+    핵심 계약: 이 3항목은 판단보류(인터뷰) 고정이며, det_common 자동판정으로
+    우회되지 않는다(osvirt는 _DET_ADAPTERS에 어댑터가 등록되어 있지 않음 —
+    DBM-020/024류처럼 label B에 det_common이 얹혀 자동판정으로 새는 사고가
+    구조적으로 발생할 수 없음. 아래 assert로 yaml에 judgment_method가
+    지정되지 않았음을 함께 확정한다).
+    """
+    p = _osvirt_xlsx(tmp_path, [
+        ("PRCV-003", True, True, True, "* 양호 - 불필요 계정 제거", "확인방법"),
+        ("PRCV-022", True, True, True, "* 양호 - 원격 로그 서버", "확인방법"),
+        ("PRCV-023", True, True, True, "* 양호 - 이벤트 로그 설정", "확인방법"),
+    ])
+    crit = load_criteria(p, OS_VIRT, profile_key="osvirt")
+    for item_id in ("PRCV-003", "PRCV-022", "PRCV-023"):
+        for variant in ("vcenter", "esxi", "xen"):
+            c = crit[(item_id, variant)]
+            assert c.label == "B", f"{item_id}/{variant}: label이 B가 아님"
+            assert c.summary_instruction, (
+                f"{item_id}/{variant}: summary_instruction 누락 — holdonly로 새면 안 됨")
+            assert c.judgment_method == "interview", (
+                f"{item_id}/{variant}: judgment_method={c.judgment_method} "
+                "(interview_holdonly/det_common 등으로 새면 안 됨)")
+
+
 def test_osvirt_profile_registered():
     """get_profile('osvirt') 성공: parser=osvirt_xml, 3변형, 컬럼 역전 매핑."""
     from judge_tool.profile import get_profile
