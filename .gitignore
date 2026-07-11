@@ -12,8 +12,6 @@ scripts/*.zip
 
 # 제공받은 점검 스크립트(대용량 zip+PowerCLI 모듈 등) — 로컬 유지, git 미추적
 scripts/check_scripts/
-.DS_Store
-**/.DS_Store
 
 # 대용량 점검 스크립트 zip 모음 — 로컬 유지
 assessment_scripts/

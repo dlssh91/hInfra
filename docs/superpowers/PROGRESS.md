@@ -396,7 +396,7 @@
   - oracle DBM-001 실데이터 미수집 (SYSDBA spare4 접근 선결)
   - 벤더 룰/keywords.txt 대용량 자산 경로 설정형(운영자 제공)
 
-  설계서: `docs/superpowers/DESIGN_phase4c_dbm001_pwcrack.md §A2`. 수정 파일: `det_adapters/db_pwcrack.py`, `main.py`, `tests/test_det_adapters_db_pwcrack.py`.
+  설계서: `docs/superpowers/design/DESIGN_phase4c_dbm001_pwcrack.md §A2`. 수정 파일: `det_adapters/db_pwcrack.py`, `main.py`, `tests/test_det_adapters_db_pwcrack.py`.
   Opus 리뷰 집중 의심지점: subprocess 인자 주입 방지(리스트형), potfile 파싱 hash:plain 분리(rfind), 세임 단일프로세스 안전성.
 
 - **✅ Phase 4c-a 완료 = Phase 4c-a: DBM-001 hashcat 연동 (a 레이어) (Sonnet구현, 2026-06-16)**
@@ -483,7 +483,7 @@
   1. **R3 거짓양호 보수처리**: pg 수집형식 `{"*": python_repr_str}` — analysis.py가 column key(`rolvaliduntil` 등) KeyError 삼킴 → `[]` → 거짓양호. pg DBM-003/004/008/011/015/017/020 = STUB(DET_SOURCE 정정). mariadb DBM-007/011/019 동일 패턴 → STUB. **수집형식 수정(flat dict rows) 후 DET 복원 가능 — TODO 잔존.**
   2. **실데이터 검증 결과 요약**: mysql(21판정 det_common=18, 거짓양호 0), oracle(25/19), mssql(23/14), mariadb(20/12), postgresql(22/6). 전 엔진 거짓양호 = 0 확인.
   3. **테스트**: `tests/test_det_adapters_db.py` 신규 64건(engine매핑·base정규화·gate차단·증거가드·noise필터·result매핑·예외내성·§7경계·raw_evidence·캐시·실파일E2E + R3차단 6건).
-  4. **설계서**: `docs/superpowers/DESIGN_phase4_db_deterministic.md`(아키텍처·DET_SOURCE 분류표·R1~R7). 어댑터 `det_adapters/db.py`(5 profile_key 공유), db_json raw_evidence 적재(결정1), `.run` 모듈캐시(결정2), KNOWN_BUGS R3 등재.
+  4. **설계서**: `docs/superpowers/design/DESIGN_phase4_db_deterministic.md`(아키텍처·DET_SOURCE 분류표·R1~R7). 어댑터 `det_adapters/db.py`(5 profile_key 공유), db_json raw_evidence 적재(결정1), `.run` 모듈캐시(결정2), KNOWN_BUGS R3 등재.
   5. **⚠️벤더 소스 위치(이 머신)**: `/Users/hinno/Downloads/common/DatabaseConfigLoader/modules/`(database/{engine}/analysis.py + config/{engine}-config.json). PROGRESS의 `../flus-main/`은 이전 머신(fsat) 기준 — 향후 벤더링 시 이 Downloads 경로 사용. 런타임은 `judge_tool/vendor/common/db/`(비트동일 복사본)만 사용.
   6. **Opus 재리뷰 SHIP 근거**: R3 13개 vendor print 전수 base 매칭, stderr/logging/whole-raise/캐시 경로 전부 fail-safe, 5엔진 실데이터 양호/취약 약화 0(과차단 가드 `violations>=1` 실증). 잔여 Low/dormant(`__AMBIGUOUS__` 발동불가·fail-safe 방향).
 
@@ -771,7 +771,7 @@
 - **다음 후보**: ①획득 결과의 local LLM 판정 유효성 검토(아래 ★), ②취약 환경 구성으로
   취약 판정 샘플 다양화(점검 기준의 취약조건 역주입 — 사용자 요청, 미착수).
 - **★common 결정론 통합 설계 완료(2026-06-16)** — 설계서
-  `docs/superpowers/DESIGN_common_deterministic_integration.md`. `../common`(Django앱)의
+  `docs/superpowers/design/DESIGN_common_deterministic_integration.md`. `../common`(Django앱)의
   검증된 결정론 판정(check_SRV_*/*Analysis/NET*/autoAnalysis)을 vendor 복사 → `det_common`
   핸들러 1개 + 도메인 어댑터 레지스트리로 통합. "common이 수동/인터뷰로 둔 항목만 LLM,
   나머지는 결정론"을 `handled` 플래그로 구현(fw_policy 선례 패턴). 두 프로젝트 **항목체계 일치**

@@ -20,7 +20,7 @@
 #      예외: SRV-006(§13.2 누락으로 패스스루 제외, label A LLM 유지)
 #
 # 분류 권위: judge_tool/vendor/common/DET_SOURCE.yaml
-# 설계서 근거: DESIGN_common_deterministic_integration.md §14/§15/§16/§18.3
+# 설계서 근거: docs/superpowers/design/DESIGN_common_deterministic_integration.md §14/§15/§16/§18.3
 
 # ─── D 라벨 — EOL/패치 (판단보류 고정, LLM 호출 없음) ─────────────────────────
 
