@@ -29,10 +29,10 @@
 >     (인터뷰 요약형 — B′-3 DBM-003 모드A2의 interview_summary 패턴 재사용 검토). label C 유지, 자동 취약/양호 절대 금지.
 >
 > **③ 거짓양호 후속(비차단 잔여)**:
->   - oracle DBM-007 vendor exception config 과탐 정정 — `oracle-config.json`의 `exception.DBM-007`이 전부 빈 리스트라
->     "행 있으면 값 불문 취약"(T7 리뷰 확증 사실). 실제 검증함수(PASSWORD_VERIFY_FUNCTION) 지정 계정은 정당 양호여야
->     하는데 현재 무조건 취약 — config에 정당한 프로파일/함수명 채우고 `judge_tool/vendor/common/db/oracle/analysis.py`
->     `dbm_007` 조건 재검증 필요.
+>   - ✅ **[2026-07-11 맥세션 완료 — R-OR007]** oracle DBM-007 무조건위반 해소. `rules.DBM-007.limit=["NULL"]` +
+>     `analysis.py`/`cloud_analysis.py` `dbm_007` `limit in rules['limit']`로 정정 + db.py **mode C2**(oracle 전용:
+>     limit=='NULL'→취약 / 함수 지정(limit!=NULL)→판단보류, **양호 없음** — 검증함수 내용 적정성은 결정론 불가).
+>     실수집 5엔진 verdict 변화 0, Opus 리뷰 대기. 검증함수 내용판정이 필요하면 향후 label B 승격 여지(현재는 판단보류 안전).
 >   - F9(DBM-033 이중화 평문, 우선순위 낮음 — 설계상 문서화된 한계), F10(server 명령실패 출력→N, 백로그, 컨테이너
 >     F8과 동형 패턴으로 접근 가능).
 >   - container 다변형(docker/ocp/eks/aks) 실샘플 확보 시 `tests/test_det_adapters_container.py`의
@@ -54,9 +54,26 @@
 >   - 벤더 객체 export→ObjectTable 캐노니컬 어댑터(B′-3b 후속) — **실 export 미확보 상태라 착수 불가**, 확보 시
 >     `judge_tool/fw_objects.py`의 `load_aux_objects` fail-closed 계약 유지 확인하며 착수.
 >
-> ⏳ **미완 리뷰(이월)**: 파일명→플랫폼 인지(profile.py, 2026-07-03 구현완료)는 **Fable 리뷰 여전히 미실시** — 재개 시 리뷰 or SHIP 판단.
+> ✅ **미완 리뷰 해소(2026-07-11 맥세션)**: 파일명→플랫폼 인지(profile.py) Fable 리뷰 완료 SHIP — L-1 variant_from_filename NFC 정규화 정합 수정(a8e6734).
 > 📌 **기타 백로그(비차단)**: eol.yaml 커버리지 보강(EoS(oracle 11/12/18, mysql 5.7, mssql 2012, pg≤12) 미등재→판단보류만 귀결),
 >    YAML aux-objects 중복 키 침묵 병합, F8 면제토큰 "Error from server" 광범위(방향 안전, 조치 불요).
+> ═══════════════════════════════════════════════════
+>
+> ═══ ⚠️ 환경 분담 규칙 (2026-07-11 사용자 확정 — 두 환경 동시작업 충돌 방지) ═══
+> 이 저장소는 **두 환경**이 병행 작업한다. 착수 전 반드시 `git fetch` 후 원격 확인.
+> - **FW 실데이터 환경**(ref/FW 보유): FW 도메인(ISS/fw_policy/fw_objects), DB 판정로직·vendor·모드가드, 코어 판정엔진.
+> - **맥 환경**(도커/kind 보유, FW 실데이터 없음): 웹UI, 신규 도메인 실증(도커/kind 자가수집), 문서, 수집기 초안, ponytail 정리.
+> - 공통 파일(det_adapters/db.py, DET_SOURCE.yaml, item_configs, main.py, KNOWN_BUGS.md)은 **선점 push + 상대 pull** 원칙.
+>   갈라지면 원격 기준 재통합(backup 브랜치 보존 후 reset+고유분 이식) — 2026-07-11 1회 수행함.
+> ═══════════════════════════════════════════════════
+>
+> ═══ 📅 2026-07-11 맥세션 완료 요약 (상세=docs/superpowers/reports/2026-07-11-자율진행-기록.md) ═══
+> - **거짓양호 감사 F1~F8 전부 SHIP**(원격 F1~F5와 독립구현 재통합, 원격 F6/F7 모드J 거짓양호 갭 이쪽 checker로 보완).
+> - **컨테이너 §3 완주**: kind 실증 → cov 계약 169테스트 → R-PRCC-NOTEXIST(5항목 거짓취약)·PRCC-045 거짓양호 fail-closed.
+> - **서버/웹WAS 자가수집 실증**(§1/§2): L2 마스킹 확장·R-WST033 Apache 거짓양호. §4 osvirt 마스킹+라벨 3건(B), §5 네트워크 수집기 초안.
+> - **웹UI**: 판정근거=xlsx 판단기준 표시 + 다중업로드(Playwright 실증). **ponytail 정리**: 죽은코드/실험스크립트 10개 삭제·파서 dedup(_common.py)·가드 보일러플레이트 헬퍼(-약1200줄). **Opus 리뷰 SHIP ×3**.
+> - 테스트 2005→**2556 passed / 100 skipped / 0 failed**.
+> - 막힘(사용자 게이트): qwen3-coder:30b 미설치(호스트 디스크 3~4GB뿐), production LLM 품질 실검증 보류.
 > ═══════════════════════════════════════════════════
 >
 > **✅ 2026-07-10 세션(라운드3) — FW B′-4 정밀도 보정 완주 (1커밋, 2230 passed / 0 failed)**
