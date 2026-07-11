@@ -126,14 +126,19 @@ _BROAD_RANGE_HOST_THRESHOLD = 65536
 _DASH_RANGE_RE = re.compile(r"^\s*([^\s-]+)\s*-\s*([^\s-]+)\s*$")
 
 
-def _parse_ip_range(ip_str: str) -> Optional[Tuple[int, int]]:
-    """IP 문자열(CIDR/단일 IP/대시범위)을 (시작 정수, 끝 정수) 구간으로 통일 파싱한다
-    (B′-4 H-4+M-1 통합 유틸). 이 표현으로 통일하면 광역판정(호스트수 임계)과
-    포함관계판정(구간 포함)을 동일한 정수쌍 비교로 처리할 수 있다.
-    - CIDR(`10.0.0.0/24`) → (network_address, broadcast_address)의 정수.
-    - 단일 IP(`10.0.0.5`) → (같은 정수, 같은 정수).
-    - 대시범위(`10.0.0.1-10.0.0.100`) → (low, high)의 정수. low>high면 파싱
-      실패로 처리(형식 불명 취급).
+def _parse_ip_range(ip_str: str) -> Optional[Tuple[int, int, int]]:
+    """IP 문자열(CIDR/단일 IP/대시범위)을 (버전, 시작 정수, 끝 정수) 구간으로
+    통일 파싱한다(B′-4 H-4+M-1 통합 유틸, 잔여백로그 항목1: IPv4/IPv6 교차버전
+    오포함 수정으로 3-튜플 확장). 이 표현으로 통일하면 광역판정(호스트수 임계)과
+    포함관계판정(구간 포함)을 동일한 정수쌍 비교로 처리할 수 있다. 버전(4 또는
+    6)을 함께 반환해 호출측(`_ips_cover`)이 IPv4/IPv6를 같은 정수축에서 교차
+    비교하는 것을 방지한다(예: IPv6 `::`의 정수값은 IPv4 저대역과 겹쳐, 버전
+    구분 없이는 IPv6 상한이 IPv4 하한을 "포함"하는 것으로 오판될 수 있었다).
+    - CIDR(`10.0.0.0/24`) → (4, network_address, broadcast_address)의 정수.
+    - 단일 IP(`10.0.0.5`) → (4, 같은 정수, 같은 정수).
+    - 대시범위(`10.0.0.1-10.0.0.100`) → (버전, low, high)의 정수. low>high면
+      파싱 실패로 처리(형식 불명 취급). 양끝 IP 버전이 다르면(`10.0.0.1-::1`
+      등 형식 오류) 파싱 실패로 처리.
     - 파싱 불가(형식 불명) → None(호출측에서 기존과 동일하게 보수적으로
       처리 — 비광역/미포함 방향, 회귀 아님).
     """
@@ -141,30 +146,76 @@ def _parse_ip_range(ip_str: str) -> Optional[Tuple[int, int]]:
     m = _DASH_RANGE_RE.match(s)
     if m:
         try:
-            lo = int(ipaddress.ip_address(m.group(1)))
-            hi = int(ipaddress.ip_address(m.group(2)))
+            lo_addr = ipaddress.ip_address(m.group(1))
+            hi_addr = ipaddress.ip_address(m.group(2))
         except ValueError:
             return None
+        if lo_addr.version != hi_addr.version:
+            return None  # 대시범위 양끝 버전 상이 — 형식 불명 취급(보수적)
+        lo, hi = int(lo_addr), int(hi_addr)
         if lo > hi:
             return None
-        return (lo, hi)
+        return (lo_addr.version, lo, hi)
     try:
         net = ipaddress.ip_network(s, strict=False)
     except ValueError:
         return None
-    return (int(net.network_address), int(net.broadcast_address))
+    return (net.version, int(net.network_address), int(net.broadcast_address))
 
 # 관리 포트 집합 (ISS-031)
+# [잔여백로그 항목3, 포트목록 재정합] 기준xlsx '정보보호시스템 장비' 시트 R35
+# (ISS-031) 원문 명시 목록으로 전면 재정합(탐지강화 방향 — 누락 추가):
+#   FTP(TCP 20,21), SSH(TCP 22), Telnet(TCP 23), MSSQL(TCP 1433,1434),
+#   Oracle(TCP 1521,1522), MySQL(TCP 3306), MS-RDP(TCP 3389), TFTP(UDP 69),
+#   R-Service(TCP 512,513,514), Xmanager(UDP 177,7000,7100,7500,6000-6010,
+#   16001), NetBIOS(UDP 135,136,137,138, TCP 139,445) 등.
+# ※ 원문 R35는 "관리용도 또는 취약한 포트"를 하나의 통합 목록으로 제시(관리
+#   포트와 취약포트를 별도 목록으로 분리하지 않음) — ADMIN_PORTS가 이 통합
+#   목록의 실체다. 원문 프로토콜(TCP/UDP) 구분은 세트에 반영하지 않는다
+#   (ADMIN_PORTS/detect_broad_cidr_port가 프로토콜 무관 포트번호 집합이라
+#   기존 구조 그대로 유지 — 프로토콜별 분리는 더 큰 리팩터로 범위밖).
+# ※ 기존 80/443/8080/8443(HTTP/HTTPS 관리, 대체 관리포트)은 원문에 명시되어
+#   있지 않지만 유지한다 — 원문 목록 끝의 "등"(비전수 예시)에 흔한 웹 기반
+#   관리콘솔 포트를 실무적으로 포함하는 것이 안전측(제거 시 실제 웹관리
+#   콘솔 노출을 놓칠 위험 > 유지 시 과탐 위험, 과탐이 거짓양호보다 안전).
 ADMIN_PORTS: FrozenSet[int] = frozenset({
-    22,    # SSH
-    23,    # Telnet
-    80,    # HTTP 관리
-    443,   # HTTPS 관리
-    3389,  # RDP
-    8080, 8443,  # 대체 관리 포트
+    20, 21,   # FTP
+    22,       # SSH
+    23,       # Telnet
+    69,       # TFTP
+    80,       # HTTP 관리 (원문 미명시, 실무 관리콘솔 — 광의 유지)
+    177,      # Xmanager (XDMCP)
+    443,      # HTTPS 관리 (원문 미명시, 실무 관리콘솔 — 광의 유지)
+    512, 513, 514,   # R-Service (rexec/rlogin/rsh)
+    1433, 1434,      # MSSQL
+    1521, 1522,      # Oracle
+    3306,     # MySQL
+    3389,     # MS-RDP
+    6000, 6001, 6002, 6003, 6004, 6005, 6006, 6007, 6008, 6009, 6010,  # Xmanager
+    7000, 7100, 7500,  # Xmanager
+    8080, 8443,        # 대체 관리 포트 (원문 미명시, 실무 관리콘솔 — 광의 유지)
+    16001,    # Xmanager
+    135, 136, 137, 138,  # NetBIOS
+    139, 445,            # NetBIOS(SMB)
 })
 
 # 취약 포트 집합 (ISS-041)
+# [잔여백로그 항목3, 포트목록 재정합 — 판단근거 보고] 기준xlsx R45(ISS-041,
+# "불필요한 네트워크 대역 단위 설정 금지 여부")를 직접 대조한 결과, **원문은
+# ISS-041에 포트 목록을 전혀 명시하지 않는다** — "출발지 또는 목적지가 ANY
+# 또는 네트워크 IP대역으로 불필요하게 적용되어 허용된 정책이 존재할 경우
+# 취약"이 전문이며 포트 조건이 없다(ISS-030 유사, 다만 030은 "모든 서비스"
+# 한정, 041은 대역 자체가 핵심). 반면 애초 이 태스크 브리프가 인용한
+# FTP/SSH/Telnet/MSSQL/Oracle/MySQL/RDP/TFTP/R-Service/Xmanager 목록은 원문
+# 대조 결과 **R35(ISS-031) 소속**이며 ISS-041 소속이 아니다(브리프의 항목귀속
+# 오류로 확인 — 위 ADMIN_PORTS 갱신으로 이미 반영됨).
+# VULN_PORTS(NetBIOS/SMB/MSSQL/Oracle/MySQL/PostgreSQL/Redis/MongoDB)는
+# 원문 어디에도 이 조합으로 등장하지 않는 코드 자체 정의(DB/파일공유 서비스
+# 노출 휴리스틱)로 보인다. **이번 라운드는 보류**: ISS-041의 포트게이트 자체를
+# 제거(원문처럼 포트 무관 광역판정)하는 것은 탐지범위가 크게 넓어지는
+# 아키텍처 변경(과탐 급증 위험 포함)이라 "포트 목록 재정합" 범위를 넘는
+# 판단이 필요 — Fable 설계 검토 후 별도 태스크로 처리 권고. 이번 라운드는
+# 회귀 방지를 위해 VULN_PORTS 목록 자체는 변경하지 않는다.
 VULN_PORTS: FrozenSet[int] = frozenset({
     137, 138, 139,   # NetBIOS
     445,              # SMB
@@ -201,7 +252,7 @@ def _is_broad_cidr(ip_str: str) -> bool:
     rng = _parse_ip_range(ip_str)
     if rng is None:
         return False
-    start, end = rng
+    _version, start, end = rng
     return (end - start + 1) >= _BROAD_RANGE_HOST_THRESHOLD
 
 
@@ -761,10 +812,20 @@ def _policy_covers(upper: Policy, lower: Policy) -> bool:
                 break
             upper_ports |= _parse_port_range(ps)
         if _SENTINEL_WIDE_RANGE not in upper_ports:
-            # lower가 전포트(dst_ports=[])면 unresolved_svc 유무와 무관하게
-            # "포함 안 됨" 방향으로 보수 처리(lower의 불확정은 판단보류 몫이지
-            # 여기서 covers=True로 오판할 몫이 아님).
-            lower_all_ports = not lower.dst_ports
+            # lower가 전포트(dst_ports=[] 또는 리터럴 "any" 토큰 보유)면
+            # unresolved_svc 유무와 무관하게 "포함 안 됨" 방향으로 보수 처리
+            # (lower의 불확정은 판단보류 몫이지 여기서 covers=True로 오판할
+            # 몫이 아님). [잔여백로그 항목2] `_is_any_port` 체크가 기존엔 위
+            # upper 분기에만 있고 lower 분기엔 없어(선재버그), lower.dst_ports가
+            # 비어있지 않고 리터럴 "any" 토큰만 있는 경우(예: `["any"]`) —
+            # `_parse_port_range("any")`가 빈 집합을 반환해 lower_ports가
+            # 공집합이 되고, 공집합은 어떤 집합의 subset이라 covers=True로
+            # 잘못 판정되던 문제(거짓 그림자 — upper가 제한포트인데 lower가
+            # 실제로는 전포트 허용이라 진짜로는 포함되지 않음). upper 분기와
+            # 동형으로 `_is_any_port` 토큰 존재 시 전포트로 미러링한다.
+            lower_all_ports = not lower.dst_ports or any(
+                _is_any_port(ps) for ps in lower.dst_ports
+            )
             if lower_all_ports:
                 return False
             lower_ports: Set[int] = set()
@@ -781,6 +842,13 @@ def _ips_cover(upper_list: List[str], lower_list: List[str]) -> bool:
     (B′-4 H-4) `ipaddress.ip_network()` 직접 파싱 대신 `_parse_ip_range` 기반
     정수구간 포함 비교로 통일 — CIDR뿐 아니라 대시범위도 지원한다. CIDR만
     쓰는 기존 케이스는 정수구간 포함이 `subnet_of`와 동치이므로 회귀 없음.
+
+    (잔여백로그 항목1) `_parse_ip_range`가 (version, lo, hi) 3-튜플을 반환하므로
+    버전이 다른 upper/lower 쌍은 정수구간이 겹치더라도 비교 대상에서 제외한다
+    (IPv4/IPv6 교차버전 오포함 방지 — 예: IPv6 저대역 upper가 IPv4 lower를
+    "포함"하는 것으로 오판되던 문제). `_is_any()`(any/0.0.0.0/0/::0 등)는
+    버전 무관하게 여전히 "전체 포함"으로 처리한다(방화벽 시맨틱상 any는 모든
+    버전을 포괄 — 기존 동작 보존).
     """
     if not upper_list or all(_is_any(ip) for ip in upper_list):
         return True
@@ -793,7 +861,7 @@ def _ips_cover(upper_list: List[str], lower_list: List[str]) -> bool:
         lower_rng = _parse_ip_range(lower_ip)
         if lower_rng is None:
             return False
-        lower_start, lower_end = lower_rng
+        lower_version, lower_start, lower_end = lower_rng
         covered = False
         for upper_ip in upper_list:
             if _is_any(upper_ip):
@@ -802,7 +870,9 @@ def _ips_cover(upper_list: List[str], lower_list: List[str]) -> bool:
             upper_rng = _parse_ip_range(upper_ip)
             if upper_rng is None:
                 continue
-            upper_start, upper_end = upper_rng
+            upper_version, upper_start, upper_end = upper_rng
+            if upper_version != lower_version:
+                continue  # 버전 상이 — 미포함 취급(교차버전 오포함 방지)
             if upper_start <= lower_start and upper_end >= lower_end:
                 covered = True
                 break

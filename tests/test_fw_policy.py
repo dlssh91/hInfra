@@ -176,7 +176,9 @@ def test_is_broad_cidr_slash24_still_not_broad_regression():
 # ─ _parse_ip_range (H-4/M-1 통합 유틸) ─────────────────────────────────────────
 
 def test_parse_ip_range_cidr():
+    # [잔여백로그 항목1] (version, lo, hi) 3-튜플로 확장 — IPv4=4.
     assert _parse_ip_range("10.0.0.0/24") == (
+        4,
         int(ipaddress.ip_address("10.0.0.0")),
         int(ipaddress.ip_address("10.0.0.255")),
     )
@@ -184,11 +186,12 @@ def test_parse_ip_range_cidr():
 
 def test_parse_ip_range_single_ip():
     n = int(ipaddress.ip_address("10.0.0.5"))
-    assert _parse_ip_range("10.0.0.5") == (n, n)
+    assert _parse_ip_range("10.0.0.5") == (4, n, n)
 
 
 def test_parse_ip_range_dash_range():
     assert _parse_ip_range("10.0.0.1-10.0.0.100") == (
+        4,
         int(ipaddress.ip_address("10.0.0.1")),
         int(ipaddress.ip_address("10.0.0.100")),
     )
@@ -201,6 +204,59 @@ def test_parse_ip_range_dash_range_low_gt_high_is_none():
 def test_parse_ip_range_invalid_is_none():
     assert _parse_ip_range("not-an-ip") is None
     assert _parse_ip_range("") is None
+
+
+# ─ 잔여백로그 항목1: IPv4/IPv6 교차버전 처리 ───────────────────────────────────
+
+def test_parse_ip_range_ipv6_cidr():
+    net = ipaddress.ip_network("2001:db8::/64")
+    assert _parse_ip_range("2001:db8::/64") == (
+        6, int(net.network_address), int(net.broadcast_address),
+    )
+
+
+def test_parse_ip_range_ipv6_single_ip():
+    n = int(ipaddress.ip_address("::1"))
+    assert _parse_ip_range("::1") == (6, n, n)
+
+
+def test_parse_ip_range_ipv6_dash_range():
+    lo = int(ipaddress.ip_address("2001:db8::1"))
+    hi = int(ipaddress.ip_address("2001:db8::100"))
+    assert _parse_ip_range("2001:db8::1-2001:db8::100") == (6, lo, hi)
+
+
+def test_parse_ip_range_dash_range_mixed_version_is_none():
+    # 대시범위 양끝 버전이 다르면(형식 오류) 파싱 실패로 처리
+    assert _parse_ip_range("10.0.0.1-::1") is None
+
+
+def test_ips_cover_cross_version_v6_upper_v4_lower_not_covered():
+    # upper가 IPv6 저정수 대역(::/64 등)이고 lower가 IPv4면 정수구간이 겹쳐도
+    # 교차버전 오포함이 되어서는 안 된다(잔여백로그 항목1 핵심 회귀 케이스).
+    assert not _ips_cover(["::/64"], ["10.0.0.1"])
+
+
+def test_ips_cover_cross_version_v4_upper_v6_lower_not_covered():
+    # upper가 IPv4 광역대역(any 아님)이고 lower가 IPv6면 역시 미포함.
+    assert not _ips_cover(["1.0.0.0/8"], ["::1"])
+
+
+def test_ips_cover_ipv6_same_version_covered():
+    assert _ips_cover(["2001:db8::/32"], ["2001:db8::1"])
+
+
+def test_ips_cover_ipv6_same_version_not_covered():
+    assert not _ips_cover(["2001:db8::/64"], ["2001:db9::1"])
+
+
+def test_is_broad_cidr_ipv6_cidr_parses_and_is_broad():
+    # IPv6 /64는 호스트수 임계(65536)를 훨씬 초과 — 광역.
+    assert _is_broad_cidr("2001:db8::/64")
+
+
+def test_is_broad_cidr_ipv6_single_host_not_broad():
+    assert not _is_broad_cidr("::1")
 
 
 # ─ H-4: IP 대시범위 지원 (_is_broad_cidr / _ips_cover) ────────────────────────
@@ -353,6 +409,42 @@ def test_detect_broad_cidr_no_dst_ports_is_all():
     # dst_ports 없으면 전포트 허용 → ADMIN_PORTS 포함
     p = _make(action="allow", src_ips=["10.0.0.0/8"])
     assert detect_broad_cidr_port([p], ADMIN_PORTS) == [p]
+
+
+# ─ 잔여백로그 항목3: ADMIN_PORTS(ISS-031) 기준xlsx(R35) 원문 재정합 ───────────
+# 기준xlsx '정보보호시스템 장비' 시트 ISS-031(R35) 원문 명시 관리/취약 포트
+# 목록 전수가 ADMIN_PORTS에 포함되는지 고정(누락 회귀 방지).
+
+@pytest.mark.parametrize("port", [
+    20, 21,        # FTP
+    22,            # SSH
+    23,            # Telnet
+    1433, 1434,    # MSSQL
+    1521, 1522,    # Oracle
+    3306,          # MySQL
+    3389,          # MS-RDP
+    69,            # TFTP
+    512, 513, 514,  # R-Service
+    177, 7000, 7100, 7500, 6000, 6005, 6010, 16001,  # Xmanager
+    135, 136, 137, 138, 139, 445,  # NetBIOS
+])
+def test_admin_ports_covers_xlsx_iss031_reference_list(port):
+    assert port in ADMIN_PORTS
+
+
+def test_admin_ports_retains_existing_web_console_ports():
+    # 기존 80/443/8080/8443(원문 미명시, 실무 관리콘솔 광의 유지 — 판단근거는
+    # ADMIN_PORTS 정의부 주석 참조)는 이번 재정합으로 제거하지 않는다.
+    for port in (80, 443, 8080, 8443):
+        assert port in ADMIN_PORTS
+
+
+def test_vuln_ports_unchanged_regression_pin():
+    # ISS-041(R45)은 원문에 포트 목록이 없어(판단근거는 VULN_PORTS 정의부
+    # 주석 참조) 이번 라운드는 VULN_PORTS 자체를 변경하지 않는다 — 회귀 고정.
+    assert VULN_PORTS == frozenset({
+        137, 138, 139, 445, 1433, 1521, 3306, 5432, 6379, 27017,
+    })
 
 
 # ─ detect_all_port_allow (ISS-032) ────────────────────────────────────────────
@@ -1403,3 +1495,39 @@ def test_policy_covers_f_lower_unresolved_svc_only_is_false():
                   dst_ports=[])
     lower.unresolved_svc = ["SVC_GRP"]
     assert _policy_covers(upper, lower) is False
+
+
+# ─ 잔여백로그 항목2: lower측 dst_ports 리터럴 "any" 미러링 ────────────────────
+
+def test_policy_covers_g_lower_literal_any_token_upper_restricted_is_false():
+    # (g) lower.dst_ports가 비어있지 않고 리터럴 "any" 토큰만 있는 경우
+    # (예: ["any"]) — 기존엔 _parse_port_range("any")=set()이 되어 공집합이
+    # 어떤 집합의 subset이라는 이유로 covers=True(거짓 그림자)로 오판했다.
+    # upper 분기와 동형으로 _is_any_port 미러링 후에는 전포트로 인식해
+    # covers=False가 되어야 한다(선재버그 수정 — 방향: 과탐 축소, 거짓양호
+    # 아님. lower가 실제로는 전포트 허용인데 upper 제한포트가 이를 "포함"한다고
+    # 잘못 주장하던 과탐 케이스를 바로잡음).
+    upper = _make(action="allow", src_ips=["any"], dst_ips=["any"],
+                  dst_ports=["22"])
+    lower = _make(action="deny", src_ips=["10.0.0.5"], dst_ips=["10.0.0.5"],
+                  dst_ports=["any"])
+    assert _policy_covers(upper, lower) is False
+
+
+def test_policy_covers_h_lower_literal_any_among_others_upper_restricted_is_false():
+    # (h) lower.dst_ports에 "any" 토큰이 다른 토큰과 섞여 있어도 미러링되어
+    # covers=False(전포트로 취급).
+    upper = _make(action="allow", src_ips=["any"], dst_ips=["any"],
+                  dst_ports=["22", "23"])
+    lower = _make(action="deny", src_ips=["10.0.0.5"], dst_ips=["10.0.0.5"],
+                  dst_ports=["22", "any"])
+    assert _policy_covers(upper, lower) is False
+
+
+def test_policy_covers_i_lower_literal_any_upper_all_ports_still_true():
+    # (i) upper가 전포트면(기존 상위 분기에서 이미 True 반환) lower의 "any"
+    # 토큰 유무와 무관하게 covers=True 유지(회귀 없음).
+    upper = _make(action="allow", src_ips=["any"], dst_ips=["any"], dst_ports=[])
+    lower = _make(action="deny", src_ips=["10.0.0.5"], dst_ips=["10.0.0.5"],
+                  dst_ports=["any"])
+    assert _policy_covers(upper, lower) is True
