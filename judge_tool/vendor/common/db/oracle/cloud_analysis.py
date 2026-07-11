@@ -198,11 +198,15 @@ class OracleCloudAnalysis:
         ])
 
     # 7-1에 대한 점검만 이루어지는 중, 7-2는 어떤 용도인지 문의
+    # VENDOR-EDIT(bug): R-OR007 — native와 동일 버그(exception['limit']/['profile'] 빈
+    # 리스트 → 항상 위반). 동일하게 rules.limit(=['NULL'])로 '검증함수 미할당'만
+    # 위반으로 정확히 탐지하도록 고침. 함수 내용 적정성은 여전히 결정론 불가 —
+    # db.py judge()의 oracle 한정 detect-vuln-else-hold 분기가 처리(2026-07-11 OBS-OR007).
     def dbm_007(self, result_key='DBM-007'):
         self.dbm_result[result_key] = []
         self.dbm_process_data(result_key, 'DBM-007_1', [
-            lambda datum: datum['limit'] not in self.exception[result_key]['limit'],
-            lambda datum: datum['profile'] not in self.exception[result_key]['profile']
+            lambda datum: datum['profile'] not in self.exception[result_key]['profile'],
+            lambda datum: datum['limit'] in self.rules[result_key]['limit']
         ])
 
     # 현재 ptime만 체크하고 있는데 (8-1), 8-2 세팅 점검이 필요하지 않은지 살펴볼 필요 있음

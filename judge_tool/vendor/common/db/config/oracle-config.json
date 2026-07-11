@@ -168,7 +168,9 @@
       "username": [],
       "profile": [],
       "resource_name": [],
-      "limit": []
+      "limit": [
+        "NULL"
+      ]
     },
     "DBM-008": {
       "name": [],

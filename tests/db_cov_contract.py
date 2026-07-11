@@ -465,23 +465,26 @@ _ORACLE = {
     },
 
     # DBM-007: 비밀번호 복잡도 — profile/limit
-    # F6/F7 감사(2026-07-03): oracle DBM-007_1 exception config(limit/profile)가 기본값
-    # 빈 리스트라 `not in []`이 항상 True(진배제 없음) — 즉 이 data_key에 행이 존재하면
-    # (기본 config 기준) 어떤 값이든 무조건 위반으로 집계된다(진짜 "유효행 보유 양호"를
-    # 데이터만으로 구성할 방법이 없음, 구조적 한계). 그래서 "빈 RESULT"만이 유일하게
-    # 위반0을 만들 수 있었는데, 이는 (a) 정말 프로파일 전부가 복잡도 강제 중(양호)인지
-    # (b) 쿼리 실패로 미수집인지 구분 불가 — F6/모드J가 여기 개입해 판단보류로
-    # 정정한다(수정 전: 빈 RESULT → 거짓양호). good_verdict를 양호→판단보류로 변경.
+    # OBS-OR007 수정(2026-07-11): vendor rules.DBM-007.limit=["NULL"]로 고쳐
+    # "검증함수 미할당(limit=='NULL')"만 실제 위반으로 정확히 탐지하도록 함(과거엔
+    # exception config 기본값(빈 리스트)라 `not in []`이 항상 True → 값 무관 무조건
+    # 위반이었음 — 거짓취약, KNOWN_BUGS.md R-OR007). 함수가 할당된 경우(limit!='NULL')
+    # 내용 적정성은 결정론 불가 — db.py 모드C2(oracle 한정 detect-vuln-else-hold)가
+    # 위반0을 양호 대신 판단보류로 강제한다. 즉 oracle DBM-007은 진짜 "양호"에 구조적으로
+    # 도달 불가(의도된 설계 — 거짓양호 회피 최우선)하고, good_verdict는 "함수 할당됨"
+    # 케이스의 판단보류를 검증한다.
     "DBM-007": {
-        "good": {"DBM-007_1": {"RESULT": []}},
+        "good": {"DBM-007_1": {"RESULT": [
+            {"profile": "DEFAULT", "limit": "ORA12C_STRONG_VERIFY_FUNCTION"}
+        ]}},
         "vuln": {"DBM-007_1": {"RESULT": [
-            {"profile": "DEFAULT", "limit": "UNLIMITED"}
+            {"profile": "DEFAULT", "limit": "NULL"}
         ]}},
         "good_verdict": "판단보류",
         "vuln_verdict": "취약",
-        "note": "F6/F7 정정: exception config가 기본 빈 리스트라 이 data_key는 행이 있으면 "
-                "항상 위반으로 집계됨(구조적) — '유효행 보유 양호' 픽스처를 데이터만으로 "
-                "구성 불가. 빈 RESULT는 모드J가 판단보류로 가로챔(수정 전 거짓양호였음).",
+        "note": "OBS-OR007 정정: 함수 할당됨(limit!='NULL') → 위반0이나 내용 미확인 "
+                "→ 판단보류(양호 아님, 의도된 설계). limit=='NULL'(미할당) → 실제 위반 "
+                "→ 취약. 빈 RESULT(0행)는 모드J가 별도로 판단보류 처리(미수집).",
     },
 
     # DBM-008: 비밀번호 주기변경 — ptime 필드 (oracle '%d-%b-%y' 포맷)

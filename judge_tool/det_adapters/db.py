@@ -351,9 +351,8 @@ _XREG_GUARD: frozenset = frozenset({"DBM-036"})
 # 구분 못 해 거짓양호를 만든다(DBM-009/014 실증). 모드 J는 항목별 테이블로 위반0일
 # 때만 개입해 (a) base(+base_*) RESULT 전부가 0행 → 판단보류, (b) 엔진별 checker가
 # 등록돼 있는데 기대 변수행이 하나도 없음 → 판단보류로 강등한다.
-# checker=None(DBM-008/013)은 이번 태스크(F3/F4)에서는 0행 가드만 적용 — 엔진별
-# checker는 후속 태스크(T3/T4)에서 채운다(키만 선등록, 회귀 없음 — 기존 good
-# 픽스처는 전부 RESULT 비어있지 않음).
+# checker=None(DBM-013)은 0행 가드만 적용(엔진별 checker 미채움). DBM-008은
+# 2026-07-11 배치(DBM-008 잔여검증 L2)에서 엔진별 checker를 채웠다(아래 참조).
 def _base_result_rows(base: str, data: dict) -> list:
     """base 및 base_* data_key의 RESULT를 전부 concat(모드J 전용, 순서 보존)."""
     rows: list = []
@@ -364,7 +363,53 @@ def _base_result_rows(base: str, data: dict) -> list:
 
 
 _MODE_J_ITEMS: dict = {
-    "DBM-008": None,  # T3에서 엔진별 checker 활성화 예정 — 이번 태스크는 키 등록 + 0행 가드만
+    # DBM-008(주기적 비밀번호 변경) — L1 검증(2026-07-11): mariadb/mssql/postgresql
+    # native는 실수집 data_key가 접미사 없는 'DBM-008' 그대로이고(vendor도 'DBM-008'만
+    # 참조) — mysql('DBM-008_1')/oracle('DBM-008_2')처럼 접미사 키가 오는 F1형
+    # 불일치는 mariadb/mssql에는 없음(collected/db/{mariadb,mssql}_native 실수집 확인
+    # 및 vendor dbm_008 data_key 인자 확인, 둘 다 'DBM-008' 일치 — 수정 불필요).
+    # L2: checker=None(0행 가드만)이라 "부분수집"(예: oracle _1만 있고 _2 없음, 또는
+    # 행은 있으나 기대 컬럼이 없는 다른 항목 혼입)을 못 잡는다 — 엔진별 기대 필드
+    # checker를 채워 모드J의 (b) 분기(기대 변수행 0건 → 판단보류)를 활성화한다.
+    # 기대필드는 각 엔진 vendor analysis.py/cloud_analysis.py가 실제로 참조하는 필드
+    # 그대로(값의 취약 여부와 무관 — 행 존재 자체만 확인, F1 실증 필드 기준):
+    #   mysql: 'PASSWORD_LAST_CHANGED' (DBM-008/DBM-008_1 공통, R-MY008).
+    #   oracle: 'ptime'(DBM-008_1) 또는 'profile'+'limit'(DBM-008_2, R-OR008 스키마)
+    #           — resource_name 값은 검사하지 않는다(DBM-007 oracle checker와 동일
+    #           관용구). 이유: PASSWORD_GRACE_TIME만 있고 PASSWORD_LIFE_TIME 행이
+    #           없는 경우도 "행 자체는 존재"이므로 기대변수 존재로 인정해야
+    #           tests/test_det_adapters_db.py::TestF1Dbm008VendorDataKey
+    #           ::test_oracle_dbm008_2_password_grace_time_not_a_violation(R-OR008
+    #           기존 고정 회귀 — GRACE_TIME행=오탐방지 자연배제=양호)이 깨지지 않는다
+    #           (동작보존 원칙 — 정상 양호를 판단보류로 떨어뜨리지 않음).
+    #   mariadb: VARIABLE_NAME=='DEFAULT_PASSWORD_LIFETIME'(dict) 또는 동일 문자열이
+    #            포함된 bare str(플러그인 버전 안내문 등, mysql DBM-007 패턴과 동일).
+    #   mssql: 'days_after_changed' 키 존재.
+    #   postgresql: 'rolcanlogin'/'rolvaliduntil' 키 동시 존재(vendor가 둘 다 참조).
+    # 동작보존: 기대필드가 있으면 기존 위반판정 그대로, 없을 때만(행은 있으나 다른
+    # 항목만 수집된 경우 등) 판단보류로 강등 — 정상 양호 픽스처는 전부 기대필드
+    # 보유(실수집 5종 회귀로 확인, 아래 KNOWN_BUGS.md 참조).
+    "DBM-008": {
+        "mysql": lambda r: any(
+            isinstance(x, dict) and "PASSWORD_LAST_CHANGED" in x for x in r
+        ),
+        "oracle": lambda r: any(
+            isinstance(x, dict) and ("ptime" in x or ("profile" in x and "limit" in x))
+            for x in r
+        ),
+        "mariadb": lambda r: any(
+            (isinstance(x, dict) and str(x.get("VARIABLE_NAME", "")).upper() == "DEFAULT_PASSWORD_LIFETIME")
+            or (isinstance(x, str) and "DEFAULT_PASSWORD_LIFETIME" in x.upper())
+            for x in r
+        ),
+        "mssql": lambda r: any(
+            isinstance(x, dict) and "days_after_changed" in x for x in r
+        ),
+        "postgresql": lambda r: any(
+            isinstance(x, dict) and "rolcanlogin" in x and "rolvaliduntil" in x
+            for x in r
+        ),
+    },
     "DBM-009": {
         "mysql": lambda r: any(
             str(x.get("VARIABLE_NAME", "")).lower() == "wait_timeout"
@@ -436,15 +481,16 @@ _MODE_J_ITEMS: dict = {
         ),
     },
     # DBM-007 — mysql/mssql은 DBM-006과 동일 근거로 checker 등록.
-    # oracle: exception 설정(oracle-config.json DBM-007 exception.profile/limit == [])이
-    #   비어있어 vendor 조건(`limit not in exception['limit']` 등, 빈 리스트에 대한
-    #   `not in`은 항상 True)이 사실상 항상 참이 되므로, DBM-007_1에 값이 있는 행이
-    #   하나라도 있으면 값과 무관하게 무조건 위반으로 계산된다(별도 발견 사항 —
-    #   거짓취약 방향 vendor 버그, KNOWN_BUGS.md 기록, 본 배치에서 vendor 수정은
-    #   범위 밖). 즉 oracle DBM-007은 "위반0 + 기대행 존재"인 진짜 양호 상태를
-    #   vendor 로직으로 재현할 수 없다 — 그래도 checker는 등록해 둔다(향후 vendor
-    #   exception 설정이 채워지면 즉시 유효해지고, 현재도 기형 행(예: limit/profile
-    #   키 자체가 없는 행)만 있는 경우를 판단보류로 보수적으로 처리하는 안전판 역할).
+    # oracle: (2026-07-11 OBS-OR007 수정 완료) vendor rules.DBM-007.limit=["NULL"]로
+    #   고쳐 "검증함수 미할당(NULL)"만 실제 위반으로 정확히 탐지하도록 했다(과거엔
+    #   exception.profile/limit==[] → `not in []`이 항상 True라 행이 있으면 값과
+    #   무관하게 무조건 위반이었음 — 거짓취약 vendor 버그, KNOWN_BUGS.md R-OR007 기록).
+    #   함수가 할당된 경우(limit!=NULL)의 내용 적정성은 여전히 결정론 불가이므로,
+    #   db.py judge()의 oracle 한정 detect-vuln-else-hold 분기(모드C2, 본 함수 아래)가
+    #   위반0을 양호 대신 판단보류로 처리한다 — "위반0+기대행 존재"가 이제 도달 가능한
+    #   상태이지만 양호가 아니라 판단보류로 귀결되는 것은 설계 의도(내용 미확인).
+    #   이 checker(profile/limit 필드 존재 확인)는 모드J의 "기형 행(필드 자체 없음)만
+    #   있는 경우"를 판단보류로 처리하는 안전판 역할은 그대로 유지한다.
     # mariadb: 이 dict에 없음 → 0행 체크만 적용(fallback). mariadb native DBM-007은
     #   기존에 별도 R3 벤더버그(수집형식 불일치로 KeyError가 삼켜짐 → 결과가 항상
     #   []이 되는 현상)가 있어 db_cov_contract에도 양극성 픽스처가 없다(§0 기존
@@ -1617,6 +1663,51 @@ def judge(
                     f"(engine={engine}, item={base})"
                 ),
             )
+
+    # ── 모드 C2: oracle DBM-007 한정 detect-vuln-else-hold (OBS-OR007, 2026-07-11) ──
+    # oracle DBM-007_1(PASSWORD_VERIFY_FUNCTION) vendor 조건은 exception config 기본값
+    # (빈 리스트)이라 `not in []`이 항상 True → 값과 무관하게 행이 있으면 무조건 위반
+    # (거짓취약, §F6/F7 감사 발견). vendor를 rules.DBM-007.limit=["NULL"]로 고쳐
+    # "검증함수 미할당(NULL)"만 실제 위반으로 정확히 탐지하도록 했다 — 이는 criteria
+    # (데이터베이스 시트 DBM-007 판단방법 ①: "검증함수가 적용되지 않은 계정이 존재할
+    # 경우 취약")와 정확히 일치하는 결정론 가능 부분이다.
+    # 그러나 함수가 할당된 경우(limit != NULL) 그 함수의 실제 내용이 복잡도 기준
+    # (판단방법 ②: "검증함수의 내용이 복잡도를 만족하지 못할 경우 취약")을 만족하는지는
+    # 결정론으로 확인할 수 없다 — DBM-007_2(검증함수 소스 조회)는 벤더 스스로도
+    # "7-2는 어떤 용도인지 문의"라는 주석을 남긴 미구현 상태(cloud_analysis.py 참조).
+    # mysql/mariadb/mssql DBM-007은 plugin 로드여부/is_policy_checked 이진값 자체가
+    # criteria 전체를 커버하므로(내용판단 불필요) 기존 det_common 정상경로(양호/취약
+    # 직접판정)를 그대로 유지한다 — 이 모드는 (base, engine)==("DBM-007","oracle")에만
+    # 적용해 다른 엔진에 영향을 주지 않는다.
+    # 모드J가 이미 위에서 0행/기대필드(profile+limit) 부재를 가로챘으므로, 여기 도달
+    # 했다는 것은 "행이 있고 profile/limit 필드도 있음"이 보장된 상태다.
+    if base == "DBM-007" and engine == "oracle":
+        if violations:
+            citations = _mask_violations(violations)
+            return ForcedVerdict(
+                verdict="취약",
+                confidence=0.9,
+                rationale=(
+                    f"(-) 결정론 판정: PASSWORD_VERIFY_FUNCTION 미할당(NULL) 프로파일 "
+                    f"{len(violations)}건 (engine=oracle)"
+                ),
+                citations=citations,
+                ev_status="bad",
+                handled=True,
+            )
+        return ForcedVerdict(
+            verdict="판단보류",
+            confidence=0.0,
+            rationale=(
+                "PASSWORD_VERIFY_FUNCTION이 활성 프로파일에 할당되어 있음 확인됨 — "
+                "검증함수 내용이 비밀번호 복잡도(2종조합 10자리 이상/3종조합 8자리 이상) "
+                "기준을 만족하는지는 결정론으로 확인 불가(함수 소스 조회 미구현) — "
+                "담당자가 함수 정의(DBMS_METADATA.GET_DDL/USER_SOURCE) 내용 확인 필요"
+            ),
+            citations=[],
+            ev_status="review",
+            handled=True,
+        )
 
     # ── 결과 매핑: 빈 위반 = 양호, 비어있지 않음 = 취약 ─────────────────────
     if not violations:

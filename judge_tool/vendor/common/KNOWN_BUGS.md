@@ -917,7 +917,42 @@ self.dbm_process_data(result_key, 'DBM-008_2', [
 - `{"DBM-008_2": {"RESULT": [{"profile":"DEFAULT","resource_name":"PASSWORD_LIFE_TIME","limit":"UNLIMITED"}]}}` → **취약** (핵심: 수정 전 거짓양호 케이스)
 - `{"DBM-008_2": {"RESULT": [{"profile":"DEFAULT","resource_name":"PASSWORD_GRACE_TIME","limit":"UNLIMITED"}]}}` → 위반 아님(첫 조건 `resource_name` 비교에서 자연 배제, 오탐 방지 고정)
 - `{"DBM-008_1": {"RESULT": [...]}}` (ptime 기반) → 기존 동작 불변 (회귀)
-- 0행/data_key 부재 → 판단보류(모드J, checker=None)
+- 0행/data_key 부재 → 판단보류(모드J)
+
+## DBM-008 수집키 잔여검증 — L1(mariadb/mssql 접미사 키 없음 확인) / L2(모드J checker 추가), 2026-07-11
+
+**L1 (mariadb/mssql native가 mysql/oracle과 같은 접미사 키 불일치를 갖는지 검증)**:
+`collected/db/mariadb_native/mariadb_native_result.json`/`collected/db/mssql_native/
+mssql_native_result.json` 실수집을 확인한 결과 두 엔진 모두 data_key가 접미사 없는
+**`'DBM-008'` 그대로**였다(`grep` 확인: `{"DBM-008":{...`). vendor
+`judge_tool/vendor/common/db/mariadb/analysis.py`/`mssql/analysis.py`의 `dbm_008`도
+`dbm_process_data(result_key, 'DBM-008', [...])`만 호출 — collector가 실제로 방출하는
+키와 정확히 일치한다. **결론: mariadb/mssql에는 R-MY008/R-OR008과 동형인 접미사 키
+불일치 버그가 없다 — 수정 불필요**(postgresql도 동일하게 `'DBM-008'` 그대로 일치
+확인, 참고용으로 함께 점검함).
+
+**L2 (모드J DBM-008 checker=None → 부분수집 미포착 보완)**: `judge_tool/det_adapters/
+db.py`의 `_MODE_J_ITEMS["DBM-008"]`이 `None`(0행 가드만)이라, oracle처럼 data_key가
+2개로 나뉜 항목에서 한쪽 sub-key만 존재(예: `DBM-008_1`만 있고 `DBM-008_2`는 아예
+없음)하는 "부분수집"이나, RESULT에 행은 있으나 기대 필드가 전혀 없는(다른 항목 행
+혼입 등) 경우를 구분하지 못했다. 엔진별 기대필드 checker를 추가:
+- mysql: `'PASSWORD_LAST_CHANGED'` 키 존재 (R-MY008 필드).
+- oracle: `'ptime'`(DBM-008_1) 또는 `'profile'`+`'limit'`(DBM-008_2) — resource_name
+  값은 검사하지 않는다(DBM-007 oracle checker와 동일 관용구 — PASSWORD_GRACE_TIME만
+  있어도 "행 존재"로 인정해 R-OR008의 기존 회귀
+  (`test_oracle_dbm008_2_password_grace_time_not_a_violation` → 양호)를 깨지 않음,
+  동작보존 원칙).
+- mariadb: `VARIABLE_NAME=='DEFAULT_PASSWORD_LIFETIME'`(dict) 또는 동일 문자열 포함
+  bare str.
+- mssql: `'days_after_changed'` 키 존재.
+- postgresql: `'rolcanlogin'`+`'rolvaliduntil'` 키 동시 존재.
+
+**동작보존 확인**: 실수집 5종(mysql/oracle/mariadb/mssql/postgresql native) 전부
+재판정 결과 verdict 변화 없음 — mysql 양호, oracle 취약(기존 R-OR008 유지), mariadb
+취약(기존 유지), mssql 양호, postgresql 양호. 신규로 판단보류가 된 것은 합성
+테스트(기대필드가 정말 없는 경우)뿐이다. `tests/test_mode_j_hold.py::
+TestModeJDbm008`(엔진 5종 파라미터화: 0행/기대필드부재/기대필드존재양호/위반취약)
+및 `TestModeJDbm008OracleMultiKey`(oracle 고유 부분수집 3케이스)로 회귀 고정.
 
 ---
 
@@ -926,11 +961,12 @@ self.dbm_process_data(result_key, 'DBM-008_2', [
 - 정정: ServerTokens 안전값은 **Prod(ProductOnly)뿐** → `tokens_val == "prod"`만 양호, os/full/min/minimal/minor/major 전부 취약(Apache WST-102 및 함수 자기 메시지와 정합).
 - 회귀핀: test_wst102_webtob_min_is_vuln.
 
-## OBS-MY006 / OBS-OR007. 벤더 로직 관찰 사항(수정 없음) — F6/F7 배치 중 발견 (2026-07-11, §F6 falsegood-audit)
+## OBS-MY006. 벤더 로직 관찰 사항(수정 없음) — F6/F7 배치 중 발견 (2026-07-11, §F6 falsegood-audit)
 
 본 배치의 실제 수정은 db.py 모드J(DBM-005/006/007 0행 fail-closed 가드) 등록뿐이다.
-아래 두 건은 조사 중 발견된 **별도** vendor 로직 결함으로, spec(§F6) 지시에 따라
-"관찰만 보고, 벤더 코드 수정은 범위 밖"으로 남긴다.
+아래 1건은 조사 중 발견된 **별도** vendor 로직 결함으로, spec(§F6) 지시에 따라
+"관찰만 보고, 벤더 코드 수정은 범위 밖"으로 남긴다. (OBS-OR007은 이후 R-OR007로
+수정 완료 — 아래 별도 항목 참조.)
 
 ### OBS-MY006. mysql `dbm_006` USER_ATTRIBUTES `int()` 변환 실패 시 R3가 조용히 흡수(부분 차단)
 
@@ -961,15 +997,16 @@ JSON(`{"Password_locking": {"failed_login_attempts": N, ...}}`)이다. 이 경�
 수정 금지, 관찰 결과만 보고"). db.py 모드J DBM-006 등록과는 독립적인 문제(모드J는
 0행/기대필드부재만 다루고, 이 건은 필드가 존재하되 파싱 실패하는 경우).
 
-### OBS-OR007. oracle `dbm_007` exception 설정이 빈 리스트라 값과 무관하게 상시 위반(거짓취약 위험)
+## R-OR007. oracle `dbm_007` exception 설정 공백 → 상시 위반(거짓취약) — VENDOR-EDIT(bug) 완료, 2026-07-11 (OBS-OR007 후속)
 
-`judge_tool/vendor/common/db/config/oracle-config.json`의 `DBM-007` 항목:
+**증상(수정 전)**: `judge_tool/vendor/common/db/config/oracle-config.json`의 `DBM-007`
+항목이 `exception`/`rules` 모두 빈 리스트:
 ```json
 "exception": {"username": [], "profile": [], "resource_name": [], "limit": []},
 "rules":     {"username": [], "profile": [], "resource_name": [], "limit": []}
 ```
-`judge_tool/vendor/common/db/oracle/analysis.py:223-228`(native)과
-`cloud_analysis.py:201-206`(cloud) 동일:
+`judge_tool/vendor/common/db/oracle/analysis.py`(native)/`cloud_analysis.py`(cloud)의
+`dbm_007`이 `exception['limit']`/`exception['profile']`만 참조:
 ```python
 def dbm_007(self, result_key='DBM-007'):
     self.dbm_result[result_key] = []
@@ -979,22 +1016,53 @@ def dbm_007(self, result_key='DBM-007'):
     ])
 ```
 `exception['limit']`/`exception['profile']`가 둘 다 빈 리스트이므로 `not in []`는 항상
-`True`다 — 즉 `DBM-007_1`에 `profile`/`limit` 필드를 가진 행이 하나라도 있으면 **그
-값(실제로 PASSWORD_VERIFY_FUNCTION이 설정돼 있든 아니든)과 무관하게 무조건 위반으로
-집계**된다. 실수집(`collected/db/oracle_native/oracle_native_result.json`)에서는
-`DBM-007_1` 4행 모두 `limit="NULL"`(미설정, 실제로도 취약)이라 이 버그가 결과를
-왜곡하지 않았지만, 만약 DBA가 `PASSWORD_VERIFY_FUNCTION`을 실제로 설정한 서버라면
-`limit`에 함수명이 채워져도 여전히 위반으로 집계돼 **거짓취약**이 발생한다.
-**db.py 모드J와의 상호작용**: 이 버그 때문에 oracle DBM-007은 "행이 있고 위반이 0"인
-진짜 양호 상태를 결정론적으로 재현할 방법이 없다 — 도달 가능한 결과는 0행(모드J →
-판단보류) 또는 행 존재(항상 취약) 둘뿐이다. `tests/db_cov_contract.py`의 oracle
-`DBM-007` good_verdict를 양호→판단보류로 정정한 근거이자(§F6 배치),
-`tests/test_mode_j_hold.py::TestModeJDbm007OracleAlwaysHoldOrVuln`이 이 상한 동작을
-회귀 고정한다.
-**수정 여부**: 벤더 config/코드 미수정(§F6 spec 범위 밖 — exception 설정을 채우려면
-"Oracle 12c+ 기본 제공 `ORA12C_VERIFY_FUNCTION` 계열을 exception으로 인정할지" 등
-정책 판단이 필요해 별도 배치로 분리 권고).
-- 최근 비밀번호 변경(정상) → 양호 회귀 (과탐 방지)
+`True` — `DBM-007_1`에 `profile`/`limit` 필드를 가진 행이 하나라도 있으면 **그 값(실제로
+PASSWORD_VERIFY_FUNCTION이 설정돼 있든 아니든)과 무관하게 무조건 위반으로 집계**됐다
+(거짓취약 방향 — 안전방향이라 §F6/F7 배치에서는 관찰만 하고 `tests/db_cov_contract.py`
+oracle `DBM-007` good_verdict를 양호→판단보류로 정정하는 선에서 그쳤다. OBS-OR007 참조).
+
+**criteria 재확인(2026-07-11, 데이터베이스 시트 DBM-007 판단방법 AB5)**: 판단방법이
+두 갈래다 — ① "계정별 프로파일에 적용된 비밀번호 검증 함수(PASSWORD_VERIFY_FUNCTION)값을
+확인 — 비밀번호 검증함수가 적용되지 않은 계정이 존재할 경우 취약"(결정론 가능: NULL
+여부는 이진), ② "검증함수의 내용 확인 — 내용이 복잡도를 만족하지 못할 경우 취약"
+(결정론 불가: PL/SQL 함수 본문 해석이 필요한 사이트 맥락 판단). 쿼리
+(`DBM-007_1`)는 이미 `resource_name='PASSWORD_VERIFY_FUNCTION'`으로 필터링해 오므로
+남는 판단은 `limit`(=함수명 또는 `'NULL'`) 값 하나뿐이고, `DBM-007_2`(함수 소스 조회,
+`USER_SOURCE` LIKE `%VERIFY%`)는 벤더 스스로도 `cloud_analysis.py`에 "7-2는 어떤
+용도인지 문의"라는 주석을 남긴 채 **처리 로직이 전혀 없는 미구현 상태**임을 확인했다
+(native/cloud 모두 `DBM-007_2` 처리 함수 없음, grep로 재확인).
+
+**수정 내용**:
+1. `oracle-config.json`: `rules.DBM-007.limit`을 `[]` → `["NULL"]`로 채움
+   (DBM-006/DBM-009와 동일한 "rules.limit=취약값 목록" 컨벤션).
+2. `analysis.py`/`cloud_analysis.py` `dbm_007`: 조건을
+   `datum['profile'] not in exception['profile']`(제외 프로파일, 기존 컨벤션 유지) +
+   `datum['limit'] in rules['limit']`(=='NULL'일 때만 위반)로 교체 — 판단방법 ①과
+   정확히 일치하는 **결정론 가능한 절반만** vendor가 판정한다.
+3. `judge_tool/det_adapters/db.py` `judge()`: `(base, engine)==("DBM-007","oracle")`
+   전용 detect-vuln-else-hold 분기(모드C2, DBM-011 모드C와 동일 철학) 추가 —
+   위반 있음(`limit=='NULL'`) → **취약 확정**, 위반0(함수 할당됨, `limit!='NULL'`) →
+   **판단보류**(함수 내용/복잡도 적정성은 결정론 불가 — 판단방법 ②는 여전히 미구현이므로
+   양호를 자동 선언하지 않음). mysql/mariadb/mssql DBM-007은 plugin 로드여부/
+   is_policy_checked 이진값 자체가 criteria 전체를 커버하므로 영향받지 않음(엔진 스코프
+   한정).
+
+**효과**: 수정 전에는 "행 존재 → 항상 취약"(거짓취약 상시화)이었으나, 수정 후에는
+"함수 미할당(NULL) → 확정 취약 / 함수 할당됨 → 판단보류(내용 미확인) / 0행(미수집,
+모드J) → 판단보류"로 세분화됐다. **거짓양호는 여전히 발생하지 않는다** — "함수
+할당됨"을 양호로 자동 선언하지 않고 판단보류로 유지했기 때문(우선순위: 거짓양호 회피 >
+정밀도). oracle DBM-007은 구조적으로 "자동 양호"에 도달하지 않는다(의도된 설계).
+
+**회귀 테스트**: `tests/db_cov_contract.py`(oracle DBM-007 good/vuln 픽스처 갱신),
+`tests/test_mode_j_hold.py::TestModeJDbm007OracleHoldOrVuln`(과거
+`TestModeJDbm007OracleAlwaysHoldOrVuln`을 대체 — NULL=취약/할당됨=판단보류/0행=판단보류
+3케이스 고정).
+
+**남은 한계(범위 밖)**: 판단방법 ②(검증함수 내용 확인)는 여전히 자동화되지 않는다.
+`DBM-007_2`(함수 소스)를 실제로 처리해 알려진 Oracle 기본 제공 함수
+(`ORA12C_VERIFY_FUNCTION`/`ORA12C_STRONG_VERIFY_FUNCTION`/`VERIFY_FUNCTION_11G` 등)를
+"양호로 인정할 정책 목록"으로 볼지, 아니면 항상 인터뷰로 넘길지는 별도 정책 판단이
+필요해 이번 배치 범위 밖으로 남긴다(향후 후속 배치 후보).
 
 ## R-PRCC-NOTEXIST. 컨테이너 PRCC-023/035/036/037/038 docker_linux "미존재" 마커
 불일치 — 거짓취약 (2026-07-11, VENDOR-EDIT(bug) 완료, §3-3 항목1)

@@ -220,11 +220,19 @@ class OracleAnalysis:
             lambda datum: datum['limit'] in self.rules[result_key]['limit']
         ])
         
+    # VENDOR-EDIT(bug): R-OR007 — exception['limit']/['profile']가 기본 빈 리스트라
+    # `not in []`이 항상 True → DBM-007_1에 행이 있으면 값과 무관하게 무조건 위반
+    # (거짓취약, 2026-07-11 OBS-OR007 감사 §F6/F7). 쿼리가 이미 resource_name=
+    # 'PASSWORD_VERIFY_FUNCTION'으로 필터링해 오므로 남은 판단은 '검증함수 할당 여부
+    # (limit=='NULL')'뿐 — 판단기준(AB5) ①과 일치하는 결정론 가능 부분만 rules.limit로
+    # 명시한다. 함수가 할당된 경우(limit!='NULL')의 내용 적정성(AB5 ②)은 결정론으로
+    # 확인 불가하므로 여기서 위반 처리하지 않고, db.py judge()의 oracle 한정
+    # detect-vuln-else-hold 분기가 위반0을 양호 대신 판단보류로 처리한다.
     def dbm_007(self, result_key='DBM-007'):
         self.dbm_result[result_key] = []
         self.dbm_process_data(result_key, 'DBM-007_1', [
-            lambda datum: datum['limit'] not in self.exception[result_key]['limit'],
-            lambda datum: datum['profile'] not in self.exception[result_key]['profile']
+            lambda datum: datum['profile'] not in self.exception[result_key]['profile'],
+            lambda datum: datum['limit'] in self.rules[result_key]['limit']
         ])
         
     def dbm_008(self, result_key='DBM-008'):

@@ -5454,10 +5454,15 @@ class TestModeJBaseResultRows:
         assert _base_result_rows("DBM-009", {}) == []
 
     def test_registry_has_all_expected_keys(self):
-        """모드J 테이블에 DBM-008/009/013/014 키가 등록돼 있어야 함(F3/F4 + 후속태스크 선등록)."""
+        """모드J 테이블에 DBM-008/009/013/014 키가 등록돼 있어야 함(F3/F4 + 후속태스크 선등록).
+
+        DBM-008은 2026-07-11 배치(L2)에서 엔진별 checker를 채웠다(더 이상 None).
+        """
         for k in ("DBM-008", "DBM-009", "DBM-013", "DBM-014"):
             assert k in _MODE_J_ITEMS, f"{k} 모드J 테이블 미등록"
-        assert _MODE_J_ITEMS["DBM-008"] is None
+        assert set(_MODE_J_ITEMS["DBM-008"].keys()) == {
+            "mysql", "oracle", "mariadb", "mssql", "postgresql",
+        }
         assert _MODE_J_ITEMS["DBM-013"] is None
 
 
@@ -5921,9 +5926,12 @@ class TestModeJDbm006Hold:
 class TestModeJDbm007Hold:
     """F6: DBM-007(비밀번호 복잡도) 모드J 가드 — mysql/mariadb/oracle/mssql 4엔진.
 
-    oracle DBM-007_1은 exception config가 기본 빈 리스트라 유효행이 있으면
-    항상 위반으로 집계되는 구조적 특성 때문에 "유효행 good" 케이스가 없다 —
-    good_verdict 자체가 판단보류(빈 RESULT를 모드J가 정정)로 재정의됨(cov_contract 동일).
+    OBS-OR007 수정(2026-07-11, KNOWN_BUGS.md R-OR007): oracle DBM-007_1은 과거
+    exception config가 기본 빈 리스트라 유효행이 있으면 항상 위반으로 집계됐으나,
+    vendor rules.DBM-007.limit=['NULL']로 고쳐 "검증함수 미할당(NULL)"만 실제 위반으로
+    탐지하도록 수정했다. 함수가 할당된 경우(limit!='NULL')는 내용 적정성을 결정론으로
+    확인할 수 없어 db.py 모드C2(oracle 한정 detect-vuln-else-hold)가 양호 대신 판단보류를
+    반환한다 — "유효행 good"은 여전히 구조적으로 도달 불가(의도된 설계, 거짓양호 회피).
     """
 
     def test_mysql_empty_result_hold(self):
@@ -5974,9 +5982,8 @@ class TestModeJDbm007Hold:
     def test_oracle_empty_result_hold(self):
         """현재 거짓양호 재현 케이스: oracle DBM-007 빈RESULT는 수정 전 '양호'였음.
 
-        oracle DBM-007_1은 exception config 기본값이 빈 리스트라 데이터로 "유효행
-        보유 양호"를 구성할 수 없는 구조적 특성(F6/F7 감사 기록) — 0행일 때 항상
-        판단보류가 기대값이다(수정 전엔 거짓양호로 새던 케이스).
+        oracle DBM-007_1은 0행(미수집)일 때 모드J가 판단보류로 가로챈다(수정 전엔
+        거짓양호로 새던 케이스, F6/F7 감사 기록).
         """
         import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
         raw = _make_raw_ev({"DBM-007_1": {"RESULT": []}})
@@ -5985,12 +5992,23 @@ class TestModeJDbm007Hold:
         assert fv.verdict == "판단보류", f"oracle DBM-007 0행 → {fv.verdict} (기대: 판단보류, 거짓양호 수정)"
 
     def test_oracle_violation_vuln(self):
+        """limit=='NULL'(검증함수 미할당) → 실제 위반 → 취약 (R-OR007 수정 후 결정론)."""
         import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
         raw = _make_raw_ev({"DBM-007_1": {"RESULT": [
-            {"profile": "DEFAULT", "limit": "UNLIMITED"}
+            {"profile": "DEFAULT", "limit": "NULL"}
         ]}})
         fv = judge("DBM-007", raw, "oracle_native", {})
         assert fv.verdict == "취약"
+
+    def test_oracle_verify_function_assigned_hold_not_good(self):
+        """limit!='NULL'(검증함수 할당됨) → 위반0이나 함수 내용은 결정론 불가 →
+        판단보류(양호 아님, R-OR007 모드C2 회귀 고정 — 거짓양호 회피 최우선)."""
+        import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()
+        raw = _make_raw_ev({"DBM-007_1": {"RESULT": [
+            {"profile": "DEFAULT", "limit": "ORA12C_STRONG_VERIFY_FUNCTION"}
+        ]}})
+        fv = judge("DBM-007", raw, "oracle_native", {})
+        assert fv.verdict == "판단보류", f"oracle DBM-007 함수할당인데 {fv.verdict} (기대: 판단보류)"
 
     def test_mssql_empty_result_hold(self):
         import judge_tool.det_adapters.db as _db; _db._RUN_CACHE.clear()

@@ -57,8 +57,12 @@ class TestModeJTable:
         }
 
     def test_zero_row_only_items(self):
-        assert _MODE_J_ITEMS["DBM-008"] is None
         assert _MODE_J_ITEMS["DBM-013"] is None
+
+    def test_dbm008_engine_checkers_present(self):
+        """DBM-008 잔여검증 L2(2026-07-11): 엔진별 기대필드 checker 등록 확인."""
+        checkers = _MODE_J_ITEMS["DBM-008"]
+        assert set(checkers.keys()) == {"mysql", "oracle", "mariadb", "mssql", "postgresql"}
 
     def test_dbm009_engine_checkers_present(self):
         checkers = _MODE_J_ITEMS["DBM-009"]
@@ -95,39 +99,133 @@ class TestModeJTable:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# DBM-008 — 0행 체크만 (F1 등록 항목, 대표 엔진 mysql)
+# DBM-008 — 0행 가드 + 엔진별 기대필드 checker (L2, 2026-07-11)
 # ──────────────────────────────────────────────────────────────────────────────
 
+# engine: (good_row, unrelated_row(기대행 아님, 다른 항목 혼입 시뮬레이션), vuln_row)
+_DBM008_CASES = {
+    "mysql": (
+        {"USER": "app_user", "HOST": "localhost", "PASSWORD_LAST_CHANGED": "2099-01-01"},
+        {"USER": "app_user", "HOST": "localhost", "ACCOUNT_LOCKED": "N"},
+        {"USER": "old_user", "HOST": "localhost", "PASSWORD_LAST_CHANGED": "2000-01-01"},
+    ),
+    "mariadb": (
+        {"VARIABLE_NAME": "DEFAULT_PASSWORD_LIFETIME", "VARIABLE_VALUE": "90"},
+        {"VARIABLE_NAME": "WAIT_TIMEOUT", "VARIABLE_VALUE": "900"},
+        {"VARIABLE_NAME": "DEFAULT_PASSWORD_LIFETIME", "VARIABLE_VALUE": "0"},
+    ),
+    "oracle": (
+        {"name": "oracle_user", "ptime": "19-May-26"},
+        {"resource_name": "IDLE_TIME", "profile": "DEFAULT", "limit": "30"},
+        {"name": "oracle_user", "ptime": "19-Jun-25"},
+    ),
+    "mssql": (
+        {"name": "sa", "days_after_changed": "0"},
+        {"name": "sa", "is_policy_checked": "1"},
+        {"name": "old_user", "days_after_changed": "180"},
+    ),
+    "postgresql": (
+        {"rolvaliduntil": "2099-01-01 00:00:00+09", "rolcanlogin": "t", "rolname": "app_user"},
+        {"rolname": "app_role", "rolsuper": "f"},
+        {"rolvaliduntil": None, "rolcanlogin": "t", "rolname": "app_user"},
+    ),
+}
+
+# oracle만 실제 vendor data_key가 'DBM-008_1'(ptime 기반)이라 다른 4엔진('DBM-008'
+# 그대로)과 wrapping key가 다르다 — 틀린 key로 감싸면 vendor가 아예 스킵해 위반이
+# 나올 수 없는 케이스까지 우연히 '통과'해버려 검증력이 없다(실제로 vuln_row가
+# 취약 판정을 못 받는 것으로 드러남). 엔진별 정확한 data_key로 감싼다.
+_DBM008_DATA_KEY: dict = {
+    "mysql": "DBM-008", "mariadb": "DBM-008", "oracle": "DBM-008_1",
+    "mssql": "DBM-008", "postgresql": "DBM-008",
+}
+
+
+@pytest.mark.parametrize("engine", ["mysql", "mariadb", "oracle", "mssql", "postgresql"])
 class TestModeJDbm008:
-    def test_mysql_zero_rows_hold(self):
-        raw = _make_raw({"DBM-008": {"RESULT": []}})
-        fv = judge("DBM-008", raw, "mysql_native", {})
+    def test_zero_rows_hold(self, engine):
+        raw = _make_raw({_DBM008_DATA_KEY[engine]: {"RESULT": []}})
+        fv = judge("DBM-008", raw, ENGINE_TO_VARIANT[engine], {})
         assert fv.handled is True
-        assert fv.verdict == "판단보류", f"DBM-008 mysql 0행인데 판단보류 아님: {fv}"
+        assert fv.verdict == "판단보류", f"DBM-008 {engine} 0행인데 판단보류 아님: {fv}"
 
-    def test_mariadb_zero_rows_hold(self):
-        raw = _make_raw({"DBM-008": {"RESULT": []}})
-        fv = judge("DBM-008", raw, "mariadb_native", {})
+    def test_missing_expected_field_hold(self, engine):
+        """RESULT에 행은 있으나 기대 필드가 하나도 없음(다른 항목 행 혼입 등) →
+        부분수집 → 거짓양호 금지(수정 전엔 위반0 → 양호로 새던 케이스).
+
+        mysql/mssql/postgresql은 vendor가 기대 필드를 조건문에서 직접 참조
+        (`datum['PASSWORD_LAST_CHANGED']`/`datum['days_after_changed']`/
+        `datum['rolvaliduntil']`)하므로 그 필드가 없는 행은 모드J 이전에 KeyError →
+        R3가 먼저 handled=False로 차단할 수 있다(DBM-006과 동일 사유). 어느 경로든
+        거짓양호만 없으면 안전 — 두 경로 모두 허용한다.
+        """
+        _, unrelated_row, _ = _DBM008_CASES[engine]
+        raw = _make_raw({_DBM008_DATA_KEY[engine]: {"RESULT": [unrelated_row]}})
+        fv = judge("DBM-008", raw, ENGINE_TO_VARIANT[engine], {})
+        assert fv.verdict != "양호", (
+            f"[거짓양호] DBM-008 {engine} 기대필드 부재인데 양호 판정: {fv}"
+        )
+        if fv.handled:
+            assert fv.verdict == "판단보류", f"DBM-008 {engine} 기대필드 부재: {fv}"
+
+    def test_expected_field_present_stays_good(self, engine):
+        """기대필드 존재 + 위반0 → 양호 유지(과교정 없음 — 정상 양호 보존)."""
+        good_row, _, _ = _DBM008_CASES[engine]
+        raw = _make_raw({_DBM008_DATA_KEY[engine]: {"RESULT": [good_row]}})
+        fv = judge("DBM-008", raw, ENGINE_TO_VARIANT[engine], {})
         assert fv.handled is True
-        assert fv.verdict == "판단보류", f"DBM-008 mariadb 0행인데 판단보류 아님: {fv}"
+        assert fv.verdict == "양호", f"DBM-008 {engine} 정상행인데 양호 아님: {fv}"
 
-    def test_mysql_good_row_stays_good(self):
-        """기대행(정상 최근 변경) 존재 + 위반0 → 양호 유지(과교정 없음)."""
-        raw = _make_raw({"DBM-008": {"RESULT": [
-            {"HOST": "app_host", "USER": "app_user", "PASSWORD_LAST_CHANGED": "2099-01-01"}
-        ]}})
-        fv = judge("DBM-008", raw, "mysql_native", {})
-        assert fv.handled is True
-        assert fv.verdict == "양호", f"DBM-008 mysql 정상행인데 양호 아님: {fv}"
-
-    def test_mysql_violation_bypasses_guard(self):
+    def test_violation_bypasses_guard(self, engine):
         """위반이 있으면 모드J는 개입하지 않고 기존 취약 판정을 유지한다."""
-        raw = _make_raw({"DBM-008": {"RESULT": [
-            {"HOST": "app_host", "USER": "app_user", "PASSWORD_LAST_CHANGED": "2000-01-01"}
-        ]}})
-        fv = judge("DBM-008", raw, "mysql_native", {})
+        _, _, vuln_row = _DBM008_CASES[engine]
+        raw = _make_raw({_DBM008_DATA_KEY[engine]: {"RESULT": [vuln_row]}})
+        fv = judge("DBM-008", raw, ENGINE_TO_VARIANT[engine], {})
         assert fv.handled is True
-        assert fv.verdict == "취약", f"DBM-008 mysql 위반행인데 취약 아님: {fv}"
+        assert fv.verdict == "취약", f"DBM-008 {engine} 위반행인데 취약 아님: {fv}"
+
+
+class TestModeJDbm008OracleMultiKey:
+    """oracle DBM-008은 data_key가 DBM-008_1(ptime)/DBM-008_2(PASSWORD_LIFE_TIME)
+    2개로 나뉜다(mysql/mariadb/mssql/postgresql은 단일 data_key) — L1/L2에서 확인된
+    oracle 고유의 '부분수집'(한쪽 sub-key만 존재) 케이스를 직접 검증한다."""
+
+    def test_only_1_present_still_good(self):
+        """DBM-008_1(ptime)만 있고 DBM-008_2 자체가 없어도 _1만으로 기대필드 충족
+        → 양호 유지(과교정 아님 — _2 부재를 미수집으로 오인하지 않음)."""
+        raw = _make_raw({"DBM-008_1": {"RESULT": [
+            {"name": "oracle_user", "ptime": "19-May-26"}
+        ]}})
+        fv = judge("DBM-008", raw, "oracle_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "양호", f"DBM-008 oracle _1만 존재인데 양호 아님: {fv}"
+
+    def test_only_2_present_still_good(self):
+        """DBM-008_2(PASSWORD_LIFE_TIME, limit 필드)만 있어도 기대필드 충족 →
+        양호 유지."""
+        raw = _make_raw({"DBM-008_2": {"RESULT": [
+            {"profile": "DEFAULT", "resource_name": "PASSWORD_LIFE_TIME", "limit": "180"}
+        ]}})
+        fv = judge("DBM-008", raw, "oracle_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "양호", f"DBM-008 oracle _2만 존재인데 양호 아님: {fv}"
+
+    def test_2_has_only_grace_time_rows_still_good(self):
+        """DBM-008_2에 PASSWORD_GRACE_TIME 행만 있고 PASSWORD_LIFE_TIME 행이 없어도
+        'profile'+'limit' 스키마 자체는 존재(DBM-007 oracle checker와 동일 관용구,
+        resource_name 값은 검사하지 않음) → 기대변수 존재로 인정 → 위반0이면 양호
+        유지(동작보존 — R-OR008 기존 회귀 test_det_adapters_db.py::
+        TestF1Dbm008VendorDataKey::test_oracle_dbm008_2_password_grace_time_not_a_violation
+        와 일관됨: GRACE_TIME행은 vendor 조건에서 자연 배제되는 정상 케이스이지
+        미수집 신호가 아니다)."""
+        raw = _make_raw({"DBM-008_2": {"RESULT": [
+            {"profile": "DEFAULT", "resource_name": "PASSWORD_GRACE_TIME", "limit": "7"}
+        ]}})
+        fv = judge("DBM-008", raw, "oracle_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "양호", (
+            f"DBM-008 oracle GRACE_TIME행만 있는데 양호 아님: {fv}"
+        )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -445,11 +543,16 @@ class TestModeJDbm007(object):
         assert fv.verdict == "취약", f"DBM-007 {engine} 위반행인데 취약 아님: {fv}"
 
 
-class TestModeJDbm007OracleAlwaysHoldOrVuln:
-    """oracle DBM-007: exception.profile/limit=[] → 'not in []'이 항상 True라 행
-    존재만으로 무조건 위반(별도 발견 vendor 버그). 따라서 '행 있음+위반0'인 양호는
-    vendor 로직상 도달 불가 — 0행만 판단보류이고, 그 외(행+profile/limit 필드
-    존재)는 항상 취약이 되는 상한 동작을 고정한다(회귀 감시용)."""
+class TestModeJDbm007OracleHoldOrVuln:
+    """oracle DBM-007 (OBS-OR007 수정 완료, 2026-07-11):
+
+    과거: exception.profile/limit=[] → 'not in []'이 항상 True라 행 존재만으로
+    무조건 위반(거짓취약 vendor 버그, KNOWN_BUGS.md R-OR007). 수정 후:
+    vendor rules.DBM-007.limit=['NULL']로 "검증함수 미할당(NULL)"만 실제 위반으로
+    탐지한다. 함수가 할당된 경우(limit!='NULL') 내용 적정성은 결정론 불가이므로
+    db.py 모드C2(oracle 한정 detect-vuln-else-hold)가 위반0을 양호 대신 판단보류로
+    강제한다 — 즉 oracle DBM-007은 여전히 자동 '양호'에 도달하지 않는다(의도된 설계,
+    거짓양호 회피 최우선). 0행(미수집)은 모드J가 별도로 판단보류 처리한다."""
 
     def test_oracle_zero_rows_hold(self):
         raw = _make_raw({"DBM-007_1": {"RESULT": []}})
@@ -457,15 +560,25 @@ class TestModeJDbm007OracleAlwaysHoldOrVuln:
         assert fv.handled is True
         assert fv.verdict == "판단보류", f"DBM-007 oracle 0행인데 판단보류 아님: {fv}"
 
-    def test_oracle_any_profile_limit_row_is_always_vuln(self):
-        """profile/limit 필드를 가진 행은 값과 무관하게 위반(vendor exception 설정
-        공백 버그) — 거짓양호는 없으나 과교정(거짓취약 상시화) 위험이 있다는 것을
-        고정해 향후 vendor exception 설정 보강 시 이 테스트가 깨지도록 한다."""
+    def test_oracle_verify_function_null_is_vuln(self):
+        """limit=='NULL'(검증함수 미할당) → 실제 위반 → 취약(수정된 결정론)."""
+        raw = _make_raw({"DBM-007_1": {"RESULT": [
+            {"profile": "DEFAULT", "limit": "NULL"}
+        ]}})
+        fv = judge("DBM-007", raw, "oracle_native", {})
+        assert fv.handled is True
+        assert fv.verdict == "취약", f"DBM-007 oracle limit=NULL인데 취약 아님: {fv}"
+
+    def test_oracle_verify_function_assigned_is_hold_not_good(self):
+        """limit!='NULL'(검증함수 할당됨) → 위반0이나 함수 내용(복잡도 적정성)을
+        결정론으로 확인 불가 — 양호가 아니라 판단보류여야 한다(거짓양호 회피,
+        모드C2 회귀 고정). 임의의 숫자값('5')처럼 함수명이 아닌 값이 와도 동일하게
+        판단보류(자동 양호 금지)가 유지되는지 확인."""
         raw = _make_raw({"DBM-007_1": {"RESULT": [
             {"profile": "DEFAULT", "limit": "5"}
         ]}})
         fv = judge("DBM-007", raw, "oracle_native", {})
         assert fv.handled is True
-        assert fv.verdict == "취약", (
-            f"DBM-007 oracle profile/limit 행인데 취약 아님(vendor 버그 상한 변경?): {fv}"
+        assert fv.verdict == "판단보류", (
+            f"DBM-007 oracle 함수할당(limit!=NULL)인데 판단보류 아님(양호로 자동판정?): {fv}"
         )
