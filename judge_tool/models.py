@@ -41,14 +41,10 @@ class Criterion:
         return "관리체계" in self.eval_type and "스크립트" in self.eval_type
 
     @property
-    def is_script_based(self) -> bool:
-        return "스크립트" in self.eval_type
-
-    @property
     def is_judgeable(self) -> bool:
         """LLM 판정 대상: 해당 variant에 적용되며 판단기준이 비어있지 않음.
 
-        cloud는 loader가 applicable=(is_script_based and eval_type!='N/A')로
+        cloud는 loader가 applicable=("스크립트" in eval_type and eval_type!='N/A')로
         계산해 기존 동작과 동치. DB는 applicable=(평가대상 'o').
         main.run 스킵 조건과 writer.build_coverage expected가 공유한다.
         """

@@ -21,7 +21,7 @@ from judge_tool.fw_policy import detect_for_iss, policy_from_dict
 from judge_tool.mapper import aggregate
 from judge_tool.models import EvidenceItem, Judgment, ResourceEvidence
 from judge_tool.parsers import get_parser
-from judge_tool.preflight import PreflightError, run_preflight  # noqa: F401
+from judge_tool.preflight import run_preflight
 from judge_tool.profile import get_profile, guess_profile, list_profile_keys
 from judge_tool.writer import build_coverage, write_excel, write_json
 
@@ -48,11 +48,16 @@ def _extract_criteria_version(criteria_path: str) -> str:
 
 
 def _sha256(path: str) -> str:
-    h = hashlib.sha256()
     with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(8192), b""):
-            h.update(chunk)
-    return h.hexdigest()
+        return hashlib.file_digest(fh, "sha256").hexdigest()
+
+
+def _result_paths(out_dir: str, report_path: str) -> Tuple[str, str]:
+    """out_dir + 보고서 경로에서 (json_out, xlsx_out) 산출 경로 쌍을 만든다."""
+    base = os.path.splitext(os.path.basename(report_path))[0]
+    json_out = os.path.join(out_dir, f"result_{base}.json")
+    xlsx_out = os.path.join(out_dir, f"result_{base}.xlsx")
+    return json_out, xlsx_out
 
 
 @dataclass
@@ -67,9 +72,6 @@ class JudgeContext:
     # 항목별 임계값 맵 {item_id: {param: value, ...}}. 기본 빈 dict.
     # run()에서 _build_thresholds(criteria)로 채워짐(§6). 기존 생성 호출 불변.
     thresholds: Dict = field(default_factory=dict)
-    # (a) hashcat 연동 옵션. None → hashcat 비활성(graceful skip). Phase 4c-a.
-    # HashcatOpts는 db_pwcrack 모듈에서 import; None이면 (b)-only 동작.
-    hashcat_opts: Optional[object] = None  # 타입: db_pwcrack.HashcatOpts | None
 
 
 def _auto_defer(crit, item, profile) -> Judgment:
@@ -861,8 +863,7 @@ def run(report_path: str, criteria_path: str, profile_key: str, client,
     judged_ids: set = set()
     ctx = JudgeContext(profile=profile, profile_key=profile_key, client=client,
                        items=items, variant=variant,
-                       thresholds=_build_thresholds(criteria),
-                       hashcat_opts=hashcat_opts)
+                       thresholds=_build_thresholds(criteria))
 
     # Phase 4c-a: hashcat 옵션을 db_pwcrack 모듈 세임에 주입.
     # CLI 단일 프로세스이므로 모듈 글로벌 변수가 안전함.
@@ -993,9 +994,7 @@ def _run_batch(args) -> None:
 
     rows: List[Tuple[str, str, str, str]] = []  # (파일명, 프로파일, 상태, 상세)
     for path in files:
-        base = os.path.splitext(os.path.basename(path))[0]
-        json_out = os.path.join(out_dir, f"result_{base}.json")
-        xlsx_out = os.path.join(out_dir, f"result_{base}.xlsx")
+        json_out, xlsx_out = _result_paths(out_dir, path)
         name = os.path.basename(path)
         try:
             profile_key = _resolve_profile(path, args.profile)
@@ -1086,9 +1085,7 @@ def _interactive_main() -> None:
         # 조용히 대체한다 — 대화형 모드는 --out-dir을 물어보지 않으므로
         # 여기서 막히면 사용자가 다시 CLI로 돌아가야 해 UX가 깨진다.
         out_dir = _resolve_out_dir("out", report_path, criteria_path)
-        base = os.path.splitext(os.path.basename(report_path))[0]
-        json_out = os.path.join(out_dir, f"result_{base}.json")
-        xlsx_out = os.path.join(out_dir, f"result_{base}.xlsx")
+        json_out, xlsx_out = _result_paths(out_dir, report_path)
         client = OllamaClient(url="http://localhost:11434", model=model)
         cov = run(report_path, criteria_path, profile_key, client,
                  json_out, xlsx_out, model)
@@ -1188,9 +1185,7 @@ def main(argv=None):
 
         _guard_out_dir(args.out_dir, args.report, args.criteria)
 
-        base = os.path.splitext(os.path.basename(args.report))[0]
-        json_out = os.path.join(args.out_dir, f"result_{base}.json")
-        xlsx_out = os.path.join(args.out_dir, f"result_{base}.xlsx")
+        json_out, xlsx_out = _result_paths(args.out_dir, args.report)
 
         # Phase 4c-a: hashcat 옵션 조립 (바이너리 지정 또는 PATH 자동탐지; 없으면 None)
         hashcat_opts = _hashcat_opts_from_args(args)

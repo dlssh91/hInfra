@@ -242,33 +242,9 @@ COMMON_WEAK_PASSWORDS: list[str] = [
     "1qaz2wsx",
 ]
 
-# 계산 캐시: 사전 lookup 최적화
-_ACCOUNT_SET: dict[str, frozenset[str]] = {
-    name: frozenset(pw_list)
-    for name, pw_list in ACCOUNT_DEFAULT_PASSWORDS.items()
-}
-_COMMON_SET: frozenset[str] = frozenset(COMMON_WEAK_PASSWORDS)
-
-# 전체 후보 리스트(순서 보존, 중복 제거) — 사전 전체 순회 시 사용
-_ALL_CANDIDATES: list[str] = []
-_seen: set[str] = set()
-for _pw in COMMON_WEAK_PASSWORDS:
-    if _pw not in _seen:
-        _ALL_CANDIDATES.append(_pw)
-        _seen.add(_pw)
-for _pw_list in ACCOUNT_DEFAULT_PASSWORDS.values():
-    for _pw in _pw_list:
-        if _pw not in _seen:
-            _ALL_CANDIDATES.append(_pw)
-            _seen.add(_pw)
-del _seen, _pw_list, _pw  # type: ignore[name-defined]
-
 # 성능 상한
 MAX_CANDIDATES: int = 400
 MAX_ACCOUNTS: int = 200
-
-# 상한 적용
-_ALL_CANDIDATES = _ALL_CANDIDATES[:MAX_CANDIDATES]
 
 
 def candidates_for_account(account_name: str) -> list[str]:

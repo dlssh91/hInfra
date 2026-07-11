@@ -6,15 +6,10 @@ def test_criterion_flags():
     mixed = Criterion("PISM-045", "최소권한", 5.0, "AWS",
                       "관리체계, 스크립트", "기준...", "방법...")
     assert mixed.is_mixed is True
-    assert mixed.is_script_based is True
 
     script_only = Criterion("PISM-001", "암호화", 5.0, "AWS",
                             "스크립트", "기준", "방법")
     assert script_only.is_mixed is False
-    assert script_only.is_script_based is True
-
-    na = Criterion("PISM-030", "x", None, "Azure", "N/A", "", "")
-    assert na.is_script_based is False
 
 
 def test_overall_status_priority():
