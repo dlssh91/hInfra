@@ -19,6 +19,20 @@
 >     [L-3] cascade 파일삭제 중간실패 레코드-파일 불일치(기존 delete_asset과 동일 패턴, 정보성).
 >     [L-4] judge_all 미존재 target_id/domain 조용히 무시(enqueue 0건 200).
 >
+> **⓪-b ✅ 완료(2026-07-17 맥세션) — 저장소 전반 검토 + README/requirements + 데드코드 정리 (Fable 주도)**
+>   - 3축 병렬 전수조사(데드코드/중복/최상위 인벤토리) 결과: 저장소는 2026-07-11 ponytail 정리 이후 이미 깨끗 —
+>     완전 데드 1건뿐. **삭제**: `db_pwcrack.get_hashcat_opts`(참조0) · `judge.ClaudeCliClient`+subprocess import
+>     (프로덕션 미배선, 유일 참조자=reexperiment) · `scripts/reexperiment_all.py`(Phase-3 실험완료 일회성) ·
+>     `scripts/db_smoke_all.py`(baseline 완료 일회성). **2720 passed / 0 failed 유지.**
+>   - **신설**: `README.md`(개요·지원도메인 표·설치·사용법 4모드·옵션표·판정방식·구조 — USAGE.md는 링크로 역할분리 유지).
+>     `requirements.txt` 정비 — **PyYAML 누락 발견·추가**(criteria_loader/eol/fw_objects/base가 실사용), 용도주석, pytest 분리.
+>   - **의도적 보존(위험>이득, 재론 금지 근거)**: main.py reconcile 래퍼 7곳 통합 보류(판정 핵심부,
+>     `_defer_or_eol`/`_missing_evidence_defer`의 empty_means_good=False 고정이 의도적) · det_adapters
+>     server↔container 오류가드 정규식(이름만 같고 실증근거로 상이 — 통합 시 판정회귀) · profile.py DB 6엔진
+>     튜플 4곳(용도 상이, tibero 포함/제외 의도적) · webui summarizeAssets↔store.target_summary(크로스랭귀지
+>     병렬 — 동기화 유지 대상으로 인지) · `reload_det_source`(테스트 훅) · `_build_cov_fixtures.py`(픽스처 재생성 도구) ·
+>     네트워크 DRAFT 3종(scripts/, 로드맵 자산) · `fw_batch_validate.py`(상시 유효 배치도구).
+>
 > **① DB Tibero — ✅ 배선 완료(2026-07-11 맥세션, 휴면상태) / ⚠️ 활성화 전 실샘플 검증 필수**
 >   - 완료(db5c954, Opus SHIP): `db_tibero.yaml` 신규(5엔진 라벨 일관), db.py 레지스트리 등록+모드C2 tibero 확장,
 >     DET_SOURCE 21항목, cov 픽스처 12항목(+29 tests). DBM-030은 vendor가 Oracle `AUD$` 테이블명 하드코딩→Tibero

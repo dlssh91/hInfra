@@ -69,10 +69,6 @@ def clear_hashcat_opts() -> None:
     _current_hashcat_opts = None
 
 
-def get_hashcat_opts() -> Optional["HashcatOpts"]:
-    """현재 설정된 hashcat 옵션 반환 (crack_judge 내부 참조용)."""
-    return _current_hashcat_opts
-
 # ── caching_sha2 활성화 플래그 ─────────────────────────────────────────────────
 # 외부 공개 KAT 미확보 → 비활성. 이 포맷 계정은 미지원 — 운영자 수동 hashcat 필요.
 _CACHING_SHA2_ENABLED: bool = False

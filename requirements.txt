@@ -1,5 +1,9 @@
-openpyxl>=3.1
-requests>=2.31
+# judge_tool 런타임 의존성 (폐쇄망: pip install --no-index --find-links=wheelhouse -r requirements.txt)
+openpyxl>=3.1         # xlsx 읽기/쓰기 — 평가기준·FW 정책 export 파싱, 판정결과 출력
+PyYAML>=6.0           # item_configs/*.yaml·eol.yaml·--aux-objects 로드
+requests>=2.31        # 로컬 Ollama HTTP 클라이언트 (LLM 판정)
+python-dateutil>=2.8  # 날짜 연산 (vendor DB 분석: 패스워드 변경주기 등)
+packaging>=21.0       # 버전 비교 (vendor DB 분석: EoS 판정 등)
+
+# 테스트 (운영 배포에는 불필요)
 pytest>=8.0
-python-dateutil>=2.8
-packaging>=21.0
