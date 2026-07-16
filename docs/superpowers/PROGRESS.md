@@ -26,6 +26,20 @@
 >     (인터뷰 요약형 — B′-3 DBM-003 모드A2의 interview_summary 패턴 재사용 검토). label C 유지, 자동 취약/양호 절대 금지.
 >
 > **③ 거짓양호 후속(비차단 잔여)**:
+>   - ✅ **[2026-07-16 맥세션 완료 — R-SECUI-IPCOL]** SECUI IP열 오탐지 → ISS-030 대규모 **거짓취약** 해소.
+>     `fw_policy_xlsx.py`의 `_find_secui_ip_cols`가 다층 서브헤더에서 `ip`열을 **last-wins**로 골라 Domain OBJ
+>     서브헤더(+1 오프셋, 실데이터 빈칸)를 채택 → src/dst IP 0건 → 빈 리스트가 `detect_any_any_allow`에서 `any`로
+>     처리(파싱버그 유래라 unresolved도 비어 B′-3a 가드도 미발동) → 활성 ALLOW 전부 any-any 오판. **수정**: 모든
+>     `ip`(정확일치) 서브헤더 열을 set-union → 최대간격에서 From/To 클러스터 분할 → 각 클러스터 최소열(Host OBJ IP)
+>     채택 + `seq_col` 데이터행 조기중단. proto/port는 last-wins 유지(P03 Protocol 26/30 중 30 정답 보존).
+>     **실검증(대외비: 열인덱스·건수만)**: 정상 9파일(P03/05/06/07/12/23/32/33/34) 열·판정 전후 동일, 깨진 6파일
+>     교정 — ISS-030 P02 1036→0·P04 338→0·P08 58→0·P09 536→0·P10 1078→0·P11 54→0, P34 2→2(genuine 검출 생존).
+>     Fable설계→Sonnet구현→Opus리뷰 **SHIP with follow-up(Low)**. **2679 passed / 97 skipped / 0 failed**.
+>   - ✅ **[2026-07-16 후속점검 완료 — krfw 정상 확인]** krfw 4종(P13/14/24/25) IP 빈칸율 61~93%는 **버그 아님**.
+>     src/dst가 한글 named 객체라 `resolve_policies`가 unresolved_src/dst로 이동 → B′-3a fail-closed → **판단보류**
+>     (정확한 안전동작). 위험지표(src빈 ∧ unresolved빈 = any 오처리 후보) **4파일 전부 0**, 한글 any등가어(전체/모두/
+>     임의 등) 미인식 갭도 **0건**(unresolved 558토큰 전수 대조). ISS-030=0/0/0/2(P25의 2는 literal any-any 정당검출).
+>     krfw ISS 커버리지 상향은 객체테이블(`--aux-objects`, B′-3b) 필요 — 실 export 미확보라 기존대로 착수불가.
 >   - ✅ **[2026-07-11 맥세션 완료 — R-OR007]** oracle DBM-007 무조건위반 해소. `rules.DBM-007.limit=["NULL"]` +
 >     `analysis.py`/`cloud_analysis.py` `dbm_007` `limit in rules['limit']`로 정정 + db.py **mode C2**(oracle 전용:
 >     limit=='NULL'→취약 / 함수 지정(limit!=NULL)→판단보류, **양호 없음** — 검증함수 내용 적정성은 결정론 불가).
@@ -36,6 +50,11 @@
 >     `TestErrorGuardNoOvertrigger` corpus에 추가해 F8 과트리거 재검증(현재 corpus=k8s_master 1대뿐).
 >
 > **④ FW 정밀도 잔여 백로그(비차단, 코드위치 명시)**:
+>   - **[Low, R-SECUI-IPCOL 후속]** `_find_secui_ip_cols`(fw_policy_xlsx.py:~314-319)의 최대간격 클러스터 분할은
+>     "그룹 **내부** IP열 간격 < From↔To 그룹간 간격"을 가정하는 휴리스틱. 관찰된 15파일(그룹 내부 IP열 인접,
+>     gap=1)에선 견고하나, From/To 내부에 IP서브헤더가 넓게 퍼진 **미래 레이아웃**에선 오분할 가능(예 From={8,13},
+>     To Host=15 → dst=13 오채택). 수정(선택): SECUI 주헤더 From/To 병합범위로 분할점 구조확정 or Host 서브헤더
+>     라벨 직접매칭. 현 스코프 무해(순수 미래 위험).
 >   - **[Medium]** `judge_tool/fw_policy.py`의 `_parse_ip_range`(H-4/M-1용 신규 유틸, 커밋 7aa2893)가 IPv4/IPv6
 >     교차버전을 정수구간으로 뭉뚱그려 비교 — upper가 IPv6 저정수 대역(`::/64` 등)이고 lower가 IPv4일 때 거짓포함
 >     (과탐 방향, 거짓양호 아님, 현재 실데이터엔 IPv6 없어 무영향). 수정: `_parse_ip_range`가 `(version, lo, hi)`

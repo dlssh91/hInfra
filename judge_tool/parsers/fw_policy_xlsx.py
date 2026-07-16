@@ -274,27 +274,49 @@ def _find_secui_header_row(rows: List[Tuple]) -> Tuple[int, Dict[str, int]]:
     }
 
 
-def _find_secui_ip_cols(rows: List[Tuple], header_row: int) -> Tuple[int, int, int, int]:
+def _find_secui_ip_cols(
+    rows: List[Tuple], header_row: int, seq_col: int = 0
+) -> Tuple[int, int, int, int]:
     """SECUI 서브헤더에서 src_ip/dst_ip/proto/dst_port 컬럼 인덱스 추정.
 
     표준 SECUI 레이아웃에서 IP 컬럼은 From 그룹(col~8)과 To 그룹(col~15)에 위치.
-    서브헤더 행에서 'ip' 키워드를 포함하는 컬럼 두 개를 순서대로 src/dst로 삼음.
+    일부 실파일(P02형)은 From/To 각각이 Host/Network/Domain 등 다중 서브헤더로
+    나뉘어 'ip' 셀이 3개 이상 나온다 — 이 경우 단순 "처음 두 개" 방식은 Host
+    열이 아니라 다음 서브헤더(예: Network)를 dst로 잘못 집는다(버그 재현).
+    대신 전체 서브헤더 행에서 'ip' 정확일치 컬럼 집합을 모으고, 컬럼 인덱스
+    간 최대 간격(From 그룹과 To 그룹 사이)을 기준으로 앞쪽 첫 열=src,
+    뒤쪽 첫 열=dst로 분할한다(각 그룹의 첫 서브헤더=Host열이 최댓값 간격
+    바로 앞/뒤에 위치하는 레이아웃 특성 이용).
+
+    데이터 행(seq 컬럼에 숫자)이 나오면 스캔을 멈춘다 — 데이터 셀 값이
+    우연히 'ip'와 같아 서브헤더 오염을 유발하는 것을 방지.
+
+    데이터밀도 기반 폴백/안전망은 두지 않는다(비결정성만 추가하므로 설계상
+    배제) — ip 컬럼이 2개 미만이면 SECUI 기본값(8, 15)을 그대로 쓴다.
     """
-    # 서브헤더 행들(header_row ~ header_row+4) 스캔
     src_ip_col, dst_ip_col = 8, 15  # SECUI 기본값
     proto_col, port_col = 20, 21
 
+    ip_col_set: set = set()
     for row in rows[header_row: header_row + 5]:
         cells = [_cell(v).lower() for v in row]
-        ip_cols = [i for i, c in enumerate(cells) if c == "ip" or "ip" == c]
-        if len(ip_cols) >= 2:
-            src_ip_col, dst_ip_col = ip_cols[0], ip_cols[1]
-        # 프로토콜/포트 컬럼 탐색
+        if len(cells) > seq_col and re.match(r"^\d+$", cells[seq_col]):
+            break  # 데이터 시작 — 데이터 셀 'ip' 오염 방지
+        ip_col_set.update(i for i, c in enumerate(cells) if c == "ip")
+        # 프로토콜/포트는 last-wins 유지(이중 헤더 중 마지막 값이 정답인
+        # 실사례 존재 — proto/port 컬럼 변경 없음)
         for i, c in enumerate(cells):
             if c in ("protocol", "proto"):
                 proto_col = i
             if c in ("service port", "port", "dport", "dst port"):
                 port_col = i
+
+    ip_cols = sorted(ip_col_set)
+    if len(ip_cols) >= 2:
+        gaps = [ip_cols[k + 1] - ip_cols[k] for k in range(len(ip_cols) - 1)]
+        split = gaps.index(max(gaps)) + 1  # 동률시 첫 최대간격(결정적)
+        src_ip_col = ip_cols[0]
+        dst_ip_col = ip_cols[split]
     return src_ip_col, dst_ip_col, proto_col, port_col
 
 
@@ -311,7 +333,7 @@ def _parse_secui(rows: List[Tuple], sheet_name: str) -> List[Policy]:
     """
     data_start, col_map = _find_secui_header_row(rows)
     src_ip_col, dst_ip_col, proto_col, port_col = _find_secui_ip_cols(
-        rows, data_start
+        rows, data_start, col_map.get("seq", 0)
     )
 
     seq_col    = col_map.get("seq", 0)

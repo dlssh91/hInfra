@@ -10,11 +10,13 @@ import pytest
 
 from judge_tool.errors import ReportError
 from judge_tool.fw_objects import ObjectTable
+from judge_tool.fw_policy import detect_any_any_allow, resolve_policies
 from judge_tool.parsers.fw_policy_xlsx import (
     detect_variant,
     parse,
     _ISS_FW_IDS,
     _detect_format_from_rows,
+    _find_secui_ip_cols,
     _parse_id70,
     _parse_krfw,
     _parse_paloalto,
@@ -58,6 +60,38 @@ def _secui_rows():
         # row5: 데이터 행2 — deny
         [2, "Y", "N", "R002", "deny", None, None, None, "10.0.0.1", None, None,
          None, None, None, None, "192.168.1.1", None, None, None, None, "tcp", "443"],
+    ]
+
+
+def _secui_rows_multi_subheader():
+    """P02형 SECUI 시트: 주헤더 + Host/Network/Domain 서브헤더 3행 + 데이터 2행.
+
+    From/To 각 그룹의 IP열 후보가 {8,9,15,16}(Host:8,15 / Network:9,16)로
+    "한 서브헤더 행"이 아니라 여러 행에 나뉘어 등장한다. 구버전(단일 행 내
+    ip 셀 2개 이상 매치 시 그 행 값으로 덮어쓰는 last-wins) 알고리즘은
+    Network 서브헤더 행(9,16)을 정답(Host: 8,15)으로 잘못 덮어써
+    (9,16)을 반환한다(버그 재현 코어). Domain 서브헤더는 IP가 아니므로
+    ip_col_set에 포함되지 않는다. IP는 전부 더미(10.0.0.x 대).
+    """
+    width = 30
+
+    def r(overrides):
+        row = [None] * width
+        for i, v in overrides.items():
+            row[i] = v
+        return row
+
+    return [
+        r({0: "Font Color:", 1: "색"}),                                  # row0: 범례
+        r({}),                                                            # row1: 빈행
+        r({0: "Seq", 1: "Enable", 2: "Two-way", 3: "ID", 4: "Action"}),  # row2: 주헤더
+        r({8: "IP", 15: "IP"}),                                          # row3: Host 서브헤더
+        r({9: "IP", 16: "IP"}),                                          # row4: Network 서브헤더
+        r({10: "Domain", 17: "Domain"}),                                 # row5: Domain 서브헤더(IP 아님)
+        r({0: 1, 1: "Y", 2: "N", 3: "R001", 4: "allow",
+           8: "10.0.0.1", 15: "10.0.1.1", 20: "tcp", 21: "443"}),         # row6: 데이터1(구체 IP, ALLOW)
+        r({0: 2, 1: "Y", 2: "N", 3: "R002", 4: "allow",
+           8: "any", 15: "any", 20: "tcp", 21: "80"}),                   # row7: 데이터2(any-any, ALLOW)
     ]
 
 
@@ -196,6 +230,113 @@ def test_parse_secui_src_ports_not_collected():
     policies = _parse_secui(rows, "test")
     for p in policies:
         assert p.src_ports == []
+
+
+# ─ _find_secui_ip_cols — 다중 서브헤더 열 오탐 회귀(버그 재현+수정) ───────────
+
+def test_find_secui_ip_cols_host_domain_pair_picks_host():
+    """버그 재현 코어: Host(8,15)/Network(9,16) 서브헤더가 별도 행에 있을 때
+    최대간격 분할로 Host를 정답으로 뽑아야 한다.
+
+    수정 전 알고리즘(단일 행 내 ip 셀 2개 이상이면 그 행 값으로 덮어쓰는
+    last-wins)은 Network 서브헤더 행(9,16)이 나중에 처리돼 (9,16)을
+    반환한다 — 즉 (8,15,20,21)이 아니라 (9,16,20,21)로 실패해야 정상이었다.
+    """
+    rows = [tuple(row) for row in _secui_rows_multi_subheader()]
+    assert _find_secui_ip_cols(rows, 3, 0) == (8, 15, 20, 21)
+
+
+def test_parse_secui_multi_subheader_extracts_host_ips():
+    rows = [tuple(row) for row in _secui_rows_multi_subheader()]
+    policies = _parse_secui(rows, "test")
+    assert policies[0].src_ips == ["10.0.0.1"]
+    assert policies[0].dst_ips == ["10.0.1.1"]
+    assert policies[0].dst_ports == ["443"]
+
+
+def test_parse_secui_multi_subheader_no_false_any_any():
+    """seq=1(구체 IP, ALLOW)은 any-any 위반에 미포함, seq=2(any-any)만 포함.
+
+    Host열 오독(구버전 버그)으로 구체 IP가 엉뚱한 열에서 읽혀 any/미해석
+    처리되면 seq=1도 거짓으로 any-any 위반에 잡힐 수 있다 — 회귀 가드.
+    """
+    rows = [tuple(row) for row in _secui_rows_multi_subheader()]
+    policies = _parse_secui(rows, "test")
+    resolved = resolve_policies(policies)
+    violations = detect_any_any_allow(resolved)
+    violation_seqs = {p.seq for p in violations}
+    assert 1 not in violation_seqs
+    assert 2 in violation_seqs
+
+
+def test_find_secui_ip_cols_trailing_cloud_row_regression():
+    """P03형: Host/Network/Domain/Cloud-OT 4개 서브헤더 행 + Protocol 이중
+    선언(26·30) + Service Port(31). Host/Network/Cloud-OT는 모두 동일
+    (12,21)이고 Domain만 (13,22) — 합집합은 {12,13,21,22}로 최대간격
+    분할 시 (12,21)이 정답. Protocol은 last-wins로 마지막 값(30)이 유지돼야
+    한다(기존 정상 P03 파일의 정답 열이 30이므로 이 동작은 고정).
+    """
+    width = 34
+
+    def r(overrides):
+        row = [None] * width
+        for i, v in overrides.items():
+            row[i] = v
+        return row
+
+    rows = [
+        r({12: "IP", 21: "IP", 26: "Protocol"}),          # Host
+        r({12: "IP", 21: "IP"}),                          # Network
+        r({13: "IP", 22: "IP", 30: "Protocol", 31: "Service Port"}),  # Domain
+        r({12: "IP", 21: "IP"}),                          # Cloud-OT
+    ]
+    assert _find_secui_ip_cols(rows, 0, 0) == (12, 21, 30, 31)
+
+
+def test_find_secui_ip_cols_two_ip_cols():
+    """서브헤더가 Host 하나뿐(ip 2개, {8,15})이면 그대로 (8,15)."""
+    row = [None] * 20
+    row[8] = "IP"
+    row[15] = "IP"
+    rows = [tuple(row)]
+    assert _find_secui_ip_cols(rows, 0, 0) == (8, 15, 20, 21)
+
+
+def test_find_secui_ip_cols_odd_three_cols():
+    """ip 후보가 3개({8,15,16})면 최대간격(8→15) 분할로 (8,15)."""
+    row = [None] * 20
+    row[8] = "IP"
+    row[15] = "IP"
+    row[16] = "IP"
+    rows = [tuple(row)]
+    assert _find_secui_ip_cols(rows, 0, 0) == (8, 15, 20, 21)
+
+
+def test_find_secui_ip_cols_no_subheader_defaults():
+    """ip 후보가 0~1개면 데이터밀도 폴백 없이 SECUI 기본값(8,15,20,21)."""
+    empty_row = tuple([None] * 20)
+    assert _find_secui_ip_cols([empty_row], 0, 0) == (8, 15, 20, 21)
+
+    one_ip_row = [None] * 20
+    one_ip_row[8] = "IP"
+    assert _find_secui_ip_cols([tuple(one_ip_row)], 0, 0) == (8, 15, 20, 21)
+
+
+def test_find_secui_ip_cols_stops_at_data_row():
+    """데이터행(seq열 숫자) 도달 후에 나오는 'IP' 셀은 합집합에 미포함.
+
+    row0은 ip 후보가 1개(col5)뿐이라 단독으론 2개 미달 — 만약 데이터행에서
+    멈추지 않고 col6의 'IP'까지 잘못 주웠다면 {5,6}으로 (5,6)을 반환해
+    기본값과 달라진다. 정상 동작은 데이터행 이전에서 스캔을 멈춰 ip
+    후보가 1개인 채로 남아 기본값(8,15,20,21)을 반환해야 한다.
+    """
+    row0 = [None] * 10
+    row0[5] = "IP"
+    row1 = [None] * 10
+    row1[0] = "1"   # seq_col=0, 데이터행 시작
+    row1[6] = "IP"  # 데이터 셀 오염 후보(스캔 중단으로 무시돼야 함)
+    rows = [tuple(row0), tuple(row1)]
+    assert _find_secui_ip_cols(rows, 0, 0) == (8, 15, 20, 21)
 
 
 # ─ _parse_paloalto 단위 ───────────────────────────────────────────────────────
