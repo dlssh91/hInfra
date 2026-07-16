@@ -1097,7 +1097,26 @@ def _interactive_main() -> None:
     print(f"출력: {json_out}\n      {xlsx_out}")
 
 
+def _configure_windows_console() -> None:
+    """Windows 콘솔/파이프 출력 인코딩 방어.
+
+    리다이렉트된 stdout/stderr는 로케일 인코딩(한국어 Windows=cp949)을 쓰는데,
+    출력 문자가 cp949에 없으면 UnicodeEncodeError로 크래시한다. 대체문자로
+    강등해 판정 자체는 계속 진행시킨다(산출물 json/xlsx는 UTF-8 고정이라 무관).
+    macOS/Linux에서는 no-op.
+    """
+    if sys.platform != "win32":
+        return
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(errors="replace")
+            except (ValueError, OSError):  # 닫힌/특수 스트림은 무시
+                pass
+
+
 def main(argv=None):
+    _configure_windows_console()
     # 무인자 대화형 진입: 실제 CLI 인자가 0개이고 표준입력이 tty일 때만
     # (파이프/CI 등 비대화형 환경에서는 기존 argparse 동작을 그대로 유지 —
     # pytest처럼 stdin이 tty가 아닌 환경은 이 분기에 절대 들어오지 않는다).

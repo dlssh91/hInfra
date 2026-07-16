@@ -33,7 +33,14 @@
 >     병렬 — 동기화 유지 대상으로 인지) · `reload_det_source`(테스트 훅) · `_build_cov_fixtures.py`(픽스처 재생성 도구) ·
 >     네트워크 DRAFT 3종(scripts/, 로드맵 자산) · `fw_batch_validate.py`(상시 유효 배치도구).
 >
-> **① DB Tibero — ✅ 배선 완료(2026-07-11 맥세션, 휴면상태) / ⚠️ 활성화 전 실샘플 검증 필수**
+> **⓪-c ✅ 완료(2026-07-17 맥세션) — Windows 크로스플랫폼 지원**
+>   - 사전 전수조사: POSIX 전용 모듈(fcntl/pwd/termios) 0건, 잠금=threading.RLock, 원자쓰기=os.replace,
+>     text open 전부 encoding 명시, subprocess 리스트 인자 — **코어는 이미 크로스플랫폼**. 실제 갭 3개만 보수:
+>   - `judge.bat` 신설(judge.sh 미러: 무인자 대화형/단일파일/--report/--web, py -3 우선 탐지, PYTHONUTF8=1) ·
+>     `main._configure_windows_console()`(win32 한정 stdout/stderr errors="replace" — cp949 리다이렉트
+>     크래시 방어, 타 OS no-op) CLI+webui 진입점 배선 · README/USAGE.md Windows 절 병기.
+>   - ⚠️ **judge.bat 실검증은 Windows 환경 필요**(맥에서 구문 검토만) — Windows 보유자가 대화형/--web/
+>     한글경로 인자 3케이스 스모크 권장. 2720 passed / 0 failed 유지.
 >   - 완료(db5c954, Opus SHIP): `db_tibero.yaml` 신규(5엔진 라벨 일관), db.py 레지스트리 등록+모드C2 tibero 확장,
 >     DET_SOURCE 21항목, cov 픽스처 12항목(+29 tests). DBM-030은 vendor가 Oracle `AUD$` 테이블명 하드코딩→Tibero
 >     `SYS._DD_AUD` 불일치 구조적 거짓양호 위험이라 oracle(DET)과 달리 **STUB(label B) 안전라우팅**. DBM-034=ABSENT(메서드부재).

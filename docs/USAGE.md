@@ -53,6 +53,11 @@ ollama pull qwen3-coder:30b
 
 ## 3단계 — judge.sh 실행
 
+> **Windows 사용자**: 아래 모든 명령에서 `./judge.sh` 대신 `judge.bat`을
+> 쓰면 됩니다(동일 동작). 예: `judge.bat 결과파일.xml`, `judge.bat --web`.
+> 파이썬은 python.org 설치판(3.10+)이면 되고, 의존성 설치는
+> `py -3 -m pip install -r requirements.txt` 입니다.
+
 ### (A) 대화형 모드 — 인자 없이 실행 (가장 쉬움)
 
 ```bash

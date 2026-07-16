@@ -37,6 +37,8 @@ def _parse_args(argv=None) -> argparse.Namespace:
 
 
 def main(argv=None) -> None:
+    from judge_tool.main import _configure_windows_console
+    _configure_windows_console()
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")

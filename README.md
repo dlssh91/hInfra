@@ -22,11 +22,12 @@
 
 ## 설치
 
-요구사항: **Python 3.10+**, (LLM 판정 항목용) **Ollama + qwen3-coder:30b**.
+요구사항: **Python 3.10+** (macOS/Linux/Windows), (LLM 판정 항목용) **Ollama + qwen3-coder:30b**.
 
 ```bash
 # 1) 파이썬 의존성
-python3 -m pip install -r requirements.txt
+python3 -m pip install -r requirements.txt            # macOS/Linux
+py -3 -m pip install -r requirements.txt              # Windows (python.org 설치판)
 # 폐쇄망: python3 -m pip install --no-index --find-links=wheelhouse -r requirements.txt
 
 # 2) 로컬 LLM (판정에 LLM이 필요한 항목용 — 결정론 전용 프로파일은 --skip-preflight로 생략 가능)
@@ -46,7 +47,9 @@ ollama pull qwen3-coder:30b
 ./judge.sh --web                    # ④ 로컬 웹 UI (127.0.0.1:8765)
 ```
 
-동일 명령의 모듈 형태: `python3 -m judge_tool <파일> [옵션]`, `python3 -m judge_tool.webui`.
+Windows는 `judge.bat`이 동일하게 동작한다 (`judge.bat result.xml`, `judge.bat --web` 등).
+동일 명령의 모듈 형태: `python3 -m judge_tool <파일> [옵션]`, `python3 -m judge_tool.webui`
+(Windows: `py -3 -m judge_tool ...`).
 
 ### 주요 옵션
 
