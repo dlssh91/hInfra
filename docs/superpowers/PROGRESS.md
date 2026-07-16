@@ -3,20 +3,21 @@
 > ═══ 재개 안내 (pull 후 "진행해줘"/"개발진행해"라고 하면 여기부터) ═══
 > **★★ 다음 착수 — 우선순위 순, 각 항목 착수에 필요한 정보를 아래에 전부 기재(재유도 불필요)**:
 >
-> **⓪ [최우선·2026-07-16 사용자 지정] 웹UI 계층 워크스페이스 구현 (점검분야→대상→파일)**
->   - **단일 진실원천 설계문서**: `docs/superpowers/specs/2026-07-16-webui-hierarchy-design.md` (브레인스토밍+Fable
->     비판검토 High3/Medium7 반영 완료, 사용자 목업 승인). **참고 목업**: 같은 폴더 `...-mockup.html`(브라우저로 열면
->     동작 확인 — 분야당 수십 대상 스케일·드롭존 대상추가·색구분 결과·인터뷰 패널).
->   - **핵심 계약**: 기존 `judge_tool/webui/` **확장**(재설계 금지). 판정엔진 `main.run`·대외비 `results/` 무접촉.
->     접근 **B-lite**(project.json에 경량 `targets:[{id,domain,name,created}]` + asset에 `target_id`). **한 대상=한 분야 고정**.
->     올리는 파일 = **점검 결과 파일**(--report 산출물, FW만 정책export). 드롭 시 파일1개=대상1개, **대상명=파일명(접미사 제거)**.
->   - **착수 순서(설계문서 §3~§7)**: store.py 추가함수(target CRUD·`validate_target_id`·`target_summary` 파생·delete
->     원자성) → server.py 라우트 추가(`X-Target-Id` 업로드) → static/index.html(8분야 트리·드롭존·검색/정렬/필터/롤업/
->     일괄판정·색구분 항목표·인터뷰 재사용) → 테스트(`tests/test_webui_targets.py`, 기존 무수정·`list_projects` 응답 불변).
->   - **사이클**: Fable설계는 완료 → **Sonnet 구현 → Opus 리뷰**(med+ → 개선 → 재리뷰). `python3 -m pytest tests/ -q` 전체통과 SHIP 조건.
->   - ⚠️ Fable 반영완료 항목(설계문서에 이미 있음): H-1 `_TARGET_ID_RE` 별도신설(기존 `_ID_RE` 무수정), H-2 분야 enum↔프로파일
->     분리(8분야), H-3 delete_target 단일원자쓰기+cascade judging검사, M-1 target_summary 읽기시점파생, M-2 X-Target-Id,
->     M-3 프로파일 상속/guess, M-4 다중파일 항목표 병합금지, M-5 name/domain 검증+escapeHtml, M-6 order필드 삭제+기준서 표시순, M-7 테스트.
+> **⓪ ✅ 완료(2026-07-16 맥세션) — 웹UI 계층 워크스페이스 (점검분야→대상→파일) Opus SHIP**
+>   - 사이클 완주: Fable설계(기확정) → Sonnet 구현 → **Opus 리뷰 SHIP**(Critical/High/Medium **0**, Low 4건 비차단).
+>     **2720 passed / 102 skipped / 0 failed**(신규 `tests/test_webui_targets.py` 46테스트, 기존 테스트 무수정).
+>   - 구현 위치: `profile.py:587-611`(DOMAIN_ORDER/LABELS/PROFILES 8분야 enum↔프로파일) ·
+>     `webui/store.py`(validate_target_id L29/67, target CRUD L225-359: create/rename/delete[단일lock cascade]/
+>     assign/list/target_summary 파생, add_asset target_id kwarg+profile_source="target" L362-410) ·
+>     `webui/server.py`(신규 라우트 5개 L69-73+핸들러 L390-413, X-Target-Id L285, judge_all target_id/domain 필터 L314-346) ·
+>     `webui/static/index.html`(8분야 트리·드롭존DnD·검색/정렬/필터/롤업·색구분 항목표·인터뷰 패널 재사용·미분류 자산 패널).
+>   - 설계 H-1~H-3/M-1~M-7/L-3/L-4 전항 ✓(Opus 체크리스트 확인). 판정엔진 `main.run`·`results/` 무접촉.
+>   - 승인된 설계 편차 3건(Opus 타당 판정): judge_all 필터 target_id+domain 2키 / cascade 이중확인=confirm+
+>     prompt("완전삭제" 타이핑, stdlib-only 제약) / 도메인 롤업 클라이언트측 계산(서버 summary 엔드포인트는 구현·테스트 유지).
+>   - **Low 후속 백로그(비차단)**: [L-1] 댕글링 target_id 자산 프런트 비가시 — 미분류 필터를
+>     `!a.target_id || !findTarget(a.target_id)`로 확장 권고(index.html:1080). [L-2] 부분 업로드 실패 시 빈 대상 잔존(UX).
+>     [L-3] cascade 파일삭제 중간실패 레코드-파일 불일치(기존 delete_asset과 동일 패턴, 정보성).
+>     [L-4] judge_all 미존재 target_id/domain 조용히 무시(enqueue 0건 200).
 >
 > **① DB Tibero — ✅ 배선 완료(2026-07-11 맥세션, 휴면상태) / ⚠️ 활성화 전 실샘플 검증 필수**
 >   - 완료(db5c954, Opus SHIP): `db_tibero.yaml` 신규(5엔진 라벨 일관), db.py 레지스트리 등록+모드C2 tibero 확장,

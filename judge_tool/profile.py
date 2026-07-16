@@ -579,6 +579,37 @@ _PROFILES = {
     WEBWAS.key: WEBWAS,
 }
 
+# ---------------------------------------------------------------------------
+# 웹UI 계층 워크스페이스(점검분야 → 대상 → 파일) — 점검분야 enum ↔ 프로파일
+# 매핑. 설계서 docs/superpowers/specs/2026-07-16-webui-hierarchy-design.md
+# §2 표 그대로(H-2, M-6). webui/store.py가 순환import 없이(store.py→profile.py
+# 방향만 존재) 이 상수를 참조한다. 표시순 = 기준서 표준순.
+DOMAIN_ORDER: Tuple[str, ...] = (
+    "server", "dbms", "webwas", "network", "security", "cloud", "container", "osvirt")
+
+DOMAIN_LABELS: Dict[str, str] = {
+    "server": "서버",
+    "dbms": "DBMS",
+    "webwas": "WEB·WAS",
+    "network": "네트워크",
+    "security": "정보보호시스템",
+    "cloud": "클라우드",
+    "container": "컨테이너",
+    "osvirt": "OS가상화",
+}
+
+DOMAIN_PROFILES: Dict[str, Tuple[str, ...]] = {
+    "server": ("server",),
+    "dbms": ("db_mysql", "db_oracle", "db_mssql", "db_mariadb",
+             "db_postgresql", "db_tibero"),
+    "webwas": ("webwas",),
+    "network": ("network",),
+    "security": ("iss", "iss_device"),
+    "cloud": ("cloud",),
+    "container": ("container",),
+    "osvirt": ("osvirt",),
+}
+
 
 def get_profile(key: str) -> Profile:
     if key not in _PROFILES:

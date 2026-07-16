@@ -65,6 +65,12 @@ _ROUTES = [
     ("GET", rf"^/api/projects/(?P<pid>{_SEG})/assets/(?P<aid>{_SEG})/result$", "get_result"),
     ("GET", rf"^/api/projects/(?P<pid>{_SEG})/assets/(?P<aid>{_SEG})/result\.xlsx$", "get_result_xlsx"),
     ("POST", rf"^/api/projects/(?P<pid>{_SEG})/assets/(?P<aid>{_SEG})/delete$", "delete_asset"),
+    # 웹UI 계층 워크스페이스(점검분야→대상→파일) — 신규(설계서 §4).
+    ("POST", rf"^/api/projects/(?P<pid>{_SEG})/targets$", "create_target"),
+    ("POST", rf"^/api/projects/(?P<pid>{_SEG})/targets/(?P<tid>{_SEG})/rename$", "rename_target"),
+    ("POST", rf"^/api/projects/(?P<pid>{_SEG})/targets/(?P<tid>{_SEG})/delete$", "delete_target"),
+    ("GET", rf"^/api/projects/(?P<pid>{_SEG})/targets/(?P<tid>{_SEG})/summary$", "target_summary"),
+    ("POST", rf"^/api/projects/(?P<pid>{_SEG})/assets/(?P<aid>{_SEG})/target$", "assign_asset_target"),
 ]
 
 import re as _re  # noqa: E402 - 라우트 테이블 컴파일 직전 배치(가독성)
@@ -274,8 +280,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             # 요청과 뒤섞이는 것을 막기 위해 close=True(M-2).
             raise HttpError(400, "X-Filename 헤더가 필요합니다.", close=True)
         filename = urllib.parse.unquote(filename_hdr)
+        # X-Target-Id(M-2, 선택) — 지정 시 store.add_asset이 동일 lock 내
+        # 대상 존재검증을 하고, 없는 tid면 ValueError→400으로 자동 변환된다.
+        target_hdr = self.headers.get("X-Target-Id")
+        target_id = urllib.parse.unquote(target_hdr) if target_hdr else None
         data = self._read_body_bytes(max_len=max_bytes)
-        asset = self.store.add_asset(pid, filename, data)
+        asset = self.store.add_asset(pid, filename, data, target_id=target_id)
         self._send_json(201, {"ok": True, "asset": asset})
 
     def _h_set_profile(self, pid, aid):
@@ -302,10 +312,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._send_json(202, {"ok": True, "asset": asset})
 
     def _h_judge_all(self, pid):
+        # 선택적 target/domain 필터(L-4) — 대상 단위(target_id)·분야 단위
+        # (domain, 대상의 domain으로 조인) 일괄판정을 지원한다. 둘 다 없으면
+        # 기존과 동일하게 프로젝트 전체 자산이 대상이다(하위호환).
+        body = self._read_json_body()
+        target_id = body.get("target_id")
+        domain = body.get("domain")
         project = self.store.get_project(pid)
+        domain_target_ids = None
+        if domain is not None:
+            domain_target_ids = {
+                t["id"] for t in project.get("targets", []) if t.get("domain") == domain}
         enqueued, skipped = [], []
         for asset in project.get("assets", []):
             aid = asset["asset_id"]
+            if target_id is not None and asset.get("target_id") != target_id:
+                continue
+            if domain_target_ids is not None and asset.get("target_id") not in domain_target_ids:
+                continue
             if asset.get("status") not in ("pending", "failed"):
                 skipped.append({"asset_id": aid,
                                 "reason": f"상태가 '{asset.get('status')}'입니다."})
@@ -361,6 +385,32 @@ class Handler(http.server.BaseHTTPRequestHandler):
             raise HttpError(409, "판정이 진행 중인 자산은 삭제할 수 없습니다.")
         self.store.delete_asset(pid, aid)
         self._send_json(200, {"ok": True})
+
+    # ── 대상(target) 라우트 — 웹UI 계층 워크스페이스 신규(설계서 §4) ───────
+    def _h_create_target(self, pid):
+        body = self._read_json_body()
+        target = self.store.create_target(pid, body.get("domain", ""), body.get("name", ""))
+        self._send_json(201, {"ok": True, "target": target})
+
+    def _h_rename_target(self, pid, tid):
+        body = self._read_json_body()
+        target = self.store.rename_target(pid, tid, body.get("name", ""))
+        self._send_json(200, {"ok": True, "target": target})
+
+    def _h_delete_target(self, pid, tid):
+        body = self._read_json_body()
+        cascade = bool(body.get("cascade", False))
+        self.store.delete_target(pid, tid, cascade=cascade)
+        self._send_json(200, {"ok": True})
+
+    def _h_target_summary(self, pid, tid):
+        summary = self.store.target_summary(pid, tid)
+        self._send_json(200, {"ok": True, "summary": summary})
+
+    def _h_assign_asset_target(self, pid, aid):
+        body = self._read_json_body()
+        asset = self.store.assign_asset_target(pid, aid, body.get("target_id"))
+        self._send_json(200, {"ok": True, "asset": asset})
 
 
 class ThreadingHTTPServerWithDeps(http.server.ThreadingHTTPServer):
