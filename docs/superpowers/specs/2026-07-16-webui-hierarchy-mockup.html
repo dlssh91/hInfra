@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>judge_tool — 프로젝트 워크스페이스 (설계 목업)</title>
+<style>
+  :root {
+    --bg: #f4f6fb; --panel: #ffffff; --panel-2: #f0f3f9; --border: #dde3ee;
+    --border-strong: #c7d0e0; --text: #1c2233; --muted: #66708a; --faint: #9aa4bc;
+    --accent: #2451c4; --accent-weak: #e4ebfc; --accent-strong: #17357f;
+    --good: #2e7d32; --good-weak: #e7f3e8; --good-line: #bfe0c2;
+    --bad: #c62828; --bad-weak: #fbe9e9; --bad-line: #eccaca;
+    --hold: #b8790a; --hold-weak: #fdf1dc; --hold-line: #f0d9ac;
+    --shadow: 0 1px 2px rgba(28,34,51,.05), 0 6px 20px rgba(28,34,51,.06);
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", "Noto Sans KR", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#12151d; --panel:#1a1e28; --panel-2:#222735; --border:#2c3242; --border-strong:#3a4256;
+      --text:#e7ebf4; --muted:#9aa4bc; --faint:#6b768f; --accent:#6d92f0; --accent-weak:#23304f; --accent-strong:#a9c1fb;
+      --good:#6cc074; --good-weak:#1c3320; --good-line:#2f5a35; --bad:#f0787a; --bad-weak:#37211f; --bad-line:#6b3634;
+      --hold:#e0a94a; --hold-weak:#33280f; --hold-line:#614b1e; --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#12151d; --panel:#1a1e28; --panel-2:#222735; --border:#2c3242; --border-strong:#3a4256;
+    --text:#e7ebf4; --muted:#9aa4bc; --faint:#6b768f; --accent:#6d92f0; --accent-weak:#23304f; --accent-strong:#a9c1fb;
+    --good:#6cc074; --good-weak:#1c3320; --good-line:#2f5a35; --bad:#f0787a; --bad-weak:#37211f; --bad-line:#6b3634;
+    --hold:#e0a94a; --hold-weak:#33280f; --hold-line:#614b1e; --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+  }
+  :root[data-theme="light"] {
+    --bg:#f4f6fb; --panel:#ffffff; --panel-2:#f0f3f9; --border:#dde3ee; --border-strong:#c7d0e0;
+    --text:#1c2233; --muted:#66708a; --faint:#9aa4bc; --accent:#2451c4; --accent-weak:#e4ebfc; --accent-strong:#17357f;
+    --good:#2e7d32; --good-weak:#e7f3e8; --good-line:#bfe0c2; --bad:#c62828; --bad-weak:#fbe9e9; --bad-line:#eccaca;
+    --hold:#b8790a; --hold-weak:#fdf1dc; --hold-line:#f0d9ac; --shadow:0 1px 2px rgba(28,34,51,.05),0 6px 20px rgba(28,34,51,.06);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:var(--sans); background:var(--bg); color:var(--text); font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased; }
+  .app { display:grid; grid-template-columns:248px 1fr; min-height:100vh; }
+
+  .sidebar { background:var(--panel); border-right:1px solid var(--border); padding:16px 12px; display:flex; flex-direction:column; gap:4px; }
+  .brand { display:flex; align-items:center; gap:8px; padding:4px 8px 14px; }
+  .brand .logo { width:26px; height:26px; border-radius:7px; background:linear-gradient(135deg,var(--accent),var(--accent-strong)); display:grid; place-items:center; color:#fff; font-weight:800; font-size:14px; }
+  .brand .t { font-weight:700; font-size:14.5px; letter-spacing:-.01em; }
+  .brand .s { font-size:11px; color:var(--faint); }
+  .side-label { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--faint); font-weight:700; padding:10px 8px 6px; }
+  .proj { display:flex; flex-direction:column; gap:1px; padding:9px 10px; border-radius:8px; cursor:pointer; border:1px solid transparent; }
+  .proj:hover { background:var(--panel-2); }
+  .proj.active { background:var(--accent-weak); border-color:color-mix(in srgb,var(--accent) 30%,transparent); }
+  .proj .pn { font-weight:600; font-size:13.5px; }
+  .proj .pm { font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .newproj { margin-top:8px; padding:8px 10px; border:1px dashed var(--border-strong); border-radius:8px; color:var(--muted); font-size:12.5px; text-align:center; cursor:pointer; }
+  .newproj:hover { color:var(--accent); border-color:var(--accent); }
+
+  .work { padding:22px 26px 60px; max-width:1120px; }
+  .work-head { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:6px; }
+  .work-head h1 { font-size:20px; margin:0; letter-spacing:-.02em; }
+  .work-head .meta { font-size:12px; color:var(--muted); margin-top:3px; }
+  .toolbar { display:flex; gap:8px; align-items:center; }
+  select, input[type=text], input[type=search] { font-family:var(--sans); font-size:13px; color:var(--text); background:var(--panel); border:1px solid var(--border-strong); border-radius:8px; padding:7px 9px; }
+  input::placeholder { color:var(--faint); }
+  .btn { font-family:var(--sans); font-size:13px; font-weight:600; border-radius:8px; padding:7px 13px; cursor:pointer; border:1px solid var(--border-strong); background:var(--panel); color:var(--text); display:inline-flex; align-items:center; gap:6px; }
+  .btn:hover { background:var(--panel-2); }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .btn.primary:hover { background:var(--accent-strong); }
+  .btn.sm { padding:4px 9px; font-size:12px; }
+  .btn.ghost { border-color:transparent; background:transparent; color:var(--muted); }
+  .btn.ghost:hover { background:var(--panel-2); color:var(--text); }
+
+  .hint { font-size:12px; color:var(--muted); background:var(--panel-2); border:1px solid var(--border); border-radius:8px; padding:8px 12px; margin:12px 0 18px; }
+  .hint b { color:var(--text); }
+
+  /* domain group */
+  .domain { margin-bottom:8px; border:1px solid var(--border); border-radius:11px; background:var(--panel); box-shadow:var(--shadow); overflow:hidden; }
+  .domain-head { display:flex; align-items:center; gap:11px; padding:11px 14px; cursor:pointer; user-select:none; }
+  .domain-head:hover { background:var(--panel-2); }
+  .domain-head .chev { color:var(--faint); font-size:11px; width:12px; transition:transform .15s; }
+  .domain.open .domain-head .chev { transform:rotate(90deg); }
+  .domain-head .dn { font-weight:700; font-size:15px; letter-spacing:-.01em; }
+  .domain-head .dcount { font-size:11.5px; color:var(--muted); font-variant-numeric:tabular-nums; background:var(--panel-2); border:1px solid var(--border); border-radius:999px; padding:2px 9px; }
+  .domain.empty .domain-head .dn, .domain.empty .domain-head .dprof { opacity:.5; }
+  .domain-head .roll { margin-left:auto; }
+  .domain-head .dprof { font-size:11px; color:var(--faint); margin-left:12px; min-width:108px; text-align:right; }
+  .domain-body { display:none; border-top:1px solid var(--border); }
+  .domain.open .domain-body { display:block; }
+
+  /* domain toolbar (search/sort/bulk) */
+  .dtoolbar { display:flex; align-items:center; gap:8px; padding:10px 14px; background:var(--panel-2); border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .dtoolbar input[type=search] { flex:1; min-width:160px; padding:6px 10px; }
+  .dtoolbar .spacer { flex:1; }
+  .dtoolbar .filt { display:inline-flex; gap:4px; }
+  .pill { font-size:11.5px; font-weight:600; padding:4px 10px; border-radius:999px; border:1px solid var(--border-strong); background:var(--panel); color:var(--muted); cursor:pointer; }
+  .pill.on { background:var(--accent-weak); color:var(--accent-strong); border-color:color-mix(in srgb,var(--accent) 35%,transparent); }
+
+  /* target list — dense rows */
+  .tlist { max-height:440px; overflow-y:auto; }
+  .trow { display:flex; align-items:center; gap:11px; padding:9px 14px; border-bottom:1px solid var(--border); cursor:pointer; }
+  .trow:hover { background:var(--panel-2); }
+  .trow.open { background:var(--accent-weak); }
+  .trow .chev { color:var(--faint); font-size:10px; width:10px; transition:transform .15s; }
+  .trow.open .chev { transform:rotate(90deg); }
+  .trow .tn { font-weight:600; font-size:13.5px; min-width:150px; }
+  .trow .fn { font-family:var(--mono); font-size:11.5px; color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .trow .st { font-size:11px; font-weight:700; padding:2px 8px; border-radius:6px; margin-left:auto; white-space:nowrap; }
+  .st.done { background:var(--good-weak); color:var(--good); }
+  .st.part { background:var(--hold-weak); color:var(--hold); }
+  .st.none { background:var(--panel-2); color:var(--muted); border:1px solid var(--border); }
+  .minibar { display:inline-flex; gap:5px; align-items:center; }
+  .mchip { font-size:11.5px; font-weight:700; font-variant-numeric:tabular-nums; display:inline-flex; align-items:center; gap:4px; }
+  .mchip .dot { width:7px; height:7px; border-radius:50%; }
+  .mchip.g { color:var(--good); } .mchip.g .dot { background:var(--good); }
+  .mchip.b { color:var(--bad); }  .mchip.b .dot { background:var(--bad); }
+  .mchip.h { color:var(--hold); } .mchip.h .dot { background:var(--hold); }
+  .trow .rowbtn { opacity:0; }
+  .trow:hover .rowbtn, .trow.open .rowbtn { opacity:1; }
+
+  /* expanded result */
+  .tdetail { border-bottom:1px solid var(--border); background:color-mix(in srgb,var(--panel-2) 55%,var(--panel)); padding:6px 18px 18px; }
+  .asset-head { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--muted); padding:10px 0 8px; }
+  .asset-head .fname { font-family:var(--mono); font-size:12px; color:var(--text); font-weight:600; }
+  .rt-wrap { overflow-x:auto; margin-top:4px; border:1px solid var(--border); border-radius:9px; background:var(--panel); }
+  table.rt { width:100%; border-collapse:collapse; font-size:13px; }
+  table.rt th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--faint); font-weight:700; padding:7px 11px; border-bottom:1px solid var(--border); white-space:nowrap; }
+  table.rt td { padding:8px 11px; border-bottom:1px solid var(--border); vertical-align:top; }
+  table.rt tr:last-child td { border-bottom:none; }
+  table.rt td.id { font-family:var(--mono); font-size:12px; color:var(--muted); white-space:nowrap; font-variant-numeric:tabular-nums; }
+  table.rt td.item { min-width:220px; }
+  table.rt td.verdict { white-space:nowrap; width:1%; }
+  .vtag { display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:12.5px; padding:3px 10px; border-radius:7px; border:1px solid transparent; }
+  .vtag.good { background:var(--good-weak); color:var(--good); border-color:var(--good-line); }
+  .vtag.bad { background:var(--bad-weak); color:var(--bad); border-color:var(--bad-line); }
+  .vtag.hold { background:var(--hold-weak); color:var(--hold); border-color:var(--hold-line); }
+  tr.v-bad { background:color-mix(in srgb,var(--bad-weak) 42%,transparent); }
+  tr.v-hold { background:color-mix(in srgb,var(--hold-weak) 38%,transparent); }
+  .basis { font-size:12px; color:var(--muted); margin-top:3px; }
+
+  .iv { margin-top:14px; border:1px solid var(--hold-line); background:color-mix(in srgb,var(--hold-weak) 55%,var(--panel)); border-radius:10px; padding:12px 14px; }
+  .iv h4 { margin:0 0 8px; font-size:12.5px; display:flex; align-items:center; gap:7px; color:var(--hold); }
+  .iv-card { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:9px 11px; }
+  .iv-card .ic-id { font-family:var(--mono); font-size:11.5px; font-weight:700; color:var(--accent-strong); }
+  .iv-card .ic-name { color:var(--muted); font-size:12px; margin-left:6px; }
+  .iv-card .ic-body { font-size:12.5px; margin-top:5px; }
+  .iv-card .ic-body .k { display:inline-block; font-size:11px; font-weight:700; color:var(--muted); background:var(--panel-2); border-radius:5px; padding:1px 6px; margin:2px 4px 2px 0; }
+
+  .topbar { display:flex; justify-content:flex-end; padding:10px 26px 0; }
+  .theme-toggle { font-size:12px; color:var(--muted); cursor:pointer; border:1px solid var(--border); border-radius:7px; padding:5px 10px; background:var(--panel); }
+  .footnote { margin-top:26px; font-size:11.5px; color:var(--faint); border-top:1px solid var(--border); padding-top:12px; }
+  .empty-note { font-size:12px; color:var(--faint); padding:16px; text-align:center; }
+
+  /* dropzone for adding targets */
+  .dropzone { margin:10px 14px; border:1.5px dashed var(--border-strong); border-radius:10px; padding:16px; text-align:center; color:var(--muted); background:color-mix(in srgb,var(--accent-weak) 30%,var(--panel)); cursor:pointer; transition:border-color .12s, background .12s; }
+  .dropzone:hover { border-color:var(--accent); }
+  .dropzone.drag { border-color:var(--accent); background:var(--accent-weak); color:var(--accent-strong); }
+  .dropzone .dz-t { font-weight:700; color:var(--text); font-size:13px; }
+  .dropzone .dz-s { font-size:11.5px; margin-top:3px; }
+  .dropzone.drag .dz-t { color:var(--accent-strong); }
+  .dz-actions { display:flex; gap:8px; justify-content:center; margin-top:9px; }
+  .flash { animation:flash 1.1s ease; }
+  @keyframes flash { 0%{ background:var(--accent-weak);} 100%{ background:transparent;} }
+  @media (max-width:760px){ .app{ grid-template-columns:1fr; } .sidebar{ display:none; } }
+</style>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><div class="logo">判</div><div><div class="t">judge_tool</div><div class="s">보안 취약점 자동판정</div></div></div>
+    <div class="side-label">프로젝트</div>
+    <div class="proj active"><div class="pn">2026 상반기 정기점검</div><div class="pm">대상 41 · 파일 41 · 07-16</div></div>
+    <div class="proj"><div class="pn">2025 하반기 정기점검</div><div class="pm">대상 38 · 파일 44 · 01-20</div></div>
+    <div class="newproj">＋ 새 프로젝트</div>
+  </aside>
+
+  <main>
+    <div class="topbar"><div class="theme-toggle" id="themeBtn">◐ 테마</div></div>
+    <div class="work">
+      <div class="work-head">
+        <div>
+          <h1>2026 상반기 정기점검</h1>
+          <div class="meta">점검분야 → 대상 → 파일 · 분야당 수십 개 대상 · 항목은 ID 번호순</div>
+        </div>
+        <div class="toolbar">
+          <span style="font-size:12px;color:var(--muted)">대상 추가 = 분야를 펼쳐 <b>파일 드롭</b> 또는 <b>＋ 빈 대상</b></span>
+        </div>
+      </div>
+      <div class="hint"><b>올리는 파일 = 점검(수집) 스크립트를 대상에 돌려 나온 “점검 결과 파일”</b>(원시 설정파일이 아님. FW는 정책 export가 입력). <b>추가 방법</b> — ① 분야를 펼쳐 결과 파일을 <b>드롭존에 끌어다 놓으면</b> 파일 1개당 대상 1개가 <b>한꺼번에</b> 생성(수십 개도 한 번에, 이름=파일명·수정 가능). ② 빈 대상이 먼저 필요하면 <b>＋ 빈 대상</b>. 분야가 곧 프로파일 종류를 정합니다.</div>
+
+      <div id="tree"></div>
+      <div class="footnote">설계 목업 — 가짜 데이터. 실제 판정 엔진·results/(대외비)와 무관하며 기존 webui(judge_tool/webui) 확장 구조입니다.</div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ── 가짜 데이터 ─────────────────────────────────────────────
+const SRV_ITEMS = t => ([
+  {id:"SRV-001", name:"root 원격 접속 제한", v: t%3?"bad":"good", basis:"PermitRootLogin 설정 확인"},
+  {id:"SRV-002", name:"패스워드 복잡도 설정", v:"good", basis:"minlen·복잡도 충족"},
+  {id:"SRV-008", name:"불필요 계정 잠금", v:"hold", basis:"활성 계정 업무용 여부 인터뷰 필요"},
+  {id:"SRV-013", name:"세션 타임아웃(TMOUT)", v: t%2?"bad":"good", basis:"TMOUT 설정값 확인"},
+  {id:"SRV-021", name:"SU 제한(wheel 그룹)", v:"good", basis:"pam_wheel 적용"},
+]);
+function mkServers(n){
+  const out=[];
+  for(let i=1;i<=n;i++){
+    const nm = "SRV-"+String(i).padStart(2,"0")+["", "-WEB","-WAS","-APP","-BAT"][i%5];
+    const it = SRV_ITEMS(i);
+    const c = {good:0,bad:0,hold:0}; it.forEach(x=>c[x.v==='good'?'good':x.v==='bad'?'bad':'hold']++);
+    const judged = i%7===0 ? 0 : 1;   // 일부 미판정
+    out.push({name:nm, file:nm.toLowerCase()+"_result.txt", prof:"server",
+      counts: judged?c:{good:0,bad:0,hold:0}, judged, total:1, items: judged?it:[], iv:[]});
+  }
+  return out;
+}
+const DATA = [
+  { domain:"서버", profiles:"server", open:true, targets: mkServers(28) },
+  { domain:"DBMS", profiles:"db_mysql · oracle …", open:false, targets: [
+    { name:"PROD-DB-01", file:"prod-db-01_mysql.xlsx", prof:"db_mysql", counts:{good:12,bad:3,hold:5}, judged:1, total:1, items:[
+      {id:"DBM-001",name:"기본 관리자 계정명 변경",v:"bad",basis:"'root' 계정 그대로 사용"},
+      {id:"DBM-002",name:"불필요 권한 회수",v:"good",basis:"grantee별 최소권한"},
+      {id:"DBM-003",name:"비밀번호 정책(활성계정)",v:"hold",basis:"활성/시스템계정 분류 완료 — 적정성 인터뷰"},
+      {id:"DBM-008",name:"패스워드 수명 제한",v:"bad",basis:"PASSWORD_LIFE_TIME=UNLIMITED 4계정"},
+      {id:"DBM-025",name:"지원종료(EoS) 버전",v:"hold",basis:"as_of 2026-07-11 판단보류+힌트"},
+    ], iv:[{id:"DBM-003",name:"비밀번호 정책",body:[["활성 계정","4"],["시스템내장","6"],["잠김·만료","2"],["의심 계정명","test, backup_old"]]}] },
+    { name:"PROD-DB-02", file:"prod-db-02_oracle.xlsx", prof:"db_oracle", counts:{good:15,bad:1,hold:4}, judged:1, total:1, items:[
+      {id:"DBM-001",name:"기본 관리자 계정명 변경",v:"good",basis:"SYSTEM 비활성"},
+      {id:"DBM-013",name:"원격 접속 IP 제한",v:"bad",basis:"'10.%' 와일드카드 허용"},
+    ], iv:[] },
+    { name:"DEV-DB-07", file:"dev-db-07_pg.xlsx", prof:"db_postgresql", counts:{good:0,bad:0,hold:0}, judged:0, total:1, items:[], iv:[] },
+  ]},
+  { domain:"WEB·WAS", profiles:"webwas", open:false, targets:[
+    { name:"WEB-SRV-01 (Apache)", file:"apache_result.xlsx", prof:"webwas", counts:{good:19,bad:1,hold:2}, judged:1, total:1, items:[
+      {id:"WEB-003",name:"디렉터리 리스팅 차단",v:"good",basis:"Options -Indexes"},
+      {id:"WEB-011",name:"서버 버전 정보 노출",v:"bad",basis:"ServerTokens Full"},
+    ], iv:[] },
+  ]},
+  { domain:"네트워크", profiles:"network", open:false, targets:[] },
+  { domain:"정보보호시스템", profiles:"iss · iss_device", open:false, targets:[
+    { name:"FW-본사 (SECUI)", file:"P02_정책.xlsx", prof:"iss", counts:{good:3,bad:5,hold:4}, judged:1, total:1, items:[
+      {id:"ISS-030",name:"Any-Any 허용 정책",v:"bad",basis:"src·dst any 허용 룰"},
+      {id:"ISS-033",name:"양방향 정책",v:"bad",basis:"Two-way=Y 30건"},
+      {id:"ISS-035",name:"출발지 포트 지정",v:"hold",basis:"SECUI 컬럼 부재 — 판단보류"},
+      {id:"ISS-038",name:"서버 IP 접근정책",v:"hold",basis:"자산목록(--aux) 미제공 — 판단보류"},
+    ], iv:[] },
+  ]},
+  { domain:"클라우드", profiles:"cloud", open:false, targets:[] },
+  { domain:"컨테이너", profiles:"container", open:false, targets:[] },
+  { domain:"OS가상화", profiles:"osvirt", open:false, targets:[] },
+];
+// UI 상태
+const UI = DATA.map(()=>({q:"", sort:"name", filt:"all", open:new Set()}));
+
+const sum = arr => arr.reduce((a,t)=>{a.good+=t.counts.good;a.bad+=t.counts.bad;a.hold+=t.counts.hold;return a;},{good:0,bad:0,hold:0});
+const minibar = c => `<span class="minibar"><span class="mchip g"><span class="dot"></span>${c.good}</span><span class="mchip b"><span class="dot"></span>${c.bad}</span><span class="mchip h"><span class="dot"></span>${c.hold}</span></span>`;
+
+function detail(t){
+  if(!t.judged) return `<div class="empty-note">아직 판정 전입니다. 대상 행의 <b>판정</b> 버튼 또는 분야 전체 판정으로 실행하세요.</div>`;
+  const rows = t.items.slice().sort((a,b)=>a.id.localeCompare(b.id)).map(it=>`
+    <tr class="v-${it.v}"><td class="id">${it.id}</td>
+      <td class="item">${it.name}<div class="basis">${it.basis}</div></td>
+      <td class="verdict"><span class="vtag ${it.v}">${it.v==='good'?'🟢 양호':it.v==='bad'?'🔴 취약':'🟡 판단보류'}</span></td></tr>`).join("");
+  const iv = t.iv.length? `<div class="iv"><h4>💬 인터뷰 참고사항</h4>${t.iv.map(c=>`<div class="iv-card"><span class="ic-id">${c.id}</span><span class="ic-name">${c.name}</span><div class="ic-body">${c.body.map(([k,v])=>`<span class="k">${k}</span>${v}`).join(" ")}</div></div>`).join("")}</div>`:"";
+  return `<div class="asset-head"><span class="fname">${t.file}</span> · <span>${t.prof}</span></div>
+    <div class="rt-wrap"><table class="rt"><thead><tr><th>ID</th><th>점검 항목</th><th>판정</th></tr></thead><tbody>${rows}</tbody></table></div>${iv}`;
+}
+
+function statusTag(t){
+  if(!t.judged) return `<span class="st none">미판정</span>`;
+  return t.judged<t.total ? `<span class="st part">${t.judged}/${t.total} 판정</span>` : `<span class="st done">판정완료</span>`;
+}
+
+function render(){
+  document.getElementById("tree").innerHTML = DATA.map((d,di)=>{
+    const roll = sum(d.targets);
+    const judgedN = d.targets.filter(t=>t.judged).length;
+    // filter + sort
+    let ts = d.targets.map((t,ti)=>({t,ti}));
+    const q = UI[di].q.trim().toLowerCase();
+    if(q) ts = ts.filter(x=>x.t.name.toLowerCase().includes(q)||x.t.file.toLowerCase().includes(q));
+    if(UI[di].filt==="vuln") ts = ts.filter(x=>x.t.counts.bad>0);
+    if(UI[di].filt==="unjudged") ts = ts.filter(x=>!x.t.judged);
+    if(UI[di].sort==="name") ts.sort((a,b)=>a.t.name.localeCompare(b.t.name));
+    if(UI[di].sort==="vuln") ts.sort((a,b)=>b.t.counts.bad-a.t.counts.bad);
+    if(UI[di].sort==="unjudged") ts.sort((a,b)=>a.t.judged-b.t.judged);
+
+    const dropzone = `<div class="dropzone" data-dz="${di}">
+        <div class="dz-t">📎 ${d.domain} 점검 결과 파일을 여기로 끌어다 놓으세요</div>
+        <div class="dz-s">파일 1개 = 대상 1개로 한꺼번에 생성 · 이름=파일명(수정 가능) · 프로파일=${d.profiles}</div>
+        <div class="dz-actions">
+          <button class="btn sm" data-emptytarget="${di}">＋ 빈 대상</button>
+          <button class="btn ghost sm" data-simdrop="${di}">📁 예시로 3개 추가(데모)</button>
+        </div>
+      </div>`;
+    const bodyInner = d.targets.length===0
+      ? dropzone
+      : dropzone + `<div class="dtoolbar">
+           <input type="search" placeholder="대상·파일 검색 (${d.targets.length}개)" data-d="${di}" data-role="q" value="${UI[di].q}">
+           <span class="filt">
+             <span class="pill ${UI[di].filt==='all'?'on':''}" data-d="${di}" data-filt="all">전체</span>
+             <span class="pill ${UI[di].filt==='vuln'?'on':''}" data-d="${di}" data-filt="vuln">취약있음</span>
+             <span class="pill ${UI[di].filt==='unjudged'?'on':''}" data-d="${di}" data-filt="unjudged">미판정</span>
+           </span>
+           <select data-d="${di}" data-role="sort">
+             <option value="name" ${UI[di].sort==='name'?'selected':''}>이름순</option>
+             <option value="vuln" ${UI[di].sort==='vuln'?'selected':''}>취약 많은순</option>
+             <option value="unjudged" ${UI[di].sort==='unjudged'?'selected':''}>미판정 먼저</option>
+           </select>
+           <button class="btn primary sm" data-judgeall="${di}">분야 전체 판정</button>
+         </div>
+         <div class="tlist">
+         ${ts.map(({t,ti})=>{
+           const op = UI[di].open.has(ti);
+           return `<div class="trow ${op?'open':''}" data-d="${di}" data-t="${ti}" data-role="row">
+             <span class="chev">▶</span>
+             <span class="tn">${t.name}</span>
+             <span class="fn">${t.file}</span>
+             ${t.judged?minibar(t.counts):'<span style="width:1px"></span>'}
+             ${statusTag(t)}
+             <button class="btn ghost sm rowbtn" data-judge="${di}-${ti}">판정</button>
+           </div>${op?`<div class="tdetail">${detail(t)}</div>`:""}`;
+         }).join("") || `<div class="empty-note">검색·필터 결과가 없습니다.</div>`}
+         </div>`;
+
+    return `<div class="domain ${d.open?'open':''} ${d.targets.length===0?'empty':''}" data-d="${di}">
+      <div class="domain-head" data-role="domain" data-d="${di}">
+        <span class="chev">▶</span>
+        <span class="dn">${d.domain}</span>
+        <span class="dcount">대상 ${d.targets.length} · 판정 ${judgedN}/${d.targets.length}</span>
+        <span class="roll">${d.targets.length?minibar(roll):''}</span>
+        <span class="dprof">${d.profiles}</span>
+      </div>
+      <div class="domain-body">${bodyInner}</div>
+    </div>`;
+  }).join("");
+}
+render();
+
+const tree = document.getElementById("tree");
+tree.addEventListener("click", e=>{
+  const dh = e.target.closest('[data-role="domain"]');
+  if(dh){ const i=+dh.dataset.d; DATA[i].open=!DATA[i].open; render(); return; }
+  const filt = e.target.closest('[data-filt]');
+  if(filt){ const i=+filt.dataset.d; UI[i].filt=filt.dataset.filt; render(); return; }
+  const row = e.target.closest('[data-role="row"]');
+  if(row && !e.target.closest('[data-judge]')){ const i=+row.dataset.d, t=+row.dataset.t; UI[i].open.has(t)?UI[i].open.delete(t):UI[i].open.add(t); render(); return; }
+});
+tree.addEventListener("input", e=>{
+  if(e.target.dataset.role==="q"){ const i=+e.target.dataset.d; UI[i].q=e.target.value; const pos=e.target.selectionStart; render(); const el=tree.querySelector(`input[data-role="q"][data-d="${i}"]`); if(el){el.focus(); el.setSelectionRange(pos,pos);} }
+});
+tree.addEventListener("change", e=>{
+  if(e.target.dataset.role==="sort"){ const i=+e.target.dataset.d; UI[i].sort=e.target.value; render(); }
+});
+
+// ── 대상 추가: 파일명 → 대상 ──────────────────────────────
+function nameFromFile(fn){ return fn.replace(/\.[^.]+$/,"").replace(/[_-]?(result|점검|결과)$/i,"") || fn; }
+function addTargets(di, filenames){
+  const d = DATA[di];
+  filenames.forEach(fn=>{
+    d.targets.push({ name: nameFromFile(fn), file: fn, prof: d.profiles.split(" ")[0],
+      counts:{good:0,bad:0,hold:0}, judged:0, total:1, items:[], iv:[] });
+  });
+  d.open = true; render();
+  const dom = tree.querySelector(`.domain[data-d="${di}"]`); if(dom) dom.classList.add("flash");
+}
+tree.addEventListener("click", e=>{
+  const et = e.target.closest("[data-emptytarget]");
+  if(et){ const i=+et.dataset.emptytarget; const nm=prompt("새 빈 대상 이름 (예: PROD-DB-03)"); if(nm&&nm.trim()){ DATA[i].targets.push({name:nm.trim(),file:"(파일 없음 — 결과 파일 드롭 대기)",prof:DATA[i].profiles.split(" ")[0],counts:{good:0,bad:0,hold:0},judged:0,total:1,items:[],iv:[]}); DATA[i].open=true; render(); } return; }
+  const sd = e.target.closest("[data-simdrop]");
+  if(sd){ const i=+sd.dataset.simdrop; const ex={0:["APP-SRV-31_result.txt","APP-SRV-32_result.txt","BAT-SRV-05_result.txt"],1:["PROD-DB-08_mysql.xlsx","PROD-DB-09_oracle.xlsx","DEV-DB-10_pg.xlsx"]}[i]||["샘플대상-A_result.xlsx","샘플대상-B_result.xlsx","샘플대상-C_result.xlsx"]; addTargets(i,ex); return; }
+});
+// 실제 파일 드래그드롭
+tree.addEventListener("dragover", e=>{ const dz=e.target.closest(".dropzone"); if(dz){ e.preventDefault(); dz.classList.add("drag"); } });
+tree.addEventListener("dragleave", e=>{ const dz=e.target.closest(".dropzone"); if(dz) dz.classList.remove("drag"); });
+tree.addEventListener("drop", e=>{
+  const dz=e.target.closest(".dropzone"); if(!dz) return; e.preventDefault();
+  const i=+dz.dataset.dz; const files=[...(e.dataTransfer?.files||[])].map(f=>f.name);
+  if(files.length) addTargets(i, files); else dz.classList.remove("drag");
+});
+
+const root = document.documentElement;
+document.getElementById("themeBtn").addEventListener("click", ()=>{
+  const cur = root.getAttribute("data-theme") || (matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");
+  root.setAttribute("data-theme", cur==="dark"?"light":"dark");
+});
+</script>
+
+</body>
+</html>
