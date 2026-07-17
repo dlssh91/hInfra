@@ -62,6 +62,22 @@
 >     iss_device 31·osvirt 32항목 = 결정론 백스톱 없는 순수 LLM verdict + 양극성 샘플 미확보 → **품질 미측정(미커버) 명시 유지**.
 >     (d) num_ctx=16384는 현장 저사양 VRAM에서 부담 가능 — OllamaClient(num_ctx=) 인자로 하향 가능, CLI 플래그는 YAGNI 보류.
 >
+> **⓪-e 📋 평가대상(변형) 커버리지 매트릭스 (2026-07-17 실측 — 사용자 지적 "서버 종류·장비 종류 미반영" 검증 결과)**
+>   - **기준 로드·라우팅 계층은 xlsx 전 평가대상 반영 확인**(load_criteria 실측): 서버 5OS(aix/hpux/linux/solaris/win),
+>     iss_device 6종(fw별도+vpn/ids/ips/ddos/waf/generic), network(cisco/generic — xlsx 벤더그룹 A~D는 generic 폴백),
+>     webwas 11변형(tomcat/jeus 포함), osvirt 3종(vcenter/esxi/xen), container 9종, DB 15열. 전 변형 판정대상 로드 정상.
+>   - **실판정 능력은 불균등(정직한 현황)**:
+>     · **깊음(결정론+양극성 실검증)**: server/linux, webwas apache·iis·webtob, DB 5엔진(native+cloud), container k8s(+docker),
+>       cloud AWS, iss/fw(순수 결정론). · **중간(라우팅되나 실검증 0)**: server aix/hpux/solaris(det_common 50개가 unix 공통
+>       vendor 파서로 돌지만 linux만 cov 검증), webwas tomcat 11·jeus 9항목(LLM+det 소수), osvirt vcenter 17·xen 22항목(LLM 위주).
+>     · **얕음(사실상 LLM-only/보류)**: server/**win** — 70항목 중 **39개가 label C "수집 함수 없음" 자동 판단보류**(의도적
+>       안전처리), 나머지 24 det_common+4 llm도 win 실샘플 0. iss_device vpn 37·ips 26·waf 25항목 = 순수 LLM,
+>       network 비cisco 벤더 = generic 폴백. · **프로파일 자체 없음**: 네트워크 인프라(INF-*) 시트, 웹_모바일_HTS 시트,
+>       관리체계 3시트(정보보호/가상화/클라우드 관리체계 — 문서기반이라 도구 범위 밖일 수 있음, 사용자 결정 필요).
+>   - **갭 해소의 공통 선행조건 = 해당 변형 실수집 샘플**(수집 스크립트 결과 포맷 확정 없이는 파서/결정론/cov 작성이 추측이 됨
+>     — 추측 금지 원칙). 우선순위 후보: ①server/win(수집기 확보 시 det_common 24부터), ②iss_device 실샘플(FW환경 분담),
+>     ③network 벤더그룹 B~D 실샘플, ④INF 프로파일 신설 여부 사용자 결정.
+>
 > **① DB Tibero — ✅ 배선 완료(2026-07-11 맥세션, 휴면상태) / ⚠️ 활성화 전 실샘플 검증 필수**
 >   - 완료(db5c954, Opus SHIP): `db_tibero.yaml` 신규(5엔진 라벨 일관), db.py 레지스트리 등록+모드C2 tibero 확장,
 >     DET_SOURCE 21항목, cov 픽스처 12항목(+29 tests). DBM-030은 vendor가 Oracle `AUD$` 테이블명 하드코딩→Tibero
