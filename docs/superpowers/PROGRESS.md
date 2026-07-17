@@ -76,7 +76,22 @@
 >       관리체계 3시트(정보보호/가상화/클라우드 관리체계 — 문서기반이라 도구 범위 밖일 수 있음, 사용자 결정 필요).
 >   - **갭 해소의 공통 선행조건 = 해당 변형 실수집 샘플**(수집 스크립트 결과 포맷 확정 없이는 파서/결정론/cov 작성이 추측이 됨
 >     — 추측 금지 원칙). 우선순위 후보: ①server/win(수집기 확보 시 det_common 24부터), ②iss_device 실샘플(FW환경 분담),
->     ③network 벤더그룹 B~D 실샘플, ④INF 프로파일 신설 여부 사용자 결정.
+>     ③network 벤더그룹 B~D 실샘플.
+>   - **📌 스코프 확정(2026-07-17 사용자 결정)**: INF(네트워크 인프라)·웹_모바일_HTS 시트 **신설 안 함**.
+>     관리체계는 **클라우드 관리체계 시트의 [스크립트] 부분만** = 현 cloud 프로파일이 이미 그 동작
+>     (sheet="클라우드 관리체계", eval_type에 '스크립트' 포함 항목만 판정대상) — 신규 작업 없음.
+>     정보보호 관리체계·가상화 시스템 관리체계 시트도 신설 안 함.
+>   - **✅/⬜ 실검증 구분(2026-07-17 확정 — 근거: collected/ 실샘플·cov 계약·배치 실검증 기록)**:
+>     · **실검증 완료(실샘플+양극성 cov 또는 실데이터 배치)**: server/**linux**(자가수집+cov 계약) ·
+>       webwas/**apache**(자가수집 web_apache-s-sample.xml+cov) · DB **native 5엔진**(mysql/mariadb/oracle/mssql/pg
+>       — docker 실증+collected 샘플+cov 183케이스) · container/**k8s_master·docker_linux**(kind/docker 자가수집+cov 169,
+>       계약문서에 "실증된 2변형만" 명시) · cloud/**AWS**(실수집 리포트 기반) · iss/fw 중 **SECUI 15파일·krfw 4파일**(P02~P34
+>       배치 실검증) · **FW 파서 R-SECUI-IPCOL**(정상9+교정6 파일 전후 대조).
+>     · **실검증 미완료(구조는 배선됨, 실샘플 0 — 판정품질 미보증)**: server **aix/hpux/solaris/win**(win은 39항목 자동보류) ·
+>       webwas **iis/webtob**(파서 존재·합성픽스처만)·**tomcat/jeus** · DB **rds/aurora/azure 전 클라우드변형**(합성픽스처만)·
+>       **tibero**(휴면) · container **eks/aks/ocp/k8s_worker 7변형** · cloud/**Azure**(픽스처 없음) · iss/fw **ID70·PaloAlto**
+>       (실데이터 실행 0회, PROGRESS 기존 기록) · **iss_device 6종 전부** · **network cisco/generic**(수집기 초안만) ·
+>       **osvirt 3종 전부**(esxi 마스킹만 실증, 판정 양극성 미검증).
 >
 > **① DB Tibero — ✅ 배선 완료(2026-07-11 맥세션, 휴면상태) / ⚠️ 활성화 전 실샘플 검증 필수**
 >   - 완료(db5c954, Opus SHIP): `db_tibero.yaml` 신규(5엔진 라벨 일관), db.py 레지스트리 등록+모드C2 tibero 확장,
