@@ -93,6 +93,31 @@
 >       (실데이터 실행 0회, PROGRESS 기존 기록) · **iss_device 6종 전부** · **network cisco/generic**(수집기 초안만) ·
 >       **osvirt 3종 전부**(esxi 마스킹만 실증, 판정 양극성 미검증).
 >
+> **⓪-f 🐳 도커/kind 자가수집 라운드 (2026-07-17 맥세션) — 가능한 미검증 변형 실샘플 확보 시도**
+>   대상 선정: 미검증 변형 중 "이 맥의 도커/kind + 보유 수집스크립트(fsi_unix.sh·fsec_container_script.sh·mysql_rds.sql)로
+>   자가수집 가능한 것"만. 실행결과:
+>   - **✅ webwas/tomcat**: 도커 tomcat:9에 fsi_unix.sh 실행 → 실 XML 확보(`collected/web/tomcat_linux/web_tomcat-s-sample.xml`
+>     커밋). 파서·판정 파이프라인 정상(variant=tomcat 식별, 11항목 판정). **단 발견**: 수집기가 실제 산출하는 tomcat
+>     증거는 WST-044(tomcat-users.xml)·102(디렉터리권한) **2건뿐** — 기준 tomcat 판정대상 11개 중 LLM-production
+>     (WST-122~125)·WST-031/037/039/080은 수집기가 증거를 안 만들어 여전히 "증거 미수집→판단보류". 즉 tomcat은
+>     **"실샘플 확보+파이프라인 실증"이지 "양극성 cov 실검증완료"는 아님**(수집기 커버리지 자체가 얇음, 승격 불가).
+>   - **🔴 container/k8s_worker**: kind 멀티노드(worker) + fsec_container_script.sh k8s → 실 XML 확보, det_common
+>     11항목 실판정(취약6/양호2/보류3)까지 확인. **그러나 F8 과트리거 발견** — worker 샘플의 "Unauthorized" 토큰이
+>     `_RE_ERROR_OUTPUT`에 매치(PRC-C-015 등). anonymous API 접근제한 항목에선 "Unauthorized"가 **양호신호**
+>     (접근 정상 차단)일 가능성 → 문서화된 PRCC-013 eks Forbidden 면제와 동일 구조. **판정로직 변경이라 정식
+>     Fable→Sonnet→Opus 사이클 필요** → 이번 턴 미수정, 샘플은 collected 미커밋(스크래치 보관), 아래 백로그 등재.
+>     `test_det_adapters_container.py`의 실샘플 corpus 과트리거 테스트가 정확히 이걸 잡아냄(가드 설계대로 동작).
+>   - **△ db_mysql/mysql_rds 포맷 실증**: 도커 mysql:8.0(tmpfs)에 mysql_rds.sql 실행 → 산출 포맷 실증, db_json
+>     파서+vendor cloud_analysis가 **실 RDS SQL 산출을 정상 처리**(variant=mysql_rds 식별, 15/17 실판정: DBM-007/009/
+>     011/013 취약·008 양호 등). 실 RDS 아님(테스트 인스턴스)이라 등급은 **"포맷 실증"까지**. 샘플에 테스트계정
+>     해시 포함 → 정책(collected db=native만)대로 **미커밋(스크래치만)**.
+>   - **🚨 신규 백로그(F8 k8s_worker Unauthorized 과트리거)**: `det_adapters/container.py`의 `_ERROR_GUARD_EXEMPT_TOKENS`에
+>     (item,variant)→"Unauthorized" 추가 검토(PRCC-013 Forbidden 선례 패턴). 선행: 해당 항목에서 Unauthorized가
+>     정말 양호신호인지 vendor autoAnalysis 로직 확인 → 맞으면 면제토큰 추가 + k8s_worker 샘플을 corpus에 편입해
+>     회귀고정. Fable설계→Sonnet구현→Opus리뷰. (실샘플은 스크래치 `fsec2-worker-k8s_worker-20260717.xml` 보존, 도커는 정리됨.)
+>   - **정리**: 생성한 도커(tomcat_wst·my_rds 컨테이너, fsec2 kind 클러스터, pull한 tomcat:9·mysql:8.0 이미지) 전부 삭제.
+>     사용자 기존 컨테이너(bwapp/dvwa/juice-shop 등)·기존 kindest/node 이미지는 무접촉. 2750 passed / 0 failed.
+>
 > **① DB Tibero — ✅ 배선 완료(2026-07-11 맥세션, 휴면상태) / ⚠️ 활성화 전 실샘플 검증 필수**
 >   - 완료(db5c954, Opus SHIP): `db_tibero.yaml` 신규(5엔진 라벨 일관), db.py 레지스트리 등록+모드C2 tibero 확장,
 >     DET_SOURCE 21항목, cov 픽스처 12항목(+29 tests). DBM-030은 vendor가 Oracle `AUD$` 테이블명 하드코딩→Tibero

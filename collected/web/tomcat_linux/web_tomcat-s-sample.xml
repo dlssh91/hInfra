@@ -1,0 +1,4086 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="isac.xsl"?>
+<script>
+	<asset>
+		<hostname>eafb9bf42137</hostname>
+		<os>Linux</os>
+		<uname>Linux eafb9bf42137 6.8.0-117-generic #117-Ubuntu SMP PREEMPT_DYNAMIC Thu May  7 17:26:37 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux</uname>
+		<whoami>root</whoami>
+		<version>2025v1</version>
+	</asset>
+	<results>
+		<dump>
+			<items>
+				<id>SRV-001</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ snmp ][S]
+[ snmp ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+[check snmp version][S]
+[check snmp version][E]
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-004</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ smtp|sendmail|postfix|exim ][S]
+[ smtp|sendmail|postfix|exim ][E]
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-005</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ smtp|sendmail|postfix|exim ][S]
+[ smtp|sendmail|postfix|exim ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/mail/sendmail.cf | grep PrivacyOptions | grep -v grep
+cat: /etc/mail/sendmail.cf: No such file or directory
+------------
+$ cat /etc/sendmail.cf | grep PrivacyOptions | grep -v grep
+cat: /etc/sendmail.cf: No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/exim.conf
+cat: /etc/exim.conf: No such file or directory
+------------
+$ cat /etc/exim/exim.conf
+cat: /etc/exim/exim.conf: No such file or directory
+------------
+$ cat /etc/exim/exim4.conf
+cat: /etc/exim/exim4.conf: No such file or directory
+------------
+$ cat /etc/exim4/conf.d/*.conf
+cat: '/etc/exim4/conf.d/*.conf': No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-006</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ smtp|sendmail|postfix|exim ][S]
+[ smtp|sendmail|postfix|exim ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/mail/sendmail.cf | grep LogLevel | grep -v grep
+cat: /etc/mail/sendmail.cf: No such file or directory
+------------
+$ cat /etc/sendmail.cf | grep LogLevel | grep -v grep
+cat: /etc/sendmail.cf: No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/exim.conf
+cat: /etc/exim.conf: No such file or directory
+------------
+$ cat /etc/exim/exim.conf
+cat: /etc/exim/exim.conf: No such file or directory
+------------
+$ cat /etc/exim/exim4.conf
+cat: /etc/exim/exim4.conf: No such file or directory
+------------
+$ cat /etc/exim4/conf.d/*.conf
+cat: '/etc/exim4/conf.d/*.conf': No such file or directory
+------------
+$ cat /etc/syslog.conf
+cat: /etc/syslog.conf: No such file or directory
+------------
+$ cat /etc/rsyslog.conf
+cat: /etc/rsyslog.conf: No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-007</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ smtp|sendmail|postfix|exim ][S]
+[ smtp|sendmail|postfix|exim ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ sendmail -d0.1 &lt; /dev/null | grep -i version
+fsi_unix.sh: 1139: sendmail: not found
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ postconf -d mail_version
+fsi_unix.sh: 1149: postconf: not found
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ exim -bV
+fsi_unix.sh: 1152: exim: not found
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-008</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ smtp|sendmail|postfix|exim ][S]
+[ smtp|sendmail|postfix|exim ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ egrep "MaxDaemonChildren|ConnectionRateThrottle|MinFreeBlocks|MaxHeadersLength|MaxMessageSize" /etc/mail/sendmail.cf
+grep: /etc/mail/sendmail.cf: No such file or directory
+------------
+$ egrep "MaxDaemonChildren|ConnectionRateThrottle|MinFreeBlocks|MaxHeadersLength|MaxMessageSize" /etc/sendmail.cf
+grep: /etc/sendmail.cf: No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ egrep "message_size_limit|header_size_limit|default_process_limit|local_destination_concurrency_limit|smtpd_recipient_limit" /etc/postfix/main.cf
+grep: /etc/postfix/main.cf: No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ egrep "message_size_limit|header_maxsize|queue_run_max|recipients_max" /etc/exim.conf
+grep: /etc/exim.conf: No such file or directory
+------------
+$ egrep "message_size_limit|header_maxsize|queue_run_max|recipients_max" /etc/exim/exim.conf
+grep: /etc/exim/exim.conf: No such file or directory
+------------
+$ egrep "message_size_limit|header_maxsize|queue_run_max|recipients_max" /etc/exim/exim4.conf
+grep: /etc/exim/exim4.conf: No such file or directory
+------------
+$ egrep "message_size_limit|header_maxsize|queue_run_max|recipients_max" /etc/exim4/conf.d/*.conf
+grep: /etc/exim4/conf.d/*.conf: No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-009</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ smtp|sendmail|postfix|exim ][S]
+[ smtp|sendmail|postfix|exim ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ sendmail -d0.1 &lt; /dev/null | grep -i version
+fsi_unix.sh: 1189: sendmail: not found
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ grep "promiscuous" /etc/mail/sendmail.cf
+grep: /etc/mail/sendmail.cf: No such file or directory
+------------
+$ grep "promiscuous" /etc/mail/sendmail.mc
+grep: /etc/mail/sendmail.mc: No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ ls -alL /etc/mail/
+ls: cannot access '/etc/mail': No such file or directory
+------------
+$ cat /etc/mail/access
+cat: /etc/mail/access: No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/postfix/main.cf
+cat: /etc/postfix/main.cf: No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/exim.conf
+cat: /etc/exim.conf: No such file or directory
+------------
+$ cat /etc/exim/exim.conf
+cat: /etc/exim/exim.conf: No such file or directory
+------------
+$ cat /etc/exim/exim4.conf
+cat: /etc/exim/exim4.conf: No such file or directory
+------------
+$ cat /etc/exim4/conf.d/*.conf
+cat: '/etc/exim4/conf.d/*.conf': No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-010</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ smtp|sendmail|postfix|exim ][S]
+[ smtp|sendmail|postfix|exim ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ grep "PrivacyOptions" /etc/mail/sendmail.cf
+grep: /etc/mail/sendmail.cf: No such file or directory
+------------
+$ grep "PrivacyOptions" /etc/sendmail.cf
+grep: /etc/sendmail.cf: No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-011</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ ftp ][S]
+[ ftp ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ ls -alL /etc/ftpusers
+ls: cannot access '/etc/ftpusers': No such file or directory
+------------
+$ cat /etc/ftpusers
+cat: /etc/ftpusers: No such file or directory
+------------
+$ ls -alL /etc/vsftpd/ftpusers
+ls: cannot access '/etc/vsftpd/ftpusers': No such file or directory
+------------
+$ cat /etc/vsftpd/ftpusers
+cat: /etc/vsftpd/ftpusers: No such file or directory
+------------
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-012</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ ftp ][S]
+[ ftp ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-013</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ ftp ][S]
+[ ftp ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/ftpaccess
+cat: /etc/ftpaccess: No such file or directory
+------------
+$ cat /etc/ftpd/ftpaccess
+cat: /etc/ftpd/ftpaccess: No such file or directory
+------------
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-014</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ nfs ][S]
+[ nfs ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/exports
+cat: /etc/exports: No such file or directory
+------------
+$ cat /etc/netgroup
+cat: /etc/netgroup: No such file or directory
+------------
+$ cat /etc/dfs/dfstab
+cat: /etc/dfs/dfstab: No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ ls -alL /etc/exports
+ls: cannot access '/etc/exports': No such file or directory
+$ ls -alL /etc/netgroup
+ls: cannot access '/etc/netgroup': No such file or directory
+$ ls -alL /etc/dfs/dfstab
+ls: cannot access '/etc/dfs/dfstab': No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-015</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ nfs ][S]
+[ nfs ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/exports
+cat: /etc/exports: No such file or directory
+------------
+$ cat /etc/netgroup
+cat: /etc/netgroup: No such file or directory
+------------
+$ cat /etc/dfs/dfstab
+cat: /etc/dfs/dfstab: No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-016</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ cms ][S]
+[ cms ][E]
+-e [ ttdbserver ][S]
+[ ttdbserver ][E]
+-e [ sadmin ][S]
+[ sadmin ][E]
+-e [ rusers ][S]
+[ rusers ][E]
+-e [ wall ][S]
+[ wall ][E]
+-e [ spray ][S]
+[ spray ][E]
+-e [ rstat ][S]
+[ rstat ][E]
+-e [ stat ][S]
+[ stat ][E]
+-e [ nis ][S]
+[ nis ][E]
+-e [ rex ][S]
+[ rex ][E]
+-e [ pcnfs ][S]
+[ pcnfs ][E]
+-e [ ypserv|ypbind|ypxfrd|yppasswdd|ypupdated ][S]
+[ ypserv|ypbind|ypxfrd|yppasswdd|ypupdated ][E]
+-e [ rquota ][S]
+[ rquota ][E]
+-e [ kcms_server ][S]
+[ kcms_server ][E]
+-e [ cachefs ][S]
+[ cachefs ][E]
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-021</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ ftp ][S]
+[ ftp ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/ftpaccess.ctl
+cat: /etc/ftpaccess.ctl: No such file or directory
+------------
+$ cat /etc/ftpd/ftphosts
+cat: /etc/ftpd/ftphosts: No such file or directory
+------------
+$ cat /etc/ftpd/ftpaccess
+cat: /etc/ftpd/ftpaccess: No such file or directory
+------------
+$ cat /etc/proftpd.conf
+cat: /etc/proftpd.conf: No such file or directory
+------------
+$ cat /usr/local/etc/proftpd.conf
+cat: /usr/local/etc/proftpd.conf: No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-022</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/passwd | awk 'BEGIN {FS=:} !=/bin/false && !=/sbin/nologin {print}'
+root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+bin:x:2:2:bin:/bin:/usr/sbin/nologin
+sys:x:3:3:sys:/dev:/usr/sbin/nologin
+sync:x:4:65534:sync:/bin:/bin/sync
+games:x:5:60:games:/usr/games:/usr/sbin/nologin
+man:x:6:12:man:/var/cache/man:/usr/sbin/nologin
+lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
+mail:x:8:8:mail:/var/mail:/usr/sbin/nologin
+news:x:9:9:news:/var/spool/news:/usr/sbin/nologin
+uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin
+proxy:x:13:13:proxy:/bin:/usr/sbin/nologin
+www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin
+backup:x:34:34:backup:/var/backups:/usr/sbin/nologin
+list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin
+irc:x:39:39:ircd:/run/ircd:/usr/sbin/nologin
+_apt:x:42:65534::/nonexistent:/usr/sbin/nologin
+nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+ubuntu:x:1000:1000:Ubuntu:/home/ubuntu:/bin/bash
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/shadow | awk -F: '{print $1"		"$2}' | cut -c-15
+root		*
+daemon		*
+bin		*
+sys		*
+sync		*
+games		*
+man		*
+lp		*
+mail		*
+news		*
+uucp		*
+proxy		*
+www-data		*
+backup		*
+list		*
+irc		*
+_apt		*
+nobody		*
+ubuntu		!
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-025</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ exec|rexec ][S]
+[ exec|rexec ][E]
+-e [ login|rlogin ][S]
+[ login|rlogin ][E]
+-e [ shell|rshell ][S]
+[ shell|rshell ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ ls -aldL /etc/hosts.equiv
+ls: cannot access '/etc/hosts.equiv': No such file or directory
+------------
+$ cat /etc/hosts.equiv
+cat: /etc/hosts.equiv: No such file or directory
+------------
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-026</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ telnet ][S]
+[ telnet ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-e [ ssh|ssh-server ][S]
+[ ssh|ssh-server ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/securetty | egrep -i "(ptyp1|^pts)"
+cat: /etc/securetty: No such file or directory
+------------
+$ cat /etc/pam.d/remote | egrep -i "pam_securetty.so"
+cat: /etc/pam.d/remote: No such file or directory
+------------
+$ cat /etc/pam.d/login | egrep -i "pam_securetty.so"
+------------
+$ /etc/ssh/sshd_config | egrep -i "(PermitRootLogin|denyuser)"
+cat: /etc/ssh/sshd_config: No such file or directory
+------------
+$ /opt/ssh/etc/sshd_config | egrep -i "(PermitRootLogin|denyuser)"
+cat: /opt/ssh/etc/sshd_config: No such file or directory
+------------
+$ /etc/sshd_config | egrep -i "(PermitRootLogin|denyuser)"
+cat: /etc/sshd_config: No such file or directory
+------------
+$ /usr/local/etc/sshd_config | egrep -i "(PermitRootLogin|denyuser)"
+cat: /usr/local/etc/sshd_config: No such file or directory
+------------
+$ /usr/local/sshd/etc/sshd_config | egrep -i "(PermitRootLogin|denyuser)"
+cat: /usr/local/sshd/etc/sshd_config: No such file or directory
+------------
+$ /usr/local/ssh/etc/sshd_config | egrep -i "(PermitRootLogin|denyuser)"
+cat: /usr/local/ssh/etc/sshd_config: No such file or directory
+------------
+$ /etc/ssh/ssh_config | egrep -i "(PermitRootLogin|denyuser)"
+cat: /etc/ssh/ssh_config: No such file or directory
+------------
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-027</id>
+			</items>
+			<output>
+				<![CDATA[
+$ firewall-cmd --list-all
+fsi_unix.sh: 1500: firewall-cmd: not found
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+------------
+$ ls -aldL /etc/hosts
+-rw-r--r-- 1 root root 172 Jul 17 05:44 /etc/hosts
+------------
+$ cat /etc/hosts
+127.0.0.1	localhost
+::1	localhost ip6-localhost ip6-loopback
+fe00::	ip6-localnet
+ff00::	ip6-mcastprefix
+ff02::1	ip6-allnodes
+ff02::2	ip6-allrouters
+172.17.0.6	eafb9bf42137
+------------
+$ ls -aldL /etc/hosts.allow
+ls: cannot access '/etc/hosts.allow': No such file or directory
+------------
+$ cat /etc/hosts.allow
+cat: /etc/hosts.allow: No such file or directory
+------------
+$ ls -aldL /etc/hosts.deny
+ls: cannot access '/etc/hosts.deny': No such file or directory
+------------
+$ cat /etc/hosts.deny
+cat: /etc/hosts.deny: No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-028</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ telnet ][S]
+[ telnet ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ echo $TMOUT
+
+------------
+ 
+[ Common /etc/profile Setting ]
+ 
+[ Common login Setting ]
+ 
+[ All Users ..*profile Setting ]
+ 
+[ Common .profile Setting ]
+ 
+[ Common .login Setting ]
+ 
+[ All Users .login Setting ]
+ 
+[ Common shrc Setting ]
+ 
+[ All Users shrc Setting ]
+ 
+[ Current User Setting ]
+ 
+[ Current User Environment Variables ]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-e [ ssh|ssh-server ][S]
+[ ssh|ssh-server ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ /etc/ssh/sshd_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"
+cat: /etc/ssh/sshd_config: No such file or directory
+------------
+$ /opt/ssh/etc/sshd_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"
+cat: /opt/ssh/etc/sshd_config: No such file or directory
+------------
+$ /etc/sshd_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"
+cat: /etc/sshd_config: No such file or directory
+------------
+$ /usr/local/etc/sshd_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"
+cat: /usr/local/etc/sshd_config: No such file or directory
+------------
+$ /usr/local/sshd/etc/sshd_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"
+cat: /usr/local/sshd/etc/sshd_config: No such file or directory
+------------
+$ /usr/local/ssh/etc/sshd_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"
+cat: /usr/local/ssh/etc/sshd_config: No such file or directory
+------------
+$ /etc/ssh/ssh_config | egrep -i "(ClientAliveInterval|ClientAliveCountMax)"
+cat: /etc/ssh/ssh_config: No such file or directory
+------------
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-034</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ automountd|autofs ][S]
+[ automountd|autofs ][E]
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-035</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ tftp ][S]
+[ tftp ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-e [ talk ][S]
+[ talk ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-e [ ntalk ][S]
+[ ntalk ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-e [ finger ][S]
+[ finger ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-e [ exec|rexec ][S]
+[ exec|rexec ][E]
+-e [ login|rlogin ][S]
+[ login|rlogin ][E]
+-e [ shell|rshell ][S]
+[ shell|rshell ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-e [ echo ][S]
+[ echo ][E]
+-e [ discard ][S]
+[ discard ][E]
+-e [ daytime ][S]
+[ daytime ][E]
+-e [ chargen ][S]
+[ chargen ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-e [ nis ][S]
+[ nis ][E]
+-e [ ypserv|ypbind|ypxfrd|yppasswdd|ypupdated ][S]
+[ ypserv|ypbind|ypxfrd|yppasswdd|ypupdated ][E]
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-037</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ ftp ][S]
+[ ftp ][E]
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-062</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ dns ][S]
+[ dns ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/named.conf
+cat: /etc/named.conf: No such file or directory
+------------
+$ cat /etc/bind/named.conf
+cat: /etc/bind/named.conf: No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-063</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ dns ][S]
+[ dns ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/named.boot
+cat: /etc/named.boot: No such file or directory
+------------
+$ cat /etc/named.conf
+cat: /etc/named.conf: No such file or directory
+------------
+$ cat /etc/bind/named.boot
+cat: /etc/bind/named.boot: No such file or directory
+------------
+$ cat /etc/bind/named.conf
+cat: /etc/bind/named.conf: No such file or directory
+------------
+$ cat /etc/bind/named.conf.options
+cat: /etc/bind/named.conf.options: No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-064</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ dns ][S]
+[ dns ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ dig @localhost +short porttest.dns-oarc.net TXT
+fsi_unix.sh: 1633: dig: not found
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-066</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ dns ][S]
+[ dns ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/named.boot
+cat: /etc/named.boot: No such file or directory
+------------
+$ cat /etc/named.conf
+cat: /etc/named.conf: No such file or directory
+------------
+$ cat /etc/bind/named.boot
+cat: /etc/bind/named.boot: No such file or directory
+------------
+$ cat /etc/bind/named.conf
+cat: /etc/bind/named.conf: No such file or directory
+------------
+$ cat /etc/bind/named.conf.options
+cat: /etc/bind/named.conf.options: No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-069</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/pam.d/common-password
+#
+# /etc/pam.d/common-password - password-related modules common to all services
+#
+# This file is included from other service-specific PAM config files,
+# and should contain a list of modules that define the services to be
+# used to change user passwords.  The default is pam_unix.
+
+# Explanation of pam_unix options:
+# The "yescrypt" option enables
+#hashed passwords using the yescrypt algorithm, introduced in Debian
+#11.  Without this option, the default is Unix crypt.  Prior releases
+#used the option "sha512"; if a shadow password hash will be shared
+#between Debian 11 and older releases replace "yescrypt" with "sha512"
+#for compatibility .  The "obscure" option replaces the old
+#`OBSCURE_CHECKS_ENAB' option in login.defs.  See the pam_unix manpage
+#for other options.
+
+# As of pam 1.0.1-6, this file is managed by pam-auth-update by default.
+# To take advantage of this, it is recommended that you configure any
+# local modules either before or after the default block, and use
+# pam-auth-update to manage selection of other modules.  See
+# pam-auth-update(8) for details.
+
+# here are the per-package modules (the "Primary" block)
+password	[success=1 default=ignore]	pam_unix.so obscure yescrypt
+# here's the fallback if no module succeeds
+password	requisite			pam_deny.so
+# prime the stack with a positive return value if there isn't one already;
+# this avoids us returning an error just because nothing sets a success code
+# since the modules above will each just jump around
+password	required			pam_permit.so
+# and here are more per-package modules (the "Additional" block)
+# end of pam-auth-update config
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/security/pwquality.conf
+cat: /etc/security/pwquality.conf: No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/pam.d/system-auth
+cat: /etc/pam.d/system-auth: No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ chage -l root
+Last password change					: Jun 10, 2026
+Password expires					: never
+Password inactive					: never
+Account expires						: never
+Minimum number of days between password change		: 0
+Maximum number of days between password change		: 99999
+Number of days of warning before password expires	: 7
+------------
+$ chage -l ubuntu
+Last password change					: Jun 10, 2026
+Password expires					: never
+Password inactive					: never
+Account expires						: never
+Minimum number of days between password change		: 0
+Maximum number of days between password change		: 99999
+Number of days of warning before password expires	: 7
+------------
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-070</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/passwd
+root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+bin:x:2:2:bin:/bin:/usr/sbin/nologin
+sys:x:3:3:sys:/dev:/usr/sbin/nologin
+sync:x:4:65534:sync:/bin:/bin/sync
+games:x:5:60:games:/usr/games:/usr/sbin/nologin
+man:x:6:12:man:/var/cache/man:/usr/sbin/nologin
+lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
+mail:x:8:8:mail:/var/mail:/usr/sbin/nologin
+news:x:9:9:news:/var/spool/news:/usr/sbin/nologin
+uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin
+proxy:x:13:13:proxy:/bin:/usr/sbin/nologin
+www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin
+backup:x:34:34:backup:/var/backups:/usr/sbin/nologin
+list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin
+irc:x:39:39:ircd:/run/ircd:/usr/sbin/nologin
+_apt:x:42:65534::/nonexistent:/usr/sbin/nologin
+nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+ubuntu:x:1000:1000:Ubuntu:/home/ubuntu:/bin/bash
+------------
+$ cat /etc/security/passwd
+cat: /etc/security/passwd: No such file or directory
+------------
+$ cat /etc/security/login.cfg
+cat: /etc/security/login.cfg: No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-073</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/group
+root:x:0:
+daemon:x:1:
+bin:x:2:
+sys:x:3:
+adm:x:4:ubuntu
+tty:x:5:
+disk:x:6:
+lp:x:7:
+mail:x:8:
+news:x:9:
+uucp:x:10:
+man:x:12:
+proxy:x:13:
+kmem:x:15:
+dialout:x:20:ubuntu
+fax:x:21:
+voice:x:22:
+cdrom:x:24:ubuntu
+floppy:x:25:ubuntu
+tape:x:26:
+sudo:x:27:ubuntu
+audio:x:29:ubuntu
+dip:x:30:ubuntu
+www-data:x:33:
+backup:x:34:
+operator:x:37:
+list:x:38:
+irc:x:39:
+src:x:40:
+shadow:x:42:
+utmp:x:43:
+video:x:44:ubuntu
+sasl:x:45:
+plugdev:x:46:ubuntu
+staff:x:50:
+games:x:60:
+users:x:100:
+nogroup:x:65534:
+ubuntu:x:1000:
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-074</id>
+			</items>
+			<output>
+				<![CDATA[
+$ awk -F":" '{print $1 "		" $3}' /etc/shadow
+root		20614
+daemon		20614
+bin		20614
+sys		20614
+sync		20614
+games		20614
+man		20614
+lp		20614
+mail		20614
+news		20614
+uucp		20614
+proxy		20614
+www-data		20614
+backup		20614
+list		20614
+irc		20614
+_apt		20614
+nobody		20614
+ubuntu		20614
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+$ awk -F":" '{print $1 "		" $7}' /etc/passwd
+root		/bin/bash
+daemon		/usr/sbin/nologin
+bin		/usr/sbin/nologin
+sys		/usr/sbin/nologin
+sync		/bin/sync
+games		/usr/sbin/nologin
+man		/usr/sbin/nologin
+lp		/usr/sbin/nologin
+mail		/usr/sbin/nologin
+news		/usr/sbin/nologin
+uucp		/usr/sbin/nologin
+proxy		/usr/sbin/nologin
+www-data		/usr/sbin/nologin
+backup		/usr/sbin/nologin
+list		/usr/sbin/nologin
+irc		/usr/sbin/nologin
+_apt		/usr/sbin/nologin
+nobody		/usr/sbin/nologin
+ubuntu		/bin/bash
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ last -10 root
+
+wtmp begins Fri Jul 17 05:43:38 2026
+------------
+$ last -10 ubuntu
+
+wtmp begins Fri Jul 17 05:43:38 2026
+------------
+$ lastlog -u root
+Username         Port     From                                       Latest
+root                                                                **Never logged in**
+------------
+$ lastlog -u ubuntu
+Username         Port     From                                       Latest
+ubuntu                                                              **Never logged in**
+------------
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-075</id>
+			</items>
+			<output>
+				<![CDATA[
+Cracked password && low password complexity = vulnerability
+Check on <id>/etc/shadow</id> for inspection
+For AIX, check on <id>/etc/security/passwd</id>
+For HP-UX trust mode, check on <id>TCB</id>
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-081</id>
+			</items>
+			<output>
+				<![CDATA[
+$ ls -alL /var/spool/cron
+ls: cannot access '/var/spool/cron': No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ ls -aldL /etc/at.allow
+ls: cannot access '/etc/at.allow': No such file or directory
+$ ls -aldL /etc/at.deny
+ls: cannot access '/etc/at.deny': No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ ls -alL /etc/cron.d/cron.allow
+ls: cannot access '/etc/cron.d/cron.allow': No such file or directory
+$ ls -alL /etc/cron.d/cron.deny
+ls: cannot access '/etc/cron.d/cron.deny': No such file or directory
+$ ls -alL /etc/cron.allow
+ls: cannot access '/etc/cron.allow': No such file or directory
+$ ls -alL /etc/cron.deny
+ls: cannot access '/etc/cron.deny': No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-082</id>
+			</items>
+			<output>
+				<![CDATA[
+$ ls -alLd /usr /bin /sbin /etc /var
+drwxr-xr-x 1 root root 4096 Jul  7 17:52 /bin
+drwxr-xr-x 1 root root 4096 Jul 17 05:44 /etc
+drwxr-xr-x 1 root root 4096 Jul  2 02:20 /sbin
+drwxr-xr-x 1 root root 4096 Jun 10 02:09 /usr
+drwxr-xr-x 1 root root 4096 Jun 10 02:16 /var
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-083</id>
+			</items>
+			<output>
+				<![CDATA[
+$ grep -v "^#" /etc/inittab
+grep: /etc/inittab: No such file or directory
+------------
+$ ls -aldL /etc/init.d/*
+-rwxr-xr-x 1 root root 959 Mar 24  2024 /etc/init.d/procps
+------------
+$ ls -aldL /etc/rc2.d/*
+ls: cannot access '/etc/rc2.d/*': No such file or directory
+------------
+$ ls -aldL /etc/rc3.d/*
+ls: cannot access '/etc/rc3.d/*': No such file or directory
+------------
+$ ls -aldL /etc/rc.d/init.d/*
+ls: cannot access '/etc/rc.d/init.d/*': No such file or directory
+------------
+$ ls -aldL /etc/rc.d/rc2.d/*
+ls: cannot access '/etc/rc.d/rc2.d/*': No such file or directory
+------------
+$ ls -aldL /etc/rc.d/rc3.d/*
+ls: cannot access '/etc/rc.d/rc3.d/*': No such file or directory
+------------
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-084</id>
+			</items>
+			<output>
+				<![CDATA[
+$ ls -aldL /etc/passwd
+-rw-r--r-- 1 root root 888 Jun 10 02:16 /etc/passwd
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ ls -aldL /etc/shadow
+-rw-r----- 1 root shadow 502 Jun 10 02:16 /etc/shadow
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ ls -aldL /etc/hosts
+-rw-r--r-- 1 root root 172 Jul 17 05:44 /etc/hosts
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ ls -aldL /etc/inetd.conf /etc/xinetd.conf
+ls: cannot access '/etc/inetd.conf': No such file or directory
+ls: cannot access '/etc/xinetd.conf': No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ ls -aldL /etc/syslog.conf
+ls: cannot access '/etc/syslog.conf': No such file or directory
+------------
+$ ls -aldL /etc/rsyslog.conf
+ls: cannot access '/etc/rsyslog.conf': No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ ls -aldL /etc/services
+ls: cannot access '/etc/services': No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ ls -aldL /etc/hosts.lpd
+ls: cannot access '/etc/hosts.lpd': No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-087</id>
+			</items>
+			<output>
+				<![CDATA[
+$ which cc gcc
+------------
+$ ls -alL /usr/bin/cc /usr/bin/gcc /usr/ucb/cc /usr/ccs/bin/cc 		/opt/ansic/bin/cc /usr/vac/bin/cc /usr/local/bin/gcc
+ls: cannot access '/usr/bin/cc': No such file or directory
+ls: cannot access '/usr/bin/gcc': No such file or directory
+ls: cannot access '/usr/ucb/cc': No such file or directory
+ls: cannot access '/usr/ccs/bin/cc': No such file or directory
+ls: cannot access '/opt/ansic/bin/cc': No such file or directory
+ls: cannot access '/usr/vac/bin/cc': No such file or directory
+ls: cannot access '/usr/local/bin/gcc': No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-091</id>
+			</items>
+			<output>
+				<![CDATA[
+$ nice -n 5 find $HOMEDIR -type f -a -perm -4000 -exec ls -alLd {} \;
+------------
+$ nice -n 5 find /usr/bin -type f -a -perm -4000 -exec ls -alLd {} \;
+-rwsr-xr-x 1 root root 76440 May 30  2024 /usr/bin/chfn
+-rwsr-xr-x 1 root root 71840 May 30  2024 /usr/bin/gpasswd
+-rwsr-xr-x 1 root root 67744 Mar  6 16:00 /usr/bin/mount
+-rwsr-xr-x 1 root root 69088 May 30  2024 /usr/bin/newgrp
+-rwsr-xr-x 1 root root 72056 May 30  2024 /usr/bin/passwd
+-rwsr-xr-x 1 root root 67744 Mar  6 16:00 /usr/bin/su
+-rwsr-xr-x 1 root root 67744 Mar  6 16:00 /usr/bin/umount
+-rwsr-xr-x 1 root root 69072 May 30  2024 /usr/bin/chsh
+------------
+$ nice -n 5 find /usr/sbin -type f -a -perm -4000 -exec ls -alLd {} \;
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-092</id>
+			</items>
+			<output>
+				<![CDATA[
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/passwd | awk 'BEGIN {FS=/} !=home {print}'
+root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+bin:x:2:2:bin:/bin:/usr/sbin/nologin
+sys:x:3:3:sys:/dev:/usr/sbin/nologin
+sync:x:4:65534:sync:/bin:/bin/sync
+games:x:5:60:games:/usr/games:/usr/sbin/nologin
+man:x:6:12:man:/var/cache/man:/usr/sbin/nologin
+lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
+mail:x:8:8:mail:/var/mail:/usr/sbin/nologin
+news:x:9:9:news:/var/spool/news:/usr/sbin/nologin
+uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin
+proxy:x:13:13:proxy:/bin:/usr/sbin/nologin
+www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin
+backup:x:34:34:backup:/var/backups:/usr/sbin/nologin
+list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin
+irc:x:39:39:ircd:/run/ircd:/usr/sbin/nologin
+_apt:x:42:65534::/nonexistent:/usr/sbin/nologin
+nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+drwx------ 1 root root 4096 Jul  2 02:20 /root
+drwxr-x--- 2 ubuntu ubuntu 4096 Jun 10 02:16 /home/ubuntu
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-093</id>
+			</items>
+			<output>
+				<![CDATA[
+$ nice -n 5 find $HOMEDIR -perm -2 -type f -exec ls -alL {} \; 2>/dev/null
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-094</id>
+			</items>
+			<output>
+				<![CDATA[
+cat: '/var/spool/cron/*': No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-095</id>
+			</items>
+			<output>
+				<![CDATA[
+$ nice -n 5 find $HOMEDIR -type f -a -nouser -exec ls -alLd {} \;
+$ nice -n 5 find $HOMEDIR -type f -a -nogroup -exec ls -alLd {} \;
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-096</id>
+			</items>
+			<output>
+				<![CDATA[
+$ ls -aldL /home/ubuntu/.bash_logout
+-rw-r--r-- 1 ubuntu ubuntu 220 Mar 31  2024 /home/ubuntu/.bash_logout
+------------
+$ ls -aldL /home/ubuntu/.bashrc
+-rw-r--r-- 1 ubuntu ubuntu 3771 Mar 31  2024 /home/ubuntu/.bashrc
+------------
+$ ls -aldL /home/ubuntu/.profile
+-rw-r--r-- 1 ubuntu ubuntu 807 Mar 31  2024 /home/ubuntu/.profile
+------------
+$ ls -aldL /root/.bashrc
+-rw-r--r-- 1 root root 3106 Apr 22  2024 /root/.bashrc
+------------
+$ ls -aldL /root/.profile
+-rw-r--r-- 1 root root 161 Apr 22  2024 /root/.profile
+------------
+$ ls -aldL /root/.wget-hsts
+-rw-r--r-- 1 root root 165 Jul  2 02:20 /root/.wget-hsts
+------------
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-108</id>
+			</items>
+			<output>
+				<![CDATA[
+$ ls -aldL /var/log/*
+-rw-r--r-- 1 root root   8889 Jul  7 17:52 /var/log/alternatives.log
+drwxr-xr-x 1 root root   4096 Jul  7 17:52 /var/log/apt
+-rw-r--r-- 1 root root  61237 Jun 10 02:09 /var/log/bootstrap.log
+-rw-rw---- 1 root utmp      0 Jun 10 02:09 /var/log/btmp
+-rw-r--r-- 1 root root 294608 Jul  7 17:52 /var/log/dpkg.log
+-rw-r--r-- 1 root root      0 Jun 10 02:09 /var/log/faillog
+-rw-r--r-- 1 root root    605 Jul  2 02:20 /var/log/fontconfig.log
+-rw-rw-r-- 1 root utmp      0 Jun 10 02:09 /var/log/lastlog
+-rw-rw-r-- 1 root utmp      0 Jun 10 02:09 /var/log/wtmp
+------------
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-109</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/pam.d/su
+#
+# The PAM configuration file for the Shadow `su' service
+#
+
+# This allows root to su without passwords (normal operation)
+auth       sufficient pam_rootok.so
+
+# Uncomment this to force users to be a member of group wheel
+# before they can use `su'. You can also add "group=foo"
+# to the end of this line if you want to use a group other
+# than the default "wheel" (but this may have side effect of
+# denying "root" user, unless she's a member of "foo" or explicitly
+# permitted earlier by e.g. "sufficient pam_rootok.so").
+# (Replaces the `SU_WHEEL_ONLY' option from login.defs)
+# auth       required   pam_wheel.so
+
+# Uncomment this if you want wheel members to be able to
+# su without a password.
+# auth       sufficient pam_wheel.so trust
+
+# Uncomment this if you want members of a specific group to not
+# be allowed to use su at all.
+# auth       required   pam_wheel.so deny group=nosu
+
+# Uncomment and edit /etc/security/time.conf if you need to set
+# time restrainst on su usage.
+# (Replaces the `PORTTIME_CHECKS_ENAB' option from login.defs
+# as well as /etc/porttime)
+# account    requisite  pam_time.so
+
+# This module parses environment configuration file(s)
+# and also allows you to use an extended config
+# file /etc/security/pam_env.conf.
+# 
+# parsing /etc/environment needs "readenv=1"
+session       required   pam_env.so readenv=1
+# locale variables are also kept into /etc/default/locale in etch
+# reading this file *in addition to /etc/environment* does not hurt
+session       required   pam_env.so readenv=1 envfile=/etc/default/locale
+
+# Defines the MAIL environment variable
+# However, userdel also needs MAIL_DIR and MAIL_FILE variables
+# in /etc/login.defs to make sure that removing a user 
+# also removes the user's mail spool file.
+# See comments in /etc/login.defs
+#
+# "nopen" stands to avoid reporting new mail when su'ing to another user
+session    optional   pam_mail.so nopen
+
+# Sets up user limits according to /etc/security/limits.conf
+# (Replaces the use of /etc/limits in old login)
+session    required   pam_limits.so
+
+# The standard Unix authentication modules, used with
+# NIS (man nsswitch) as well as normal /etc/passwd and
+# /etc/shadow entries.
+@include common-auth
+@include common-account
+@include common-session
+
+
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/syslog.conf
+cat: /etc/syslog.conf: No such file or directory
+------------
+$ cat /etc/rsyslog.conf
+cat: /etc/rsyslog.conf: No such file or directory
+------------
+$ cat /etc/rsyslog.d/50-default.conf
+cat: /etc/rsyslog.d/50-default.conf: No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-112</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/syslog.conf
+cat: /etc/syslog.conf: No such file or directory
+------------
+$ cat /etc/rsyslog.conf
+cat: /etc/rsyslog.conf: No such file or directory
+------------
+$ cat /etc/rsyslog.d/50-default.conf
+cat: /etc/rsyslog.d/50-default.conf: No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-115</id>
+			</items>
+			<output>
+				<![CDATA[
+$ ls -aldL /var/log/*
+-rw-r--r-- 1 root root   8889 Jul  7 17:52 /var/log/alternatives.log
+drwxr-xr-x 1 root root   4096 Jul  7 17:52 /var/log/apt
+-rw-r--r-- 1 root root  61237 Jun 10 02:09 /var/log/bootstrap.log
+-rw-rw---- 1 root utmp      0 Jun 10 02:09 /var/log/btmp
+-rw-r--r-- 1 root root 294608 Jul  7 17:52 /var/log/dpkg.log
+-rw-r--r-- 1 root root      0 Jun 10 02:09 /var/log/faillog
+-rw-r--r-- 1 root root    605 Jul  2 02:20 /var/log/fontconfig.log
+-rw-rw-r-- 1 root utmp      0 Jun 10 02:09 /var/log/lastlog
+-rw-rw-r-- 1 root utmp      0 Jun 10 02:09 /var/log/wtmp
+------------
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-118</id>
+			</items>
+			<output>
+				<![CDATA[
+uname -a
+Linux eafb9bf42137 6.8.0-117-generic #117-Ubuntu SMP PREEMPT_DYNAMIC Thu May  7 17:26:37 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+------------
+rpm -qa -i
+fsi_unix.sh: 2219: rpm: not found
+JEUS is NOT installed
+ref : id - patch
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-121</id>
+			</items>
+			<output>
+				<![CDATA[
+$ echo $PATH
+/usr/local/tomcat/bin:/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+------------
+ 
+[ Common /etc/profile Setting ]
+ 
+[ Common login Setting ]
+ 
+[ All Users ..*profile Setting ]
+$ cat /home/ubuntu/.profile
+    PATH="$HOME/bin:$PATH"
+    PATH="$HOME/.local/bin:$PATH"
+ 
+[ Common .profile Setting ]
+ 
+[ Common .login Setting ]
+ 
+[ All Users .login Setting ]
+ 
+[ Common shrc Setting ]
+ 
+[ All Users shrc Setting ]
+ 
+[ Current User Setting ]
+ 
+[ Current User Environment Variables ]
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-122</id>
+			</items>
+			<output>
+				<![CDATA[
+$ umask
+0022
+------------
+ 
+[ Common /etc/profile Setting ]
+ 
+[ Common login Setting ]
+ 
+[ All Users ..*profile Setting ]
+ 
+[ Common .profile Setting ]
+ 
+[ Common .login Setting ]
+ 
+[ All Users .login Setting ]
+ 
+[ Common shrc Setting ]
+ 
+[ All Users shrc Setting ]
+ 
+[ Current User Setting ]
+-e root           1       0  6 05:44 ?        00:00:01 /opt/java/openjdk/bin/java -Djava.util.logging.config.file=/usr/local/tomcat/conf/logging.properties -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager -Djdk.tls.ephemeralDHKeySize=2048 -Djava.protocol.handler.pkgs=org.apache.catalina.webresources -Dsun.io.useCanonCaches=false -Dorg.apache.catalina.security.SecurityListener.UMASK=0027 -Dignore.endorsed.dirs= -classpath /usr/local/tomcat/bin/bootstrap.jar:/usr/local/tomcat/bin/tomcat-juli.jar -Dcatalina.base=/usr/local/tomcat -Dcatalina.home=/usr/local/tomcat -Djava.io.tmpdir=/usr/local/tomcat/temp org.apache.catalina.startup.Bootstrap start
+-e root           1  6.0  3.3 3408136 98420 ?       Ssl  05:44   0:01 /opt/java/openjdk/bin/java -Djava.util.logging.config.file=/usr/local/tomcat/conf/logging.properties -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager -Djdk.tls.ephemeralDHKeySize=2048 -Djava.protocol.handler.pkgs=org.apache.catalina.webresources -Dsun.io.useCanonCaches=false -Dorg.apache.catalina.security.SecurityListener.UMASK=0027 -Dignore.endorsed.dirs= -classpath /usr/local/tomcat/bin/bootstrap.jar:/usr/local/tomcat/bin/tomcat-juli.jar -Dcatalina.base=/usr/local/tomcat -Dcatalina.home=/usr/local/tomcat -Djava.io.tmpdir=/usr/local/tomcat/temp org.apache.catalina.startup.Bootstrap start
+ 
+[ Current User Environment Variables ]
+------------
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/login.defs | egrep -i "umask"
+#	UMASK		Default "umask" value.
+# UMASK is the default umask value for pam_umask and is used by
+# 022 is the "historical" value in Debian for UMASK
+# If USERGROUPS_ENAB is set to "yes", that will modify this UMASK default value
+UMASK		022
+# If HOME_MODE is not set, the value of UMASK is used to create the mode.
+# Enable setting of the umask group bits to be the same as owner bits
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-127</id>
+			</items>
+			<output>
+				<![CDATA[
+$ grep auth /etc/pam.d/system-auth
+grep: /etc/pam.d/system-auth: No such file or directory
+------------
+$ grep auth /etc/pam.d/password-auth
+grep: /etc/pam.d/password-auth: No such file or directory
+------------
+$ grep account /etc/pam.d/system-auth
+grep: /etc/pam.d/system-auth: No such file or directory
+------------
+$ grep account /etc/pam.d/password-auth
+grep: /etc/pam.d/password-auth: No such file or directory
+------------
+$ grep auth /etc/pam.d/common-auth
+# /etc/pam.d/common-auth - authentication settings common to all services
+# and should contain a list of the authentication modules that define
+# the central authentication scheme for use on the system
+# traditional Unix authentication mechanisms.
+# As of pam 1.0.1-6, this file is managed by pam-auth-update by default.
+# pam-auth-update to manage selection of other modules.  See
+# pam-auth-update(8) for details.
+auth	[success=1 default=ignore]	pam_unix.so nullok
+auth	requisite			pam_deny.so
+auth	required			pam_permit.so
+# end of pam-auth-update config
+------------
+$ grep account /etc/pam.d/common-auth
+------------
+$ grep minlen /etc/pam.d/system-auth
+grep: /etc/pam.d/system-auth: No such file or directory
+------------
+$ grep credit /etc/pam.d/system-auth
+grep: /etc/pam.d/system-auth: No such file or directory
+------------
+$ grep retry /etc/pam.d/system-auth
+grep: /etc/pam.d/system-auth: No such file or directory
+$ grep deny /etc/security/faillock.conf
+# deny = 3
+# even_deny_root
+# This option implies the `even_deny_root` option.
+# the root account (the options `even_deny_root>` and
+$ grep unlock_time /etc/security/faillock.conf
+# unlock_time = 600
+# the value is the same as of the `unlock_time` option.
+# root_unlock_time = 900
+# `root_unlock_time` will apply to them.
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-131</id>
+			</items>
+			<output>
+				<![CDATA[
+$ ls -alL /usr/bin/su
+-rwsr-xr-x 1 root root 67744 Mar  6 16:00 /usr/bin/su
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ grep wheel /etc/pam.d/su
+# Uncomment this to force users to be a member of group wheel
+# than the default "wheel" (but this may have side effect of
+# auth       required   pam_wheel.so
+# Uncomment this if you want wheel members to be able to
+# auth       sufficient pam_wheel.so trust
+# auth       required   pam_wheel.so deny group=nosu
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/group
+root:x:0:
+daemon:x:1:
+bin:x:2:
+sys:x:3:
+adm:x:4:ubuntu
+tty:x:5:
+disk:x:6:
+lp:x:7:
+mail:x:8:
+news:x:9:
+uucp:x:10:
+man:x:12:
+proxy:x:13:
+kmem:x:15:
+dialout:x:20:ubuntu
+fax:x:21:
+voice:x:22:
+cdrom:x:24:ubuntu
+floppy:x:25:ubuntu
+tape:x:26:
+sudo:x:27:ubuntu
+audio:x:29:ubuntu
+dip:x:30:ubuntu
+www-data:x:33:
+backup:x:34:
+operator:x:37:
+list:x:38:
+irc:x:39:
+src:x:40:
+shadow:x:42:
+utmp:x:43:
+video:x:44:ubuntu
+sasl:x:45:
+plugdev:x:46:ubuntu
+staff:x:50:
+games:x:60:
+users:x:100:
+nogroup:x:65534:
+ubuntu:x:1000:
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-133</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/cron.d/cron.allow
+cat: /etc/cron.d/cron.allow: No such file or directory
+------------
+$ cat /etc/cron.d/cron.deny
+cat: /etc/cron.d/cron.deny: No such file or directory
+------------
+$ cat /etc/cron.allow
+cat: /etc/cron.allow: No such file or directory
+------------
+$ cat /etc/cron.deny
+cat: /etc/cron.deny: No such file or directory
+------------
+$ ls -alL /var/spool/cron
+------------
+ls: cannot access '/var/spool/cron': No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-142</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/passwd
+root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+bin:x:2:2:bin:/bin:/usr/sbin/nologin
+sys:x:3:3:sys:/dev:/usr/sbin/nologin
+sync:x:4:65534:sync:/bin:/bin/sync
+games:x:5:60:games:/usr/games:/usr/sbin/nologin
+man:x:6:12:man:/var/cache/man:/usr/sbin/nologin
+lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
+mail:x:8:8:mail:/var/mail:/usr/sbin/nologin
+news:x:9:9:news:/var/spool/news:/usr/sbin/nologin
+uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin
+proxy:x:13:13:proxy:/bin:/usr/sbin/nologin
+www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin
+backup:x:34:34:backup:/var/backups:/usr/sbin/nologin
+list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin
+irc:x:39:39:ircd:/run/ircd:/usr/sbin/nologin
+_apt:x:42:65534::/nonexistent:/usr/sbin/nologin
+nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+ubuntu:x:1000:1000:Ubuntu:/home/ubuntu:/bin/bash
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-144</id>
+			</items>
+			<output>
+				<![CDATA[
+$ nice -n 5 find /dev -type f -exec ls -l {} \; 2>/dev/null
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-147</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ snmp ][S]
+[ snmp ][E]
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-158</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ telnet ][S]
+[ telnet ][E]
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-161</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ ftp ][S]
+[ ftp ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ ls -alL /etc/ftpusers
+ls: cannot access '/etc/ftpusers': No such file or directory
+------------
+$ ls -alL /etc/vsftpd/ftpusers
+ls: cannot access '/etc/vsftpd/ftpusers': No such file or directory
+------------
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-163</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/motd
+cat: /etc/motd: No such file or directory
+------------
+$ cat /etc/issue
+Ubuntu 24.04.4 LTS \n \l
+
+------------
+$ cat /etc/issue.net
+Ubuntu 24.04.4 LTS
+------------
+$ cat /etc/ssh/sshd_config
+cat: /etc/ssh/sshd_config: No such file or directory
+-e [ telnet ][S]
+[ telnet ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-e [ ssh|ssh-server ][S]
+[ ssh|ssh-server ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-164</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/passwd
+root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+bin:x:2:2:bin:/bin:/usr/sbin/nologin
+sys:x:3:3:sys:/dev:/usr/sbin/nologin
+sync:x:4:65534:sync:/bin:/bin/sync
+games:x:5:60:games:/usr/games:/usr/sbin/nologin
+man:x:6:12:man:/var/cache/man:/usr/sbin/nologin
+lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
+mail:x:8:8:mail:/var/mail:/usr/sbin/nologin
+news:x:9:9:news:/var/spool/news:/usr/sbin/nologin
+uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin
+proxy:x:13:13:proxy:/bin:/usr/sbin/nologin
+www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin
+backup:x:34:34:backup:/var/backups:/usr/sbin/nologin
+list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin
+irc:x:39:39:ircd:/run/ircd:/usr/sbin/nologin
+_apt:x:42:65534::/nonexistent:/usr/sbin/nologin
+nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+ubuntu:x:1000:1000:Ubuntu:/home/ubuntu:/bin/bash
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/group
+root:x:0:
+daemon:x:1:
+bin:x:2:
+sys:x:3:
+adm:x:4:ubuntu
+tty:x:5:
+disk:x:6:
+lp:x:7:
+mail:x:8:
+news:x:9:
+uucp:x:10:
+man:x:12:
+proxy:x:13:
+kmem:x:15:
+dialout:x:20:ubuntu
+fax:x:21:
+voice:x:22:
+cdrom:x:24:ubuntu
+floppy:x:25:ubuntu
+tape:x:26:
+sudo:x:27:ubuntu
+audio:x:29:ubuntu
+dip:x:30:ubuntu
+www-data:x:33:
+backup:x:34:
+operator:x:37:
+list:x:38:
+irc:x:39:
+src:x:40:
+shadow:x:42:
+utmp:x:43:
+video:x:44:ubuntu
+sasl:x:45:
+plugdev:x:46:ubuntu
+staff:x:50:
+games:x:60:
+users:x:100:
+nogroup:x:65534:
+ubuntu:x:1000:
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-165</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/passwd
+root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+bin:x:2:2:bin:/bin:/usr/sbin/nologin
+sys:x:3:3:sys:/dev:/usr/sbin/nologin
+sync:x:4:65534:sync:/bin:/bin/sync
+games:x:5:60:games:/usr/games:/usr/sbin/nologin
+man:x:6:12:man:/var/cache/man:/usr/sbin/nologin
+lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
+mail:x:8:8:mail:/var/mail:/usr/sbin/nologin
+news:x:9:9:news:/var/spool/news:/usr/sbin/nologin
+uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin
+proxy:x:13:13:proxy:/bin:/usr/sbin/nologin
+www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin
+backup:x:34:34:backup:/var/backups:/usr/sbin/nologin
+list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin
+irc:x:39:39:ircd:/run/ircd:/usr/sbin/nologin
+_apt:x:42:65534::/nonexistent:/usr/sbin/nologin
+nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+ubuntu:x:1000:1000:Ubuntu:/home/ubuntu:/bin/bash
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-166</id>
+			</items>
+			<output>
+				<![CDATA[
+$ ls -alL /home/ubuntu
+total 20
+drwxr-x--- 2 ubuntu ubuntu 4096 Jun 10 02:16 .
+drwxr-xr-x 3 root   root   4096 Jun 10 02:16 ..
+-rw-r--r-- 1 ubuntu ubuntu  220 Mar 31  2024 .bash_logout
+-rw-r--r-- 1 ubuntu ubuntu 3771 Mar 31  2024 .bashrc
+-rw-r--r-- 1 ubuntu ubuntu  807 Mar 31  2024 .profile
+------------
+$ ls -alL /root
+total 20
+drwx------ 1 root root 4096 Jul  2 02:20 .
+drwxr-xr-x 1 root root 4096 Jul 17 05:44 ..
+-rw-r--r-- 1 root root 3106 Apr 22  2024 .bashrc
+-rw-r--r-- 1 root root  161 Apr 22  2024 .profile
+-rw-r--r-- 1 root root  165 Jul  2 02:20 .wget-hsts
+------------
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-170</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ smtp|sendmail|postfix|exim ][S]
+[ smtp|sendmail|postfix|exim ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/mail/sendmail.cf | grep SmtpGreetingMessage | grep -v grep
+cat: /etc/mail/sendmail.cf: No such file or directory
+------------
+$ cat /etc/sendmail.cf | grep SmtpGreetingMessage | grep -v grep
+cat: /etc/sendmail.cf: No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/postfix/main.cf | grep smtpd_banner | grep -v grep
+cat: /etc/postfix/main.cf: No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/exim.conf | grep smtp_banner | grep -v grep
+cat: /etc/exim.conf: No such file or directory
+------------
+$ cat /etc/exim/exim.conf | grep smtp_banner | grep -v grep
+cat: /etc/exim/exim.conf: No such file or directory
+------------
+$ cat /etc/exim/exim4.conf | grep smtp_banner | grep -v grep
+cat: /etc/exim/exim4.conf: No such file or directory
+------------
+$ cat /etc/exim4/conf.d/*.conf | grep smtp_banner | grep -v grep
+cat: '/etc/exim4/conf.d/*.conf': No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-171</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ ftp ][S]
+[ ftp ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ dspcat /usr/lib/nls/msg/C/ftpd.cat >/tmp/ftpd.msg
+fsi_unix.sh: 2578: dspcat: not found
+------------
+$ cat /tmp/ftpd.msg
+------------
+$ cat /etc/ftpd/ftpaccess
+cat: /etc/ftpd/ftpaccess: No such file or directory
+------------
+$ cat /etc/proftpd.conf
+cat: /etc/proftpd.conf: No such file or directory
+------------
+$ cat /usr/local/etc/proftpd.conf
+cat: /usr/local/etc/proftpd.conf: No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-173</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ dns ][S]
+[ dns ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ cat /etc/named.conf
+cat: /etc/named.conf: No such file or directory
+------------
+$ cat /etc/bind/named.conf
+cat: /etc/bind/named.conf: No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-174</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ dns ][S]
+[ dns ][E]
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>SRV-175</id>
+			</items>
+			<output>
+				<![CDATA[
+$ ntpq -pn
+fsi_unix.sh: 2619: ntpq: not found
+------------
+date
+Fri Jul 17 05:44:59 AM UTC 2026
+------------
+chronyc tracking
+fsi_unix.sh: 2625: chronyc: not found
+------------
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>WST-CHK</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ http|https|http-alt|www|www-http|apache|apache2 ][S]
+[ http|https|http-alt|www|www-http|apache|apache2 ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-e [ wsm|webtob|htl ][S]
+[ wsm|webtob|htl ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-e [ tomcat ][S]
+$ ps -ef | egrep catalina\.startup\.Bootstrap
+-e root           1       0  6 05:44 ?        00:00:01 /opt/java/openjdk/bin/java -Djava.util.logging.config.file=/usr/local/tomcat/conf/logging.properties -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager -Djdk.tls.ephemeralDHKeySize=2048 -Djava.protocol.handler.pkgs=org.apache.catalina.webresources -Dsun.io.useCanonCaches=false -Dorg.apache.catalina.security.SecurityListener.UMASK=0027 -Dignore.endorsed.dirs= -classpath /usr/local/tomcat/bin/bootstrap.jar:/usr/local/tomcat/bin/tomcat-juli.jar -Dcatalina.base=/usr/local/tomcat -Dcatalina.home=/usr/local/tomcat -Djava.io.tmpdir=/usr/local/tomcat/temp org.apache.catalina.startup.Bootstrap start
+$ ps auxwww | egrep catalina\.startup\.Bootstrap
+-e root           1  6.0  3.3 3408136 98420 ?       Ssl  05:44   0:01 /opt/java/openjdk/bin/java -Djava.util.logging.config.file=/usr/local/tomcat/conf/logging.properties -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager -Djdk.tls.ephemeralDHKeySize=2048 -Djava.protocol.handler.pkgs=org.apache.catalina.webresources -Dsun.io.useCanonCaches=false -Dorg.apache.catalina.security.SecurityListener.UMASK=0027 -Dignore.endorsed.dirs= -classpath /usr/local/tomcat/bin/bootstrap.jar:/usr/local/tomcat/bin/tomcat-juli.jar -Dcatalina.base=/usr/local/tomcat -Dcatalina.home=/usr/local/tomcat -Djava.io.tmpdir=/usr/local/tomcat/temp org.apache.catalina.startup.Bootstrap start
+[ tomcat ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+JEUS is NOT installed
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>WST-033</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ http|https|http-alt|www|www-http|apache|apache2 ][S]
+[ http|https|http-alt|www|www-http|apache|apache2 ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ rpm -qa httpd
+fsi_unix.sh: 2670: rpm: not found
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ dpkg -l | grep apache
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ apache2 -v
+fsi_unix.sh: 2678: apache2: not found
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>WST-034</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ http|https|http-alt|www|www-http|apache|apache2 ][S]
+[ http|https|http-alt|www|www-http|apache|apache2 ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-e [ wsm|webtob|htl ][S]
+[ wsm|webtob|htl ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ ls -alL /var/www/html/htdocs/manual
+ls: cannot access '/var/www/html/htdocs/manual': No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ ls -alL /var/www/html/manual
+ls: cannot access '/var/www/html/manual': No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ ls -alL /var/www/cgi-bin
+ls: cannot access '/var/www/cgi-bin': No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ ls -alL /data/wbqas/webtob/cgi-bin
+ls: cannot access '/data/wbqas/webtob/cgi-bin': No such file or directory
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ ls -alL /data/wbqas/webtob/docs
+ls: cannot access '/data/wbqas/webtob/docs': No such file or directory
+JEUS is NOT installed
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>WST-035</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ http|https|http-alt|www|www-http|apache|apache2 ][S]
+[ http|https|http-alt|www|www-http|apache|apache2 ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-e [ wsm|webtob|htl ][S]
+[ wsm|webtob|htl ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+JEUS is NOT installed
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>WST-038</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ http|https|http-alt|www|www-http|apache|apache2 ][S]
+[ http|https|http-alt|www|www-http|apache|apache2 ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+$ ls -alL /var/www/html/
+ls: cannot access '/var/www/html/': No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>WST-044</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ tomcat ][S]
+$ ps -ef | egrep catalina\.startup\.Bootstrap
+-e root           1       0  6 05:44 ?        00:00:01 /opt/java/openjdk/bin/java -Djava.util.logging.config.file=/usr/local/tomcat/conf/logging.properties -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager -Djdk.tls.ephemeralDHKeySize=2048 -Djava.protocol.handler.pkgs=org.apache.catalina.webresources -Dsun.io.useCanonCaches=false -Dorg.apache.catalina.security.SecurityListener.UMASK=0027 -Dignore.endorsed.dirs= -classpath /usr/local/tomcat/bin/bootstrap.jar:/usr/local/tomcat/bin/tomcat-juli.jar -Dcatalina.base=/usr/local/tomcat -Dcatalina.home=/usr/local/tomcat -Djava.io.tmpdir=/usr/local/tomcat/temp org.apache.catalina.startup.Bootstrap start
+$ ps auxwww | egrep catalina\.startup\.Bootstrap
+-e root           1  6.0  3.3 3408136 98420 ?       Ssl  05:44   0:01 /opt/java/openjdk/bin/java -Djava.util.logging.config.file=/usr/local/tomcat/conf/logging.properties -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager -Djdk.tls.ephemeralDHKeySize=2048 -Djava.protocol.handler.pkgs=org.apache.catalina.webresources -Dsun.io.useCanonCaches=false -Dorg.apache.catalina.security.SecurityListener.UMASK=0027 -Dignore.endorsed.dirs= -classpath /usr/local/tomcat/bin/bootstrap.jar:/usr/local/tomcat/bin/tomcat-juli.jar -Dcatalina.base=/usr/local/tomcat -Dcatalina.home=/usr/local/tomcat -Djava.io.tmpdir=/usr/local/tomcat/temp org.apache.catalina.startup.Bootstrap start
+[ tomcat ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ls -alL /usr/local/tomcat/conf
+total 244
+drwxr-xr-x 1 root root   4096 Jul 17 05:44 .
+drwxr-xr-x 1 root root   4096 Jul  7 17:52 ..
+drwxr-x--- 3 root root   4096 Jul 17 05:44 Catalina
+-rw-r--r-- 1 root root  12953 Jul  3 07:49 catalina.policy
+-rw-r--r-- 1 root root   7654 Jul  3 07:49 catalina.properties
+-rw-r--r-- 1 root root   1400 Jul  3 07:49 context.xml
+-rw-r--r-- 1 root root   1149 Jul  3 07:49 jaspic-providers.xml
+-rw-r--r-- 1 root root   2313 Jul  3 07:49 jaspic-providers.xsd
+-rw-r--r-- 1 root root   4003 Jul  3 07:49 logging.properties
+-rw-r--r-- 1 root root   8022 Jul  3 07:49 server.xml
+-rw-r--r-- 1 root root   2756 Jul  3 07:49 tomcat-users.xml
+-rw-r--r-- 1 root root   2558 Jul  3 07:49 tomcat-users.xsd
+-rw-r--r-- 1 root root 174047 Jul  3 07:49 web.xml
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+cat /usr/local/tomcat/conf/tomcat-users.xml
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;!--
+  Licensed to the Apache Software Foundation (ASF) under one or more
+  contributor license agreements.  See the NOTICE file distributed with
+  this work for additional information regarding copyright ownership.
+  The ASF licenses this file to You under the Apache License, Version 2.0
+  (the "License"); you may not use this file except in compliance with
+  the License.  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+--&gt;
+&lt;tomcat-users xmlns="http://tomcat.apache.org/xml"
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:schemaLocation="http://tomcat.apache.org/xml tomcat-users.xsd"
+              version="1.0"&gt;
+&lt;!--
+  By default, no user is included in the "manager-gui" role required
+  to operate the "/manager/html" web application.  If you wish to use this app,
+  you must define such a user - the username and password are arbitrary.
+
+  Built-in Tomcat manager roles:
+    - manager-gui    - allows access to the HTML GUI and the status pages
+    - manager-script - allows access to the HTTP API and the status pages
+    - manager-jmx    - allows access to the JMX proxy and the status pages
+    - manager-status - allows access to the status pages only
+
+  The users below are wrapped in a comment and are therefore ignored. If you
+  wish to configure one or more of these users for use with the manager web
+  application, do not forget to remove the &lt;!.. ..&gt; that surrounds them. You
+  will also need to set the passwords to something appropriate.
+--&gt;
+&lt;!--
+  &lt;user username="admin" password="&lt;must-be-changed&gt;" roles="manager-gui"/&gt;
+  &lt;user username="robot" password="&lt;must-be-changed&gt;" roles="manager-script"/&gt;
+--&gt;
+&lt;!--
+  The sample user and role entries below are intended for use with the
+  examples web application. They are wrapped in a comment and thus are ignored
+  when reading this file. If you wish to configure these users for use with the
+  examples web application, do not forget to remove the &lt;!.. ..&gt; that surrounds
+  them. You will also need to set the passwords to something appropriate.
+--&gt;
+&lt;!--
+  &lt;role rolename="tomcat"/&gt;
+  &lt;role rolename="role1"/&gt;
+  &lt;user username="tomcat" password="&lt;must-be-changed&gt;" roles="tomcat"/&gt;
+  &lt;user username="both" password="&lt;must-be-changed&gt;" roles="tomcat,role1"/&gt;
+  &lt;user username="role1" password="&lt;must-be-changed&gt;" roles="role1"/&gt;
+--&gt;
+&lt;/tomcat-users&gt;
+JEUS is NOT installed
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>WST-102</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ http|https|http-alt|www|www-http|apache|apache2 ][S]
+[ http|https|http-alt|www|www-http|apache|apache2 ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-e [ wsm|webtob|htl ][S]
+[ wsm|webtob|htl ][E]
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ls -alL /usr/local/tomcat/conf
+total 244
+drwxr-xr-x 1 root root   4096 Jul 17 05:44 .
+drwxr-xr-x 1 root root   4096 Jul  7 17:52 ..
+drwxr-x--- 3 root root   4096 Jul 17 05:44 Catalina
+-rw-r--r-- 1 root root  12953 Jul  3 07:49 catalina.policy
+-rw-r--r-- 1 root root   7654 Jul  3 07:49 catalina.properties
+-rw-r--r-- 1 root root   1400 Jul  3 07:49 context.xml
+-rw-r--r-- 1 root root   1149 Jul  3 07:49 jaspic-providers.xml
+-rw-r--r-- 1 root root   2313 Jul  3 07:49 jaspic-providers.xsd
+-rw-r--r-- 1 root root   4003 Jul  3 07:49 logging.properties
+-rw-r--r-- 1 root root   8022 Jul  3 07:49 server.xml
+-rw-r--r-- 1 root root   2756 Jul  3 07:49 tomcat-users.xml
+-rw-r--r-- 1 root root   2558 Jul  3 07:49 tomcat-users.xsd
+-rw-r--r-- 1 root root 174047 Jul  3 07:49 web.xml
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+cat /usr/local/tomcat/conf/server.xml
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;!--
+  Licensed to the Apache Software Foundation (ASF) under one or more
+  contributor license agreements.  See the NOTICE file distributed with
+  this work for additional information regarding copyright ownership.
+  The ASF licenses this file to You under the Apache License, Version 2.0
+  (the "License"); you may not use this file except in compliance with
+  the License.  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+--&gt;
+&lt;!-- Note:  A "Server" is not itself a "Container", so you may not
+     define subcomponents such as "Valves" at this level.
+     Documentation at /docs/config/server.html
+ --&gt;
+&lt;Server port="8005" shutdown="SHUTDOWN"&gt;
+  &lt;Listener className="org.apache.catalina.startup.VersionLoggerListener" /&gt;
+  &lt;!-- Security listener. Documentation at /docs/config/listeners.html
+  &lt;Listener className="org.apache.catalina.security.SecurityListener" /&gt;
+  --&gt;
+  &lt;!-- APR connector and OpenSSL support using Tomcat Native --&gt;
+  &lt;Listener className="org.apache.catalina.core.AprLifecycleListener" /&gt;
+  &lt;!-- OpenSSL support using FFM API from Java 22 --&gt;
+  &lt;!-- &lt;Listener className="org.apache.catalina.core.OpenSSLLifecycleListener" /&gt; --&gt;
+  &lt;!-- Prevent memory leaks due to use of particular java/javax APIs--&gt;
+  &lt;Listener className="org.apache.catalina.core.JreMemoryLeakPreventionListener" /&gt;
+  &lt;Listener className="org.apache.catalina.mbeans.GlobalResourcesLifecycleListener" /&gt;
+  &lt;Listener className="org.apache.catalina.core.ThreadLocalLeakPreventionListener" /&gt;
+
+  &lt;!-- Global JNDI resources
+       Documentation at /docs/jndi-resources-howto.html
+  --&gt;
+  &lt;GlobalNamingResources&gt;
+    &lt;!-- Editable user database that can also be used by
+         UserDatabaseRealm to authenticate users
+    --&gt;
+    &lt;Resource name="UserDatabase" auth="Container"
+              type="org.apache.catalina.UserDatabase"
+              description="User database that can be updated and saved"
+              factory="org.apache.catalina.users.MemoryUserDatabaseFactory"
+              pathname="conf/tomcat-users.xml" /&gt;
+  &lt;/GlobalNamingResources&gt;
+
+  &lt;!-- A "Service" is a collection of one or more "Connectors" that share
+       a single "Container" Note:  A "Service" is not itself a "Container",
+       so you may not define subcomponents such as "Valves" at this level.
+       Documentation at /docs/config/service.html
+   --&gt;
+  &lt;Service name="Catalina"&gt;
+
+    &lt;!--The connectors can use a shared executor, you can define one or more named thread pools--&gt;
+    &lt;!--
+    &lt;Executor name="tomcatThreadPool" namePrefix="catalina-exec-"
+        maxThreads="150" minSpareThreads="4"/&gt;
+    --&gt;
+
+
+    &lt;!-- A "Connector" represents an endpoint by which requests are received
+         and responses are returned. Documentation at :
+         Java HTTP Connector: /docs/config/http.html
+         Java AJP  Connector: /docs/config/ajp.html
+         APR (HTTP/AJP) Connector: /docs/apr.html
+         Define a non-SSL/TLS HTTP/1.1 Connector on port 8080
+    --&gt;
+    &lt;Connector port="8080" protocol="HTTP/1.1"
+               connectionTimeout="20000"
+               redirectPort="8443"
+               maxParameterCount="1000"
+               /&gt;
+    &lt;!-- A "Connector" using the shared thread pool--&gt;
+    &lt;!--
+    &lt;Connector executor="tomcatThreadPool"
+               port="8080" protocol="HTTP/1.1"
+               connectionTimeout="20000"
+               redirectPort="8443"
+               maxParameterCount="1000"
+               /&gt;
+    --&gt;
+    &lt;!-- Define an SSL/TLS HTTP/1.1 Connector on port 8443
+         This connector uses the NIO implementation. The default
+         SSLImplementation will depend on the presence of the APR/native
+         library and the useOpenSSL attribute of the AprLifecycleListener.
+         Either JSSE or OpenSSL style configuration may be used regardless of
+         the SSLImplementation selected. JSSE style configuration is used below.
+    --&gt;
+    &lt;!--
+    &lt;Connector port="8443" protocol="org.apache.coyote.http11.Http11NioProtocol"
+               maxThreads="150" SSLEnabled="true"
+               maxParameterCount="1000"
+               &gt;
+        &lt;SSLHostConfig&gt;
+            &lt;Certificate certificateKeystoreFile="conf/localhost-rsa.jks"
+                         certificateKeystorePassword="changeit" type="RSA" /&gt;
+        &lt;/SSLHostConfig&gt;
+    &lt;/Connector&gt;
+    --&gt;
+    &lt;!-- Define an SSL/TLS HTTP/1.1 Connector on port 8443 with HTTP/2
+         This connector uses the APR/native implementation which always uses
+         OpenSSL for TLS.
+         Either JSSE or OpenSSL style configuration may be used. OpenSSL style
+         configuration is used below.
+    --&gt;
+    &lt;!--
+    &lt;Connector port="8443" protocol="org.apache.coyote.http11.Http11AprProtocol"
+               maxThreads="150" SSLEnabled="true"
+               maxParameterCount="1000"
+               &gt;
+        &lt;UpgradeProtocol className="org.apache.coyote.http2.Http2Protocol" /&gt;
+        &lt;SSLHostConfig&gt;
+            &lt;Certificate certificateKeyFile="conf/localhost-rsa-key.pem"
+                         certificateFile="conf/localhost-rsa-cert.pem"
+                         certificateChainFile="conf/localhost-rsa-chain.pem"
+                         type="RSA" /&gt;
+        &lt;/SSLHostConfig&gt;
+    &lt;/Connector&gt;
+    --&gt;
+
+    &lt;!-- Define an AJP 1.3 Connector on port 8009 --&gt;
+    &lt;!--
+    &lt;Connector protocol="AJP/1.3"
+               address="::1"
+               port="8009"
+               redirectPort="8443"
+               maxParameterCount="1000"
+               /&gt;
+    --&gt;
+
+    &lt;!-- An Engine represents the entry point (within Catalina) that processes
+         every request.  The Engine implementation for Tomcat stand alone
+         analyzes the HTTP headers included with the request, and passes them
+         on to the appropriate Host (virtual host).
+         Documentation at /docs/config/engine.html --&gt;
+
+    &lt;!-- You should set jvmRoute to support load-balancing via AJP ie :
+    &lt;Engine name="Catalina" defaultHost="localhost" jvmRoute="jvm1"&gt;
+    --&gt;
+    &lt;Engine name="Catalina" defaultHost="localhost"&gt;
+
+      &lt;!--For clustering, please take a look at documentation at:
+          /docs/cluster-howto.html  (simple how to)
+          /docs/config/cluster.html (reference documentation) --&gt;
+      &lt;!--
+      &lt;Cluster className="org.apache.catalina.ha.tcp.SimpleTcpCluster"/&gt;
+      --&gt;
+
+      &lt;!-- Use the LockOutRealm to prevent attempts to guess user passwords
+           via a brute-force attack --&gt;
+      &lt;Realm className="org.apache.catalina.realm.LockOutRealm"&gt;
+        &lt;!-- This Realm uses the UserDatabase configured in the global JNDI
+             resources under the key "UserDatabase".  Any edits
+             that are performed against this UserDatabase are immediately
+             available for use by the Realm.  --&gt;
+        &lt;Realm className="org.apache.catalina.realm.UserDatabaseRealm"
+               resourceName="UserDatabase"/&gt;
+      &lt;/Realm&gt;
+
+      &lt;Host name="localhost"  appBase="webapps"
+            unpackWARs="true" autoDeploy="true"&gt;
+
+        &lt;!-- SingleSignOn valve, share authentication between web applications
+             Documentation at: /docs/config/valve.html --&gt;
+        &lt;!--
+        &lt;Valve className="org.apache.catalina.authenticator.SingleSignOn" /&gt;
+        --&gt;
+
+        &lt;!-- Access log processes all example.
+             Documentation at: /docs/config/valve.html
+             Note: The pattern used is equivalent to using pattern="common" --&gt;
+        &lt;Valve className="org.apache.catalina.valves.AccessLogValve" directory="logs"
+               prefix="localhost_access_log" suffix=".txt"
+               pattern="%h %l %u %t &amp;quot;%r&amp;quot; %s %b" /&gt;
+
+      &lt;/Host&gt;
+    &lt;/Engine&gt;
+  &lt;/Service&gt;
+&lt;/Server&gt;
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+java -cp /usr/local/tomcat/lib/catalina.jar org.apache.catalina.util.ServerInfo
+Server version: Apache Tomcat/9.0.120
+Server built:   Jul 3 2026 07:49:53 UTC
+Server number:  9.0.120.0
+OS Name:        Linux
+OS Version:     6.8.0-117-generic
+Architecture:   aarch64
+JVM Version:    25.0.3+9-LTS
+JVM Vendor:     Eclipse Adoptium
+APR loaded:     false
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-e [ tomcat ][S]
+$ ps -ef | egrep catalina\.startup\.Bootstrap
+-e root           1       0  6 05:44 ?        00:00:01 /opt/java/openjdk/bin/java -Djava.util.logging.config.file=/usr/local/tomcat/conf/logging.properties -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager -Djdk.tls.ephemeralDHKeySize=2048 -Djava.protocol.handler.pkgs=org.apache.catalina.webresources -Dsun.io.useCanonCaches=false -Dorg.apache.catalina.security.SecurityListener.UMASK=0027 -Dignore.endorsed.dirs= -classpath /usr/local/tomcat/bin/bootstrap.jar:/usr/local/tomcat/bin/tomcat-juli.jar -Dcatalina.base=/usr/local/tomcat -Dcatalina.home=/usr/local/tomcat -Djava.io.tmpdir=/usr/local/tomcat/temp org.apache.catalina.startup.Bootstrap start
+$ ps auxwww | egrep catalina\.startup\.Bootstrap
+-e root           1  6.0  3.3 3408136 98420 ?       Ssl  05:44   0:01 /opt/java/openjdk/bin/java -Djava.util.logging.config.file=/usr/local/tomcat/conf/logging.properties -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager -Djdk.tls.ephemeralDHKeySize=2048 -Djava.protocol.handler.pkgs=org.apache.catalina.webresources -Dsun.io.useCanonCaches=false -Dorg.apache.catalina.security.SecurityListener.UMASK=0027 -Dignore.endorsed.dirs= -classpath /usr/local/tomcat/bin/bootstrap.jar:/usr/local/tomcat/bin/tomcat-juli.jar -Dcatalina.base=/usr/local/tomcat -Dcatalina.home=/usr/local/tomcat -Djava.io.tmpdir=/usr/local/tomcat/temp org.apache.catalina.startup.Bootstrap start
+[ tomcat ][E]
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>HOMEDIR</id>
+			</items>
+			<output>
+				<![CDATA[
+$ grep sh /etc/passwd
+root:x:0:0:root:/root:/bin/bash
+ubuntu:x:1000:1000:Ubuntu:/home/ubuntu:/bin/bash
+------------
+$ ls -aldL /root
+/home/ubuntu
+drwxr-x--- 2 ubuntu ubuntu 4096 Jun 10 02:16 /home/ubuntu
+drwx------ 1 root   root   4096 Jul  2 02:20 /root
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>CRONTAB</id>
+			</items>
+			<output>
+				<![CDATA[
+nice -n 5 find /etc/ -type f -perm -2 -exec ls -alL {} \;
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>/etc/passwd</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/passwd
+root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+bin:x:2:2:bin:/bin:/usr/sbin/nologin
+sys:x:3:3:sys:/dev:/usr/sbin/nologin
+sync:x:4:65534:sync:/bin:/bin/sync
+games:x:5:60:games:/usr/games:/usr/sbin/nologin
+man:x:6:12:man:/var/cache/man:/usr/sbin/nologin
+lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
+mail:x:8:8:mail:/var/mail:/usr/sbin/nologin
+news:x:9:9:news:/var/spool/news:/usr/sbin/nologin
+uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin
+proxy:x:13:13:proxy:/bin:/usr/sbin/nologin
+www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin
+backup:x:34:34:backup:/var/backups:/usr/sbin/nologin
+list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin
+irc:x:39:39:ircd:/run/ircd:/usr/sbin/nologin
+_apt:x:42:65534::/nonexistent:/usr/sbin/nologin
+nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+ubuntu:x:1000:1000:Ubuntu:/home/ubuntu:/bin/bash
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>/etc/shadow</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/shadow
+root:*:20614:0:99999:7:::
+daemon:*:20614:0:99999:7:::
+bin:*:20614:0:99999:7:::
+sys:*:20614:0:99999:7:::
+sync:*:20614:0:99999:7:::
+games:*:20614:0:99999:7:::
+man:*:20614:0:99999:7:::
+lp:*:20614:0:99999:7:::
+mail:*:20614:0:99999:7:::
+news:*:20614:0:99999:7:::
+uucp:*:20614:0:99999:7:::
+proxy:*:20614:0:99999:7:::
+www-data:*:20614:0:99999:7:::
+backup:*:20614:0:99999:7:::
+list:*:20614:0:99999:7:::
+irc:*:20614:0:99999:7:::
+_apt:*:20614:0:99999:7:::
+nobody:*:20614:0:99999:7:::
+ubuntu:!:20614:0:99999:7:::
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>/etc/profile</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/profile
+# /etc/profile: system-wide .profile file for the Bourne shell (sh(1))
+# and Bourne compatible shells (bash(1), ksh(1), ash(1), ...).
+
+if [ "${PS1-}" ]; then
+  if [ "${BASH-}" ] &amp;&amp; [ "$BASH" != "/bin/sh" ]; then
+    # The file bash.bashrc already sets the default PS1.
+    # PS1='\h:\w\$ '
+    if [ -f /etc/bash.bashrc ]; then
+      . /etc/bash.bashrc
+    fi
+  else
+    if [ "$(id -u)" -eq 0 ]; then
+      PS1='# '
+    else
+      PS1='$ '
+    fi
+  fi
+fi
+
+if [ -d /etc/profile.d ]; then
+  for i in /etc/profile.d/*.sh; do
+    if [ -r $i ]; then
+      . $i
+    fi
+  done
+  unset i
+fi
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>/etc/login.defs</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/login.defs
+#
+# /etc/login.defs - Configuration control definitions for the login package.
+#
+# Three items must be defined:  MAIL_DIR, ENV_SUPATH, and ENV_PATH.
+# If unspecified, some arbitrary (and possibly incorrect) value will
+# be assumed.  All other items are optional - if not specified then
+# the described action or option will be inhibited.
+#
+# Comment lines (lines beginning with "#") and blank lines are ignored.
+#
+# Modified for Linux.  --marekm
+
+# REQUIRED for useradd/userdel/usermod
+#   Directory where mailboxes reside, _or_ name of file, relative to the
+#   home directory.  If you _do_ define MAIL_DIR and MAIL_FILE,
+#   MAIL_DIR takes precedence.
+#
+#   Essentially:
+#      - MAIL_DIR defines the location of users mail spool files
+#        (for mbox use) by appending the username to MAIL_DIR as defined
+#        below.
+#      - MAIL_FILE defines the location of the users mail spool files as the
+#        fully-qualified filename obtained by prepending the user home
+#        directory before $MAIL_FILE
+#
+# NOTE: This is no more used for setting up users MAIL environment variable
+#       which is, starting from shadow 4.0.12-1 in Debian, entirely the
+#       job of the pam_mail PAM modules
+#       See default PAM configuration files provided for
+#       login, su, etc.
+#
+# This is a temporary situation: setting these variables will soon
+# move to /etc/default/useradd and the variables will then be
+# no more supported
+MAIL_DIR        /var/mail
+#MAIL_FILE      .mail
+
+#
+# Enable logging and display of /var/log/faillog login failure info.
+# This option conflicts with the pam_tally PAM module.
+#
+FAILLOG_ENAB		yes
+
+#
+# Enable display of unknown usernames when login failures are recorded.
+#
+# WARNING: Unknown usernames may become world readable. 
+# See #290803 and #298773 for details about how this could become a security
+# concern
+LOG_UNKFAIL_ENAB	no
+
+#
+# Enable logging of successful logins
+#
+LOG_OK_LOGINS		no
+
+#
+# Enable "syslog" logging of su activity - in addition to sulog file logging.
+# SYSLOG_SG_ENAB does the same for newgrp and sg.
+#
+SYSLOG_SU_ENAB		yes
+SYSLOG_SG_ENAB		yes
+
+#
+# If defined, all su activity is logged to this file.
+#
+#SULOG_FILE	/var/log/sulog
+
+#
+# If defined, file which maps tty line to TERM environment parameter.
+# Each line of the file is in a format something like "vt100  tty01".
+#
+#TTYTYPE_FILE	/etc/ttytype
+
+#
+# If defined, login failures will be logged here in a utmp format
+# last, when invoked as lastb, will read /var/log/btmp, so...
+#
+FTMP_FILE	/var/log/btmp
+
+#
+# If defined, the command name to display when running "su -".  For
+# example, if this is defined as "su" then a "ps" will display the
+# command is "-su".  If not defined, then "ps" would display the
+# name of the shell actually being run, e.g. something like "-sh".
+#
+SU_NAME		su
+
+#
+# If defined, file which inhibits all the usual chatter during the login
+# sequence.  If a full pathname, then hushed mode will be enabled if the
+# user's name or shell are found in the file.  If not a full pathname, then
+# hushed mode will be enabled if the file exists in the user's home directory.
+#
+HUSHLOGIN_FILE	.hushlogin
+#HUSHLOGIN_FILE	/etc/hushlogins
+
+#
+# *REQUIRED*  The default PATH settings, for superuser and normal users.
+#
+# (they are minimal, add the rest in the shell startup files)
+ENV_SUPATH	PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV_PATH	PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games
+
+#
+# Terminal permissions
+#
+#	TTYGROUP	Login tty will be assigned this group ownership.
+#	TTYPERM		Login tty will be set to this permission.
+#
+# If you have a "write" program which is "setgid" to a special group
+# which owns the terminals, define TTYGROUP to the group number and
+# TTYPERM to 0620.  Otherwise leave TTYGROUP commented out and assign
+# TTYPERM to either 622 or 600.
+#
+# In Debian /usr/bin/bsd-write or similar programs are setgid tty
+# However, the default and recommended value for TTYPERM is still 0600
+# to not allow anyone to write to anyone else console or terminal
+
+# Users can still allow other people to write them by issuing 
+# the "mesg y" command.
+
+TTYGROUP	tty
+TTYPERM		0600
+
+#
+# Login configuration initializations:
+#
+#	ERASECHAR	Terminal ERASE character ('\010' = backspace).
+#	KILLCHAR	Terminal KILL character ('\025' = CTRL/U).
+#	UMASK		Default "umask" value.
+#
+# The ERASECHAR and KILLCHAR are used only on System V machines.
+# 
+# UMASK is the default umask value for pam_umask and is used by
+# useradd and newusers to set the mode of the new home directories.
+# 022 is the "historical" value in Debian for UMASK
+# 027, or even 077, could be considered better for privacy
+# There is no One True Answer here : each sysadmin must make up his/her
+# mind.
+#
+# If USERGROUPS_ENAB is set to "yes", that will modify this UMASK default value
+# for private user groups, i. e. the uid is the same as gid, and username is
+# the same as the primary group name: for these, the user permissions will be
+# used as group permissions, e. g. 022 will become 002.
+#
+# Prefix these values with "0" to get octal, "0x" to get hexadecimal.
+#
+ERASECHAR	0177
+KILLCHAR	025
+UMASK		022
+
+# HOME_MODE is used by useradd(8) and newusers(8) to set the mode for new
+# home directories.
+# If HOME_MODE is not set, the value of UMASK is used to create the mode.
+HOME_MODE	0750
+
+#
+# Password aging controls:
+#
+#	PASS_MAX_DAYS	Maximum number of days a password may be used.
+#	PASS_MIN_DAYS	Minimum number of days allowed between password changes.
+#	PASS_WARN_AGE	Number of days warning given before a password expires.
+#
+PASS_MAX_DAYS	99999
+PASS_MIN_DAYS	0
+PASS_WARN_AGE	7
+
+#
+# Min/max values for automatic uid selection in useradd
+#
+UID_MIN			 1000
+UID_MAX			60000
+# System accounts
+#SYS_UID_MIN		  100
+#SYS_UID_MAX		  999
+# Extra per user uids
+SUB_UID_MIN		   100000
+SUB_UID_MAX		600100000
+SUB_UID_COUNT		    65536
+
+#
+# Min/max values for automatic gid selection in groupadd
+#
+GID_MIN			 1000
+GID_MAX			60000
+# System accounts
+#SYS_GID_MIN		  100
+#SYS_GID_MAX		  999
+# Extra per user group ids
+SUB_GID_MIN		   100000
+SUB_GID_MAX		600100000
+SUB_GID_COUNT		    65536
+
+#
+# Max number of login retries if password is bad. This will most likely be
+# overriden by PAM, since the default pam_unix module has it's own built
+# in of 3 retries. However, this is a safe fallback in case you are using
+# an authentication module that does not enforce PAM_MAXTRIES.
+#
+LOGIN_RETRIES		5
+
+#
+# Max time in seconds for login
+#
+LOGIN_TIMEOUT		60
+
+#
+# Which fields may be changed by regular users using chfn - use
+# any combination of letters "frwh" (full name, room number, work
+# phone, home phone).  If not defined, no changes are allowed.
+# For backward compatibility, "yes" = "rwh" and "no" = "frwh".
+# 
+CHFN_RESTRICT		rwh
+
+#
+# Should login be allowed if we can't cd to the home directory?
+# Default is no.
+#
+DEFAULT_HOME	yes
+
+#
+# If defined, this command is run when removing a user.
+# It should remove any at/cron/print jobs etc. owned by
+# the user to be removed (passed as the first argument).
+#
+#USERDEL_CMD	/usr/sbin/userdel_local
+
+#
+# Enable setting of the umask group bits to be the same as owner bits
+# (examples: 022 -&gt; 002, 077 -&gt; 007) for non-root users, if the uid is
+# the same as gid, and username is the same as the primary group name.
+#
+# If set to yes, userdel will remove the user's group if it contains no
+# more members, and useradd will create by default a group with the name
+# of the user.
+#
+USERGROUPS_ENAB yes
+
+#
+# Instead of the real user shell, the program specified by this parameter
+# will be launched, although its visible name (argv[0]) will be the shell's.
+# The program may do whatever it wants (logging, additional authentification,
+# banner, ...) before running the actual shell.
+#
+# FAKE_SHELL /bin/fakeshell
+
+#
+# If defined, either full pathname of a file containing device names or
+# a ":" delimited list of device names.  Root logins will be allowed only
+# upon these devices.
+#
+# This variable is used by login and su.
+#
+#CONSOLE	/etc/consoles
+#CONSOLE	console:tty01:tty02:tty03:tty04
+
+#
+# List of groups to add to the user's supplementary group set
+# when logging in on the console (as determined by the CONSOLE
+# setting).  Default is none.
+#
+# Use with caution - it is possible for users to gain permanent
+# access to these groups, even when not logged in on the console.
+# How to do it is left as an exercise for the reader...
+#
+# This variable is used by login and su.
+#
+#CONSOLE_GROUPS		floppy:audio:cdrom
+
+#
+# If set to "yes", new passwords will be encrypted using the MD5-based
+# algorithm compatible with the one used by recent releases of FreeBSD.
+# It supports passwords of unlimited length and longer salt strings.
+# Set to "no" if you need to copy encrypted passwords to other systems
+# which don't understand the new algorithm.  Default is "no".
+#
+# This variable is deprecated. You should use ENCRYPT_METHOD.
+#
+#MD5_CRYPT_ENAB	no
+
+#
+# If set to MD5, MD5-based algorithm will be used for encrypting password
+# If set to SHA256, SHA256-based algorithm will be used for encrypting password
+# If set to SHA512, SHA512-based algorithm will be used for encrypting password
+# If set to BCRYPT, BCRYPT-based algorithm will be used for encrypting password
+# If set to YESCRYPT, YESCRYPT-based algorithm will be used for encrypting password
+# If set to DES, DES-based algorithm will be used for encrypting password (default)
+# MD5 and DES should not be used for new hashes, see crypt(5) for recommendations.
+# Overrides the MD5_CRYPT_ENAB option
+#
+# Note: It is recommended to use a value consistent with
+# the PAM modules configuration.
+#
+ENCRYPT_METHOD SHA512
+
+#
+# Only works if ENCRYPT_METHOD is set to SHA256 or SHA512.
+#
+# Define the number of SHA rounds.
+# With a lot of rounds, it is more difficult to brute-force the password.
+# However, more CPU resources will be needed to authenticate users if
+# this value is increased.
+#
+# If not specified, the libc will choose the default number of rounds (5000),
+# which is orders of magnitude too low for modern hardware.
+# The values must be within the 1000-999999999 range.
+# If only one of the MIN or MAX values is set, then this value will be used.
+# If MIN &gt; MAX, the highest value will be used.
+#
+#SHA_CRYPT_MIN_ROUNDS 5000
+#SHA_CRYPT_MAX_ROUNDS 5000
+
+#
+# Only works if ENCRYPT_METHOD is set to YESCRYPT.
+#
+# Define the YESCRYPT cost factor.
+# With a higher cost factor, it is more difficult to brute-force the password.
+# However, more CPU time and more memory will be needed to authenticate users
+# if this value is increased.
+#
+# If not specified, a cost factor of 5 will be used.
+# The value must be within the 1-11 range.
+#
+#YESCRYPT_COST_FACTOR 5
+
+#
+# The pwck(8) utility emits a warning for any system account with a home
+# directory that does not exist.  Some system accounts intentionally do
+# not have a home directory.  Such accounts may have this string as
+# their home directory in /etc/passwd to avoid a spurious warning.
+#
+NONEXISTENT	/nonexistent
+
+#
+# Allow newuidmap and newgidmap when running under an alternative
+# primary group.
+#
+#GRANT_AUX_GROUP_SUBIDS yes
+
+#
+# Select the HMAC cryptography algorithm.
+# Used in pam_timestamp module to calculate the keyed-hash message
+# authentication code.
+#
+# Note: It is recommended to check hmac(3) to see the possible algorithms
+# that are available in your system.
+#
+#HMAC_CRYPTO_ALGO SHA512
+
+################# OBSOLETED BY PAM ##############
+#						#
+# These options are now handled by PAM. Please	#
+# edit the appropriate file in /etc/pam.d/ to	#
+# enable the equivelants of them.
+#
+###############
+
+#MOTD_FILE
+#DIALUPS_CHECK_ENAB
+#LASTLOG_ENAB
+#MAIL_CHECK_ENAB
+#OBSCURE_CHECKS_ENAB
+#PORTTIME_CHECKS_ENAB
+#SU_WHEEL_ONLY
+#CRACKLIB_DICTPATH
+#PASS_CHANGE_TRIES
+#PASS_ALWAYS_WARN
+#ENVIRON_FILE
+#NOLOGINS_FILE
+#ISSUE_FILE
+#PASS_MIN_LEN
+#PASS_MAX_LEN
+#ULIMIT
+#ENV_HZ
+#CHFN_AUTH
+#CHSH_AUTH
+#FAIL_DELAY
+
+################# OBSOLETED #######################
+#						  #
+# These options are no more handled by shadow.    #
+#                                                 #
+# Shadow utilities will display a warning if they #
+# still appear.                                   #
+#                                                 #
+###################################################
+
+# CLOSE_SESSIONS
+# LOGIN_STRING
+# NO_PASSWORD_CONSOLE
+# QMAIL_DIR
+
+
+
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>/etc/xinetd.conf</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/xinetd.conf
+cat: /etc/xinetd.conf: No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>/etc/services</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/services
+cat: /etc/services: No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>/etc/rpc</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/rpc
+cat: /etc/rpc: No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>/etc/syslog.conf</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/syslog.conf
+cat: /etc/syslog.conf: No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>/etc/rsyslog.conf</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/rsyslog.conf
+cat: /etc/rsyslog.conf: No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>/etc/mail/sendmail.cf</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/mail/sendmail.cf
+cat: /etc/mail/sendmail.cf: No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>TCB</id>
+			</items>
+			<output>
+				<![CDATA[
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>user_rhosts</id>
+			</items>
+			<output>
+				<![CDATA[
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>netrc</id>
+			</items>
+			<output>
+				<![CDATA[
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>user_history</id>
+			</items>
+			<output>
+				<![CDATA[
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>tcpwrapper</id>
+			</items>
+			<output>
+				<![CDATA[
+$ ls -aldL /etc/hosts
+-rw-r--r-- 1 root root 172 Jul 17 05:44 /etc/hosts
+------------
+$ cat /etc/hosts
+127.0.0.1	localhost
+::1	localhost ip6-localhost ip6-loopback
+fe00::	ip6-localnet
+ff00::	ip6-mcastprefix
+ff02::1	ip6-allnodes
+ff02::2	ip6-allrouters
+172.17.0.6	eafb9bf42137
+------------
+$ ls -aldL /etc/hosts.equiv
+ls: cannot access '/etc/hosts.equiv': No such file or directory
+------------
+$ cat /etc/hosts.equiv
+cat: /etc/hosts.equiv: No such file or directory
+------------
+$ ls -aldL /etc/hosts.allow
+ls: cannot access '/etc/hosts.allow': No such file or directory
+------------
+$ cat /etc/hosts.allow
+cat: /etc/hosts.allow: No such file or directory
+------------
+$ ls -aldL /etc/hosts.deny
+ls: cannot access '/etc/hosts.deny': No such file or directory
+------------
+$ cat /etc/hosts.deny
+cat: /etc/hosts.deny: No such file or directory
+------------
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>patch</id>
+			</items>
+			<output>
+				<![CDATA[
+$ rpm -qa -i
+fsi_unix.sh: 3047: rpm: not found
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>security_conf</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/securetty
+cat: /etc/securetty: No such file or directory
+------------
+$ cat /etc/pam.d/remote
+cat: /etc/pam.d/remote: No such file or directory
+------------
+$ cat /etc/pam.d/login
+#
+# The PAM configuration file for the Shadow `login' service
+#
+
+# Enforce a minimal delay in case of failure (in microseconds).
+# (Replaces the `FAIL_DELAY' setting from login.defs)
+# Note that other modules may require another minimal delay. (for example,
+# to disable any delay, you should add the nodelay option to pam_unix)
+auth       optional   pam_faildelay.so  delay=3000000
+
+# Outputs an issue file prior to each login prompt (Replaces the
+# ISSUE_FILE option from login.defs). Uncomment for use
+# auth       required   pam_issue.so issue=/etc/issue
+
+# Disallows other than root logins when /etc/nologin exists
+# (Replaces the `NOLOGINS_FILE' option from login.defs)
+auth       requisite  pam_nologin.so
+
+# SELinux needs to be the first session rule. This ensures that any
+# lingering context has been cleared. Without this it is possible
+# that a module could execute code in the wrong domain.
+# When the module is present, "required" would be sufficient (When SELinux
+# is disabled, this returns success.)
+session [success=ok ignore=ignore module_unknown=ignore default=bad] pam_selinux.so close
+
+# Sets the loginuid process attribute
+session    required     pam_loginuid.so
+
+# Prints the message of the day upon successful login.
+# (Replaces the `MOTD_FILE' option in login.defs)
+# This includes a dynamically generated part from /run/motd.dynamic
+# and a static (admin-editable) part from /etc/motd.
+session    optional   pam_motd.so motd=/run/motd.dynamic
+session    optional   pam_motd.so noupdate
+
+# SELinux needs to intervene at login time to ensure that the process
+# starts in the proper default security context. Only sessions which are
+# intended to run in the user's context should be run after this.
+# pam_selinux.so changes the SELinux context of the used TTY and configures
+# SELinux in order to transition to the user context with the next execve()
+# call.
+session [success=ok ignore=ignore module_unknown=ignore default=bad] pam_selinux.so open
+# When the module is present, "required" would be sufficient (When SELinux
+# is disabled, this returns success.)
+
+# This module parses environment configuration file(s)
+# and also allows you to use an extended config
+# file /etc/security/pam_env.conf.
+# 
+# parsing /etc/environment needs "readenv=1"
+session       required   pam_env.so readenv=1
+# locale variables can also be set in /etc/default/locale
+# reading this file *in addition to /etc/environment* does not hurt
+session       required   pam_env.so readenv=1 envfile=/etc/default/locale
+
+# Standard Un*x authentication.
+@include common-auth
+
+# This allows certain extra groups to be granted to a user
+# based on things like time of day, tty, service, and user.
+# Please edit /etc/security/group.conf to fit your needs
+# (Replaces the `CONSOLE_GROUPS' option in login.defs)
+auth       optional   pam_group.so
+
+# Uncomment and edit /etc/security/time.conf if you need to set
+# time restraint on logins.
+# (Replaces the `PORTTIME_CHECKS_ENAB' option from login.defs
+# as well as /etc/porttime)
+# account    requisite  pam_time.so
+
+# Uncomment and edit /etc/security/access.conf if you need to
+# set access limits.
+# (Replaces /etc/login.access file)
+# account  required       pam_access.so
+
+# Sets up user limits according to /etc/security/limits.conf
+# (Replaces the use of /etc/limits in old login)
+session    required   pam_limits.so
+
+# Prints the last login info upon successful login
+# (Replaces the `LASTLOG_ENAB' option from login.defs)
+session    optional   pam_lastlog.so
+
+# Prints the status of the user's mailbox upon successful login
+# (Replaces the `MAIL_CHECK_ENAB' option from login.defs). 
+#
+# This also defines the MAIL environment variable
+# However, userdel also needs MAIL_DIR and MAIL_FILE variables
+# in /etc/login.defs to make sure that removing a user 
+# also removes the user's mail spool file.
+# See comments in /etc/login.defs
+session    optional   pam_mail.so standard
+
+# Create a new session keyring.
+session    optional   pam_keyinit.so force revoke
+
+# Standard Un*x account and session
+@include common-account
+@include common-session
+@include common-password
+------------
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>sshd_conf</id>
+			</items>
+			<output>
+				<![CDATA[
+$ /etc/ssh/sshd_config
+cat: /etc/ssh/sshd_config: No such file or directory
+------------
+$ /opt/ssh/etc/sshd_config
+cat: /opt/ssh/etc/sshd_config: No such file or directory
+------------
+$ /etc/sshd_config
+cat: /etc/sshd_config: No such file or directory
+------------
+$ /usr/local/etc/sshd_config
+cat: /usr/local/etc/sshd_config: No such file or directory
+------------
+$ /usr/local/sshd/etc/sshd_config
+cat: /usr/local/sshd/etc/sshd_config: No such file or directory
+------------
+$ /usr/local/ssh/etc/sshd_config
+cat: /usr/local/ssh/etc/sshd_config: No such file or directory
+------------
+$ /etc/ssh/ssh_config
+cat: /etc/ssh/ssh_config: No such file or directory
+------------
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>interfacetable</id>
+			</items>
+			<output>
+				<![CDATA[
+$ netstat -in
+-e fsi_unix.sh: 1: netstat: not found
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>nic</id>
+			</items>
+			<output>
+				<![CDATA[
+$ ifconfig -a
+fsi_unix.sh: 3096: ifconfig: not found
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>port</id>
+			</items>
+			<output>
+				<![CDATA[
+$ netstat -anp | egrep -i "^tcp" | egrep -i listen
+fsi_unix.sh: 3103: netstat: not found
+------------
+$ netstat -anp | egrep -i "^udp"
+fsi_unix.sh: 3106: netstat: not found
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>netstat</id>
+			</items>
+			<output>
+				<![CDATA[
+$ netstat -anp
+fsi_unix.sh: 3126: netstat: not found
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>rpcinfo</id>
+			</items>
+			<output>
+				<![CDATA[
+$ rpcinfo -p
+fsi_unix.sh: 3136: rpcinfo: not found
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>ps</id>
+			</items>
+			<output>
+				<![CDATA[
+$ ps -ef
+UID          PID    PPID  C STIME TTY          TIME CMD
+root           1       0  5 05:44 ?        00:00:01 /opt/java/openjdk/bin/java -Djava.util.logging.config.file=/usr/local/tomcat/conf/logging.properties -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager -Djdk.tls.ephemeralDHKeySize=2048 -Djava.protocol.handler.pkgs=org.apache.catalina.webresources -Dsun.io.useCanonCaches=false -Dorg.apache.catalina.security.SecurityListener.UMASK=0027 -Dignore.endorsed.dirs= -classpath /usr/local/tomcat/bin/bootstrap.jar:/usr/local/tomcat/bin/tomcat-juli.jar -Dcatalina.base=/usr/local/tomcat -Dcatalina.home=/usr/local/tomcat -Djava.io.tmpdir=/usr/local/tomcat/temp org.apache.catalina.startup.Bootstrap start
+root          54       0  0 05:44 ?        00:00:00 sh -c echo | sh fsi_unix.sh 2&gt;/tmp/collect_err.log | tail -5; echo '=== 산출물 ==='; ls -la /tmp/*.xml 2&gt;/dev/null; tail -3 /tmp/collect_err.log
+root          60      54  2 05:44 ?        00:00:00 sh fsi_unix.sh
+root          62      54  0 05:44 ?        00:00:00 tail -5
+root        3835      60  0 05:44 ?        00:00:00 ps -ef
+root        3836      60  0 05:44 ?        00:00:00 sed s/&amp;/\&amp;amp;/g
+root        3837      60  0 05:44 ?        00:00:00 sed s/&lt;/\&amp;lt;/g
+root        3838      60  0 05:44 ?        00:00:00 sed s/&gt;/\&amp;gt;/g
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>ps_aux</id>
+			</items>
+			<output>
+				<![CDATA[
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root           1  5.6  3.0 3408136 91796 ?       Ssl  05:44   0:01 /opt/java/openjdk/bin/java -Djava.util.logging.config.file=/usr/local/tomcat/conf/logging.properties -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager -Djdk.tls.ephemeralDHKeySize=2048 -Djava.protocol.handler.pkgs=org.apache.catalina.webresources -Dsun.io.useCanonCaches=false -Dorg.apache.catalina.security.SecurityListener.UMASK=0027 -Dignore.endorsed.dirs= -classpath /usr/local/tomcat/bin/bootstrap.jar:/usr/local/tomcat/bin/tomcat-juli.jar -Dcatalina.base=/usr/local/tomcat -Dcatalina.home=/usr/local/tomcat -Djava.io.tmpdir=/usr/local/tomcat/temp org.apache.catalina.startup.Bootstrap start
+root          54  0.0  0.0   2380  1536 ?        Ss   05:44   0:00 sh -c echo | sh fsi_unix.sh 2&gt;/tmp/collect_err.log | tail -5; echo '=== 산출물 ==='; ls -la /tmp/*.xml 2&gt;/dev/null; tail -3 /tmp/collect_err.log
+root          60  2.2  0.0   2476  1668 ?        S    05:44   0:00 sh fsi_unix.sh
+root          62  0.0  0.0   5288  1836 ?        S    05:44   0:00 tail -5
+root        3843  0.0  0.1  10620  4036 ?        R    05:44   0:00 ps auxwww
+root        3844  0.0  0.0   6412  2168 ?        S    05:44   0:00 sed s/&amp;/\&amp;amp;/g
+root        3845  0.0  0.0   2476   208 ?        R    05:44   0:00 sh fsi_unix.sh
+root        3846  0.0  0.0   2476   208 ?        R    05:44   0:00 sh fsi_unix.sh
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>(x)inetd</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat /etc/xinetd.conf | egrep -v "^#"
+cat: /etc/xinetd.conf: No such file or directory
+------------
+$ cat /etc/xinetd.d/* | egrep -v "^#"
+cat: '/etc/xinetd.d/*': No such file or directory
+------------
+$ /etc/inetd.conf | egrep -v "^#"
+cat: /etc/inetd.conf: No such file or directory
+------------
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>service</id>
+				<id>command</id>
+			</items>
+			<output>
+				<![CDATA[
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>chkconfig</id>
+			</items>
+			<output>
+				<![CDATA[
+chkconfig --list
+fsi_unix.sh: 3191: chkconfig: not found
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>webconf</id>
+			</items>
+			<output>
+				<![CDATA[
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>wasconf</id>
+			</items>
+			<output>
+				<![CDATA[
+ls -alL /usr/local/tomcat/conf
+total 244
+drwxr-xr-x 1 root root   4096 Jul 17 05:44 .
+drwxr-xr-x 1 root root   4096 Jul  7 17:52 ..
+drwxr-x--- 3 root root   4096 Jul 17 05:44 Catalina
+-rw-r--r-- 1 root root  12953 Jul  3 07:49 catalina.policy
+-rw-r--r-- 1 root root   7654 Jul  3 07:49 catalina.properties
+-rw-r--r-- 1 root root   1400 Jul  3 07:49 context.xml
+-rw-r--r-- 1 root root   1149 Jul  3 07:49 jaspic-providers.xml
+-rw-r--r-- 1 root root   2313 Jul  3 07:49 jaspic-providers.xsd
+-rw-r--r-- 1 root root   4003 Jul  3 07:49 logging.properties
+-rw-r--r-- 1 root root   8022 Jul  3 07:49 server.xml
+-rw-r--r-- 1 root root   2756 Jul  3 07:49 tomcat-users.xml
+-rw-r--r-- 1 root root   2558 Jul  3 07:49 tomcat-users.xsd
+-rw-r--r-- 1 root root 174047 Jul  3 07:49 web.xml
+------------
+cat /usr/local/tomcat/conf/tomcat-users.xml
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;!--
+  Licensed to the Apache Software Foundation (ASF) under one or more
+  contributor license agreements.  See the NOTICE file distributed with
+  this work for additional information regarding copyright ownership.
+  The ASF licenses this file to You under the Apache License, Version 2.0
+  (the "License"); you may not use this file except in compliance with
+  the License.  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+--&gt;
+&lt;tomcat-users xmlns="http://tomcat.apache.org/xml"
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:schemaLocation="http://tomcat.apache.org/xml tomcat-users.xsd"
+              version="1.0"&gt;
+&lt;!--
+  By default, no user is included in the "manager-gui" role required
+  to operate the "/manager/html" web application.  If you wish to use this app,
+  you must define such a user - the username and password are arbitrary.
+
+  Built-in Tomcat manager roles:
+    - manager-gui    - allows access to the HTML GUI and the status pages
+    - manager-script - allows access to the HTTP API and the status pages
+    - manager-jmx    - allows access to the JMX proxy and the status pages
+    - manager-status - allows access to the status pages only
+
+  The users below are wrapped in a comment and are therefore ignored. If you
+  wish to configure one or more of these users for use with the manager web
+  application, do not forget to remove the &lt;!.. ..&gt; that surrounds them. You
+  will also need to set the passwords to something appropriate.
+--&gt;
+&lt;!--
+  &lt;user username="admin" password="&lt;must-be-changed&gt;" roles="manager-gui"/&gt;
+  &lt;user username="robot" password="&lt;must-be-changed&gt;" roles="manager-script"/&gt;
+--&gt;
+&lt;!--
+  The sample user and role entries below are intended for use with the
+  examples web application. They are wrapped in a comment and thus are ignored
+  when reading this file. If you wish to configure these users for use with the
+  examples web application, do not forget to remove the &lt;!.. ..&gt; that surrounds
+  them. You will also need to set the passwords to something appropriate.
+--&gt;
+&lt;!--
+  &lt;role rolename="tomcat"/&gt;
+  &lt;role rolename="role1"/&gt;
+  &lt;user username="tomcat" password="&lt;must-be-changed&gt;" roles="tomcat"/&gt;
+  &lt;user username="both" password="&lt;must-be-changed&gt;" roles="tomcat,role1"/&gt;
+  &lt;user username="role1" password="&lt;must-be-changed&gt;" roles="role1"/&gt;
+--&gt;
+&lt;/tomcat-users&gt;
+------------
+ 
+[ Common /etc/profile Setting ]
+ 
+[ Common login Setting ]
+ 
+[ All Users ..*profile Setting ]
+ 
+[ Common .profile Setting ]
+ 
+[ Common .login Setting ]
+ 
+[ All Users .login Setting ]
+ 
+[ Common shrc Setting ]
+ 
+[ All Users shrc Setting ]
+ 
+[ Current User Setting ]
+ 
+[ Current User Environment Variables ]
+------------
+ls: cannot access '/config': No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>apache</id>
+			</items>
+			<output>
+				<![CDATA[
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>webtob</id>
+			</items>
+			<output>
+				<![CDATA[
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>ALL_ENV</id>
+			</items>
+			<output>
+				<![CDATA[
+$ env
+LANGUAGE=en_US:en
+HOSTNAME=eafb9bf42137
+LD_LIBRARY_PATH=/usr/local/tomcat/native-jni-lib
+TOMCAT_SHA512=07eb6d9639c3e69af81171a16ccff1c19b7fd5b2e87e3646851f0a3f42a4ce3c1bf128fbe40fc978a08935ba4f0400ef3b43ded3e470b9aaf23b97a9e1fa0858
+HOME=/root
+CATALINA_HOME=/usr/local/tomcat
+TOMCAT_MAJOR=9
+JAVA_VERSION=jdk-25.0.3+9
+PATH=/usr/local/tomcat/bin:/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+LANG=C
+TOMCAT_VERSION=9.0.120
+JAVA_HOME=/opt/java/openjdk
+LC_ALL=en_US.UTF-8
+PWD=/tmp
+TOMCAT_NATIVE_LIBDIR=/usr/local/tomcat/native-jni-lib
+------------
+$ cat .*profile .*login .*shrc
+ 
+[ Common /etc/profile Setting ]
+$ cat /etc/profile
+if [ "${PS1-}" ]; then
+  if [ "${BASH-}" ] && [ "$BASH" != "/bin/sh" ]; then
+    if [ -f /etc/bash.bashrc ]; then
+      . /etc/bash.bashrc
+    fi
+  else
+    if [ "$(id -u)" -eq 0 ]; then
+      PS1='# '
+    else
+      PS1='$ '
+    fi
+  fi
+fi
+if [ -d /etc/profile.d ]; then
+  for i in /etc/profile.d/*.sh; do
+    if [ -r $i ]; then
+      . $i
+    fi
+  done
+  unset i
+fi
+ 
+[ Common login Setting ]
+ 
+[ All Users ..*profile Setting ]
+$ cat /root/.profile
+if [ "$BASH" ]; then
+  if [ -f ~/.bashrc ]; then
+    . ~/.bashrc
+  fi
+fi
+mesg n 2> /dev/null || true
+$ cat /home/ubuntu/.profile
+if [ -n "$BASH_VERSION" ]; then
+    if [ -f "$HOME/.bashrc" ]; then
+	. "$HOME/.bashrc"
+    fi
+fi
+if [ -d "$HOME/bin" ] ; then
+    PATH="$HOME/bin:$PATH"
+fi
+if [ -d "$HOME/.local/bin" ] ; then
+    PATH="$HOME/.local/bin:$PATH"
+fi
+ 
+[ Common .profile Setting ]
+ 
+[ Common .login Setting ]
+ 
+[ All Users .login Setting ]
+ 
+[ Common shrc Setting ]
+$ cat /etc/bash.bashrc
+[ -z "$PS1" ] && return
+shopt -s checkwinsize
+if [ -z "${debian_chroot:-}" ] && [ -r /etc/debian_chroot ]; then
+    debian_chroot=$(cat /etc/debian_chroot)
+fi
+if ! [ -n "${SUDO_USER}" -a -n "${SUDO_PS1}" ]; then
+  PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
+fi
+if [ ! -e "$HOME/.sudo_as_admin_successful" ] && [ ! -e "$HOME/.hushlogin" ] ; then
+    case " $(groups) " in *\ admin\ *|*\ sudo\ *)
+    if [ -x /usr/bin/sudo ]; then
+	cat <<-EOF
+	To run a command as administrator (user "root"), use "sudo <command>".
+	See "man sudo_root" for details.
+	
+	EOF
+    fi
+    esac
+fi
+if [ -x /usr/lib/command-not-found -o -x /usr/share/command-not-found/command-not-found ]; then
+	function command_not_found_handle {
+	        # check because c-n-f could've been removed in the meantime
+                if [ -x /usr/lib/command-not-found ]; then
+		   /usr/lib/command-not-found -- "$1"
+                   return $?
+                elif [ -x /usr/share/command-not-found/command-not-found ]; then
+		   /usr/share/command-not-found/command-not-found -- "$1"
+                   return $?
+		else
+		   printf "%s: command not found
+" "$1" >&2
+		   return 127
+		fi
+	}
+fi
+ 
+[ All Users shrc Setting ]
+$ cat /root/.bashrc
+[ -z "$PS1" ] && return
+HISTCONTROL=ignoredups:ignorespace
+shopt -s histappend
+HISTSIZE=1000
+HISTFILESIZE=2000
+shopt -s checkwinsize
+[ -x /usr/bin/lesspipe ] && eval "$(SHELL=/bin/sh lesspipe)"
+if [ -z "$debian_chroot" ] && [ -r /etc/debian_chroot ]; then
+    debian_chroot=$(cat /etc/debian_chroot)
+fi
+case "$TERM" in
+    xterm-color) color_prompt=yes;;
+esac
+if [ -n "$force_color_prompt" ]; then
+    if [ -x /usr/bin/tput ] && tput setaf 1 >&/dev/null; then
+	# We have color support; assume it's compliant with Ecma-48
+	# (ISO/IEC-6429). (Lack of such support is extremely rare, and such
+	# a case would tend to support setf rather than setaf.)
+	color_prompt=yes
+    else
+	color_prompt=
+    fi
+fi
+if [ "$color_prompt" = yes ]; then
+    PS1='${debian_chroot:+($debian_chroot)}\[[01;32m\]\u@\h\[[00m\]:\[[01;34m\]\w\[[00m\]\$ '
+else
+    PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
+fi
+unset color_prompt force_color_prompt
+case "$TERM" in
+xterm*|rxvt*)
+    PS1="\[]0;${debian_chroot:+($debian_chroot)}\u@\h: \w\]$PS1"
+    ;;
+*)
+    ;;
+esac
+if [ -x /usr/bin/dircolors ]; then
+    test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"
+    alias ls='ls --color=auto'
+    alias grep='grep --color=auto'
+    alias fgrep='fgrep --color=auto'
+    alias egrep='egrep --color=auto'
+fi
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+if [ -f ~/.bash_aliases ]; then
+    . ~/.bash_aliases
+fi
+$ cat /home/ubuntu/.bashrc
+case $- in
+    *i*) ;;
+      *) return;;
+esac
+HISTCONTROL=ignoreboth
+shopt -s histappend
+HISTSIZE=1000
+HISTFILESIZE=2000
+shopt -s checkwinsize
+[ -x /usr/bin/lesspipe ] && eval "$(SHELL=/bin/sh lesspipe)"
+if [ -z "${debian_chroot:-}" ] && [ -r /etc/debian_chroot ]; then
+    debian_chroot=$(cat /etc/debian_chroot)
+fi
+case "$TERM" in
+    xterm-color|*-256color) color_prompt=yes;;
+esac
+if [ -n "$force_color_prompt" ]; then
+    if [ -x /usr/bin/tput ] && tput setaf 1 >&/dev/null; then
+	# We have color support; assume it's compliant with Ecma-48
+	# (ISO/IEC-6429). (Lack of such support is extremely rare, and such
+	# a case would tend to support setf rather than setaf.)
+	color_prompt=yes
+    else
+	color_prompt=
+    fi
+fi
+if [ "$color_prompt" = yes ]; then
+    PS1='${debian_chroot:+($debian_chroot)}\[[01;32m\]\u@\h\[[00m\]:\[[01;34m\]\w\[[00m\]\$ '
+else
+    PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
+fi
+unset color_prompt force_color_prompt
+case "$TERM" in
+xterm*|rxvt*)
+    PS1="\[]0;${debian_chroot:+($debian_chroot)}\u@\h: \w\]$PS1"
+    ;;
+*)
+    ;;
+esac
+if [ -x /usr/bin/dircolors ]; then
+    test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"
+    alias ls='ls --color=auto'
+    alias grep='grep --color=auto'
+    alias fgrep='fgrep --color=auto'
+    alias egrep='egrep --color=auto'
+fi
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+alias alert='notify-send --urgency=low -i "$([ $? = 0 ] && echo terminal || echo error)" "$(history|tail -n1|sed -e '\''s/^\s*[0-9]\+\s*//;s/[;&|]\s*alert$//'\'')"'
+if [ -f ~/.bash_aliases ]; then
+    . ~/.bash_aliases
+fi
+if ! shopt -oq posix; then
+  if [ -f /usr/share/bash-completion/bash_completion ]; then
+    . /usr/share/bash-completion/bash_completion
+  elif [ -f /etc/bash_completion ]; then
+    . /etc/bash_completion
+  fi
+fi
+ 
+[ Current User Setting ]
+OS_INFO='DISTRIB_ID=Ubuntu
+-e root           1       0  6 05:44 ?        00:00:01 /opt/java/openjdk/bin/java -Djava.util.logging.config.file=/usr/local/tomcat/conf/logging.properties -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager -Djdk.tls.ephemeralDHKeySize=2048 -Djava.protocol.handler.pkgs=org.apache.catalina.webresources -Dsun.io.useCanonCaches=false -Dorg.apache.catalina.security.SecurityListener.UMASK=0027 -Dignore.endorsed.dirs= -classpath /usr/local/tomcat/bin/bootstrap.jar:/usr/local/tomcat/bin/tomcat-juli.jar -Dcatalina.base=/usr/local/tomcat -Dcatalina.home=/usr/local/tomcat -Djava.io.tmpdir=/usr/local/tomcat/temp org.apache.catalina.startup.Bootstrap start
+-e root           1  6.0  3.3 3408136 98420 ?       Ssl  05:44   0:01 /opt/java/openjdk/bin/java -Djava.util.logging.config.file=/usr/local/tomcat/conf/logging.properties -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager -Djdk.tls.ephemeralDHKeySize=2048 -Djava.protocol.handler.pkgs=org.apache.catalina.webresources -Dsun.io.useCanonCaches=false -Dorg.apache.catalina.security.SecurityListener.UMASK=0027 -Dignore.endorsed.dirs= -classpath /usr/local/tomcat/bin/bootstrap.jar:/usr/local/tomcat/bin/tomcat-juli.jar -Dcatalina.base=/usr/local/tomcat -Dcatalina.home=/usr/local/tomcat -Djava.io.tmpdir=/usr/local/tomcat/temp org.apache.catalina.startup.Bootstrap start
+[ -x /usr/bin/lesspipe ] && eval "$(SHELL=/bin/sh lesspipe)"
+    debian_chroot=$(cat /etc/debian_chroot)
+    xterm-color|*-256color) color_prompt=yes;;
+	color_prompt=yes
+	color_prompt=
+if [ "$color_prompt" = yes ]; then
+    PS1='"'"'${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '"'"'
+    PS1='"'"'${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '"'"'
+    PS1="\[\e]0;${debian_chroot:+($debian_chroot)}\u@\h: \w\a\]$PS1"
+    alias ls='"'"'ls --color=auto'"'"'
+    alias grep='"'"'grep --color=auto'"'"'
+    alias fgrep='"'"'fgrep --color=auto'"'"'
+    alias egrep='"'"'egrep --color=auto'"'"'
+alias ll='"'"'ls -alF'"'"'
+alias la='"'"'ls -A'"'"'
+alias l='"'"'ls -CF'"'"'
+alias alert='"'"'notify-send --urgency=low -i "$([ $? = 0 ] && echo terminal || echo error)" "$(history|tail -n1|sed -e '"'"'\'"''"'s/^\s*[0-9]\+\s*//;s/[;&|]\s*alert$//'"'"'\'"''"')"'"'"'
+ 
+[ Current User Environment Variables ]
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>ALL_HOME_DIR</id>
+			</items>
+			<output>
+				<![CDATA[
+$ cat .*profile .*login .*shrc | egrep -i *HOME
+ 
+[ Common /etc/profile Setting ]
+ 
+[ Common login Setting ]
+ 
+[ All Users ..*profile Setting ]
+$ cat /home/ubuntu/.profile
+    if [ -f "$HOME/.bashrc" ]; then
+	. "$HOME/.bashrc"
+if [ -d "$HOME/bin" ] ; then
+    PATH="$HOME/bin:$PATH"
+if [ -d "$HOME/.local/bin" ] ; then
+    PATH="$HOME/.local/bin:$PATH"
+ 
+[ Common .profile Setting ]
+ 
+[ Common .login Setting ]
+ 
+[ All Users .login Setting ]
+ 
+[ Common shrc Setting ]
+$ cat /etc/bash.bashrc
+if [ ! -e "$HOME/.sudo_as_admin_successful" ] && [ ! -e "$HOME/.hushlogin" ] ; then
+ 
+[ All Users shrc Setting ]
+ 
+[ Current User Setting ]
+ 
+[ Current User Environment Variables ]
+------------
+$ env | egrep -i *HOME
+HOME=/root
+CATALINA_HOME=/usr/local/tomcat
+JAVA_HOME=/opt/java/openjdk
+------------
+$ cat .*profile .*login .*shrc | egrep -i DIR
+ 
+[ Common /etc/profile Setting ]
+ 
+[ Common login Setting ]
+ 
+[ All Users ..*profile Setting ]
+ 
+[ Common .profile Setting ]
+ 
+[ Common .login Setting ]
+ 
+[ All Users .login Setting ]
+ 
+[ Common shrc Setting ]
+ 
+[ All Users shrc Setting ]
+$ cat /root/.bashrc
+if [ -x /usr/bin/dircolors ]; then
+    test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"
+$ cat /home/ubuntu/.bashrc
+if [ -x /usr/bin/dircolors ]; then
+    test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"
+ 
+[ Current User Setting ]
+ 
+[ Current User Environment Variables ]
+------------
+$ env | egrep -i DIR
+TOMCAT_NATIVE_LIBDIR=/usr/local/tomcat/native-jni-lib
+------------
+$ cat .*profile .*login .*shrc | egrep -i BASE
+ 
+[ Common /etc/profile Setting ]
+ 
+[ Common login Setting ]
+ 
+[ All Users ..*profile Setting ]
+ 
+[ Common .profile Setting ]
+ 
+[ Common .login Setting ]
+ 
+[ All Users .login Setting ]
+ 
+[ Common shrc Setting ]
+ 
+[ All Users shrc Setting ]
+ 
+[ Current User Setting ]
+ 
+[ Current User Environment Variables ]
+------------
+$ env | egrep -i BASE
+------------
+ 
+[ Common /etc/profile Setting ]
+ 
+[ Common login Setting ]
+ 
+[ All Users ..*profile Setting ]
+ 
+[ Common .profile Setting ]
+ 
+[ Common .login Setting ]
+ 
+[ All Users .login Setting ]
+ 
+[ Common shrc Setting ]
+ 
+[ All Users shrc Setting ]
+ 
+[ Current User Setting ]
+ 
+[ Current User Environment Variables ]
+------------
+$ env | egrep -i httpd
+------------
+ 
+[ Common /etc/profile Setting ]
+ 
+[ Common login Setting ]
+ 
+[ All Users ..*profile Setting ]
+ 
+[ Common .profile Setting ]
+ 
+[ Common .login Setting ]
+ 
+[ All Users .login Setting ]
+ 
+[ Common shrc Setting ]
+ 
+[ All Users shrc Setting ]
+ 
+[ Current User Setting ]
+ 
+[ Current User Environment Variables ]
+$ env | egrep -i htdocs
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>Oracle</id>
+			</items>
+			<output>
+				<![CDATA[
+ 
+[ Common /etc/profile Setting ]
+ 
+[ Common login Setting ]
+ 
+[ All Users ..*profile Setting ]
+ 
+[ Common .profile Setting ]
+ 
+[ Common .login Setting ]
+ 
+[ All Users .login Setting ]
+ 
+[ Common shrc Setting ]
+ 
+[ All Users shrc Setting ]
+ 
+[ Current User Setting ]
+ 
+[ Current User Environment Variables ]
+------------
+cat /network/admin/sqlnet.ora
+ls: cannot access '/network/admin/sqlnet.ora': No such file or directory
+------------
+cat /network/admin/listener.ora
+ls: cannot access '/network/admin/listener.ora': No such file or directory
+------------
+cat /network/admin/tnsnames.ora
+ls: cannot access '/network/admin/tnsnames.ora': No such file or directory
+------------
+cat /network/admin/protocol.ora
+ls: cannot access '/network/admin/protocol.ora': No such file or directory
+------------
+cat /dbs/init*.ora
+ls: cannot access '/dbs/init*.ora': No such file or directory
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>lastlogin</id>
+			</items>
+			<output>
+				<![CDATA[
+$ last -200
+
+wtmp begins Fri Jul 17 05:43:38 2026
+------------
+$ lastlog
+Username         Port     From                                       Latest
+root                                                                **Never logged in**
+daemon                                                              **Never logged in**
+bin                                                                 **Never logged in**
+sys                                                                 **Never logged in**
+sync                                                                **Never logged in**
+games                                                               **Never logged in**
+man                                                                 **Never logged in**
+lp                                                                  **Never logged in**
+mail                                                                **Never logged in**
+news                                                                **Never logged in**
+uucp                                                                **Never logged in**
+proxy                                                               **Never logged in**
+www-data                                                            **Never logged in**
+backup                                                              **Never logged in**
+list                                                                **Never logged in**
+irc                                                                 **Never logged in**
+_apt                                                                **Never logged in**
+nobody                                                              **Never logged in**
+ubuntu                                                              **Never logged in**
+------------
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>CheckAllService</id>
+			</items>
+			<output>
+				<![CDATA[
+-e [ telnet ][S]
+[ telnet ][E]
+-e [ ftp ][S]
+[ ftp ][E]
+-e [ ssh|ssh-server ][S]
+[ ssh|ssh-server ][E]
+-e [ dns ][S]
+[ dns ][E]
+-e [ snmp ][S]
+[ snmp ][E]
+-e [ smtp|sendmail|postfix|exim ][S]
+[ smtp|sendmail|postfix|exim ][E]
+-e [ tftp ][S]
+[ tftp ][E]
+-e [ finger ][S]
+[ finger ][E]
+-e [ echo ][S]
+[ echo ][E]
+-e [ discard ][S]
+[ discard ][E]
+-e [ daytime ][S]
+[ daytime ][E]
+-e [ chargen ][S]
+[ chargen ][E]
+-e [ talk ][S]
+[ talk ][E]
+-e [ ntalk ][S]
+[ ntalk ][E]
+-e [ exec|rexec ][S]
+[ exec|rexec ][E]
+-e [ login|rlogin ][S]
+[ login|rlogin ][E]
+-e [ shell|rshell ][S]
+[ shell|rshell ][E]
+-e [ rsync ][S]
+[ rsync ][E]
+-e [ syslog ][S]
+[ syslog ][E]
+-e [ automountd|autofs ][S]
+[ automountd|autofs ][E]
+-e [ inetd ][S]
+[ inetd ][E]
+-e [ xinetd ][S]
+[ xinetd ][E]
+-e [ dmid ][S]
+[ dmid ][E]
+-e [ portmap|sunrpc|portmapper|rpcbind ][S]
+[ portmap|sunrpc|portmapper|rpcbind ][E]
+-e [ nfs ][S]
+[ nfs ][E]
+-e [ nis ][S]
+[ nis ][E]
+-e [ ypserv|ypbind|ypxfrd|yppasswdd|ypupdated ][S]
+[ ypserv|ypbind|ypxfrd|yppasswdd|ypupdated ][E]
+-e [ cms ][S]
+[ cms ][E]
+-e [ ttdbserver ][S]
+[ ttdbserver ][E]
+-e [ sadmin ][S]
+[ sadmin ][E]
+-e [ rquota ][S]
+[ rquota ][E]
+-e [ rex ][S]
+[ rex ][E]
+-e [ stat ][S]
+[ stat ][E]
+-e [ rstat ][S]
+[ rstat ][E]
+-e [ rusers ][S]
+[ rusers ][E]
+-e [ wall ][S]
+[ wall ][E]
+-e [ spray ][S]
+[ spray ][E]
+-e [ pcnfs ][S]
+[ pcnfs ][E]
+-e [ kcms_server ][S]
+[ kcms_server ][E]
+-e [ cachefs ][S]
+[ cachefs ][E]
+-e [ weblogic|wlserver ][S]
+[ weblogic|wlserver ][E]
+-e [ jeus|java ][S]
+[ jeus|java ][E]
+-e [ wsm|webtob|htl ][S]
+[ wsm|webtob|htl ][E]
+-e [ jboss ][S]
+[ jboss ][E]
+-e [ wsmserver ][S]
+[ wsmserver ][E]
+-e [ http|https|http-alt|www|www-http|apache|apache2 ][S]
+[ http|https|http-alt|www|www-http|apache|apache2 ][E]
+-e [ tomcat ][S]
+$ ps -ef | egrep catalina\.startup\.Bootstrap
+-e root           1       0  6 05:44 ?        00:00:01 /opt/java/openjdk/bin/java -Djava.util.logging.config.file=/usr/local/tomcat/conf/logging.properties -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager -Djdk.tls.ephemeralDHKeySize=2048 -Djava.protocol.handler.pkgs=org.apache.catalina.webresources -Dsun.io.useCanonCaches=false -Dorg.apache.catalina.security.SecurityListener.UMASK=0027 -Dignore.endorsed.dirs= -classpath /usr/local/tomcat/bin/bootstrap.jar:/usr/local/tomcat/bin/tomcat-juli.jar -Dcatalina.base=/usr/local/tomcat -Dcatalina.home=/usr/local/tomcat -Djava.io.tmpdir=/usr/local/tomcat/temp org.apache.catalina.startup.Bootstrap start
+$ ps auxwww | egrep catalina\.startup\.Bootstrap
+-e root           1  6.0  3.3 3408136 98420 ?       Ssl  05:44   0:01 /opt/java/openjdk/bin/java -Djava.util.logging.config.file=/usr/local/tomcat/conf/logging.properties -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager -Djdk.tls.ephemeralDHKeySize=2048 -Djava.protocol.handler.pkgs=org.apache.catalina.webresources -Dsun.io.useCanonCaches=false -Dorg.apache.catalina.security.SecurityListener.UMASK=0027 -Dignore.endorsed.dirs= -classpath /usr/local/tomcat/bin/bootstrap.jar:/usr/local/tomcat/bin/tomcat-juli.jar -Dcatalina.base=/usr/local/tomcat -Dcatalina.home=/usr/local/tomcat -Djava.io.tmpdir=/usr/local/tomcat/temp org.apache.catalina.startup.Bootstrap start
+[ tomcat ][E]
+-e [ wbem-https|wbem-http ][S]
+[ wbem-https|wbem-http ][E]
+-e [ dataprotector ][S]
+[ dataprotector ][E]
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>Internet</id>
+			</items>
+			<output>
+				<![CDATA[
+( echo open 103.59.159.22 80; sleep 2; printf "GET / HTTP/1.1
+
+"; sleep 1; echo "
+"; sleep 1;  echo "
+" ) | telnet
+
+
+
+
+
+
+( echo open 142.250.206.228 80; sleep 2; printf "GET / HTTP/1.1
+
+"; sleep 1; echo "
+"; sleep 1;  echo "
+" ) | telnet
+
+
+
+
+
+
+( echo open www.fsec.or.kr 80; sleep 2; printf "GET / HTTP/1.1
+
+"; sleep 1; echo "
+"; sleep 1;  echo "
+" ) | telnet
+
+
+
+
+
+
+( echo open www.google.com 80; sleep 2; printf "GET / HTTP/1.1
+
+"; sleep 1; echo "
+"; sleep 1;  echo "
+" ) | telnet
+
+
+
+
+
+
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>date</id>
+			</items>
+			<output>
+				<![CDATA[
+2026-07-17 05:45:08
+				]]>
+			</output>
+		</dump>
+		<dump>
+			<items>
+				<id>Encoding</id>
+			</items>
+			<output>
+				<![CDATA[
+fsi_unix.sh: 3477: FSI_hangulTest: not found
+				]]>
+			</output>
+		</dump>
+	</results>
+	<runtime>Fri Jul 17 05:44:57 AM UTC 2026 ~ 2026-07-17 05:45:08</runtime>
+</script>
