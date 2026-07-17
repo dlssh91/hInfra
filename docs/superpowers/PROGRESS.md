@@ -130,6 +130,19 @@
 >     수집 보강 후 실샘플 확보 시 web_cov_contract에 tomcat WST-031/122/123 양극성 추가로 실검증완료 승격.
 >   - 프록시 모델: 이 PC(17GB RAM)엔 30b 불가 → 판정 배관 스모크는 **qwen2.5-coder:3b**(~1.9GB)로. 생성 도커 전부 정리.
 >
+> **⓪-h ✅ 완료(2026-07-17 맥세션) — 실행환경 모델 적합성 체커 (Fable설계→Sonnet구현→Opus리뷰 SHIP)**
+>   현장 하드웨어가 제각각(폐쇄망)이라 "이 PC에서 어떤 Ollama 모델을 쓸 수 있나"를 실행자가 미리 확인하는 전용 명령.
+>   기존 모델선택 도구 조사: `ollama fit`(이슈단계 미출시)·온라인 계산기(폐쇄망 불가) → 외부도구 대신 **내장 경량 체커**.
+>   - `judge_tool/envcheck.py` 신규(stdlib+기존 requests): RAM 감지(크로스플랫폼 os.sysconf/sysctl/GlobalMemoryStatusEx) +
+>     GPU 베스트에포트(nvidia-smi/Apple 통합메모리) + `/api/tags` 설치모델 조회 + footprint 경험칙 추정 + 여유/빠듯/불가 판정.
+>     `python3 -m judge_tool.envcheck`, `judge.sh/judge.bat --check-model`. tests/test_envcheck.py +19.
+>   - **설계 3원칙(사용자 확정)**: ①전용 명령만(preflight 무통합) ②RAM 중심+GPU 참고 ③**추천만·자동전환 절대 금지**
+>     (약한 모델 자동사용=거짓양호 위험). 경고문에 "품질은 30b 기준, 작은 모델은 프록시, --model 명시" 명시.
+>   - **Opus 리뷰 수정 후 SHIP**: [High] production 모델 탐지가 base-name(':'앞) 매칭까지 해서 같은 계열 다른 크기 태그
+>     (qwen3-coder:7b)를 미설치 30b로 오인→"설치·여유" 거짓양호형 오판 → **exact match만**으로 수정+회귀테스트.
+>     [Medium] 모델 size 단위 1e9 vs RAM 1024³ 불일치 → 1024³ 통일. [Low] Windows 구조체 필드명 오타(무해)·docstring 수치 정정.
+>   - 실측(이 맥 16GB): 30b(미설치)=불가(≈25GB), qwen2.5-coder:3b/qwen3.5=여유, 추천=qwen3.5. **2769 passed / 0 failed.**
+>
 > **① DB Tibero — ✅ 배선 완료(2026-07-11 맥세션, 휴면상태) / ⚠️ 활성화 전 실샘플 검증 필수**
 >   - 완료(db5c954, Opus SHIP): `db_tibero.yaml` 신규(5엔진 라벨 일관), db.py 레지스트리 등록+모드C2 tibero 확장,
 >     DET_SOURCE 21항목, cov 픽스처 12항목(+29 tests). DBM-030은 vendor가 Oracle `AUD$` 테이블명 하드코딩→Tibero
