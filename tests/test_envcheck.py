@@ -272,3 +272,149 @@ def test_main_does_not_crash(monkeypatch, capsys):
     envcheck.main([])
     out = capsys.readouterr().out
     assert "judge_tool 실행 환경 모델 적합성 리포트" in out
+
+
+# ---------------------------------------------------------------------------
+# --pull opt-in 설치 플래그
+# ---------------------------------------------------------------------------
+
+class _FakeCompletedProcess:
+    def __init__(self, returncode=0):
+        self.returncode = returncode
+
+
+def test_pull_alone_installs_recommendation(monkeypatch, capsys):
+    """--pull만 지정 시 리포트의 recommendation 모델을 설치한다."""
+    monkeypatch.setattr(
+        envcheck, "build_report",
+        lambda ollama_url, model, num_ctx: {
+            "ram_gb": 64.0, "vram_gb": None, "vram_source": "none",
+            "budget_gb": 64.0, "installed": [],
+            "production_fit": {"model": model, "installed": False,
+                                "footprint_gb": 23.6, "verdict": "여유"},
+            "recommendation": "qwen2.5-coder:7b",
+        })
+    monkeypatch.setattr(envcheck.shutil, "which", lambda name: "/usr/local/bin/ollama")
+
+    calls = []
+
+    def fake_run(cmd, check=False):
+        calls.append(cmd)
+        return _FakeCompletedProcess(0)
+
+    monkeypatch.setattr(envcheck.subprocess, "run", fake_run)
+
+    envcheck.main(["--pull"])
+    out = capsys.readouterr().out
+
+    assert calls == [["ollama", "pull", "qwen2.5-coder:7b"]]
+    assert "설치 완료" in out
+    assert "--model qwen2.5-coder:7b" in out
+
+
+def test_pull_with_explicit_model(monkeypatch, capsys):
+    """--pull MODEL 지정 시 recommendation과 무관하게 그 MODEL을 설치한다."""
+    monkeypatch.setattr(
+        envcheck, "build_report",
+        lambda ollama_url, model, num_ctx: {
+            "ram_gb": 64.0, "vram_gb": None, "vram_source": "none",
+            "budget_gb": 64.0, "installed": [],
+            "production_fit": {"model": model, "installed": False,
+                                "footprint_gb": 23.6, "verdict": "여유"},
+            "recommendation": "qwen2.5-coder:7b",
+        })
+    monkeypatch.setattr(envcheck.shutil, "which", lambda name: "/usr/local/bin/ollama")
+
+    calls = []
+
+    def fake_run(cmd, check=False):
+        calls.append(cmd)
+        return _FakeCompletedProcess(0)
+
+    monkeypatch.setattr(envcheck.subprocess, "run", fake_run)
+
+    envcheck.main(["--pull", "custom-model:1b"])
+    out = capsys.readouterr().out
+
+    assert calls == [["ollama", "pull", "custom-model:1b"]]
+    assert "설치 완료" in out
+
+
+def test_pull_alone_no_recommendation_skips_install(monkeypatch, capsys):
+    """recommendation이 None이면 --pull만으로는 아무것도 설치하지 않는다."""
+    monkeypatch.setattr(
+        envcheck, "build_report",
+        lambda ollama_url, model, num_ctx: {
+            "ram_gb": 8.0, "vram_gb": None, "vram_source": "none",
+            "budget_gb": 8.0, "installed": [],
+            "production_fit": {"model": model, "installed": False,
+                                "footprint_gb": 23.6, "verdict": "불가"},
+            "recommendation": None,
+        })
+
+    calls = []
+    monkeypatch.setattr(envcheck.subprocess, "run",
+                        lambda *a, **k: calls.append((a, k)))
+
+    envcheck.main(["--pull"])
+    out = capsys.readouterr().out
+
+    assert calls == []
+    assert "설치할 추천 모델이 없습니다" in out
+
+
+def test_pull_model_ollama_missing(monkeypatch, capsys):
+    """ollama 실행파일이 PATH에 없으면 설치 시도 없이 안내 후 비-0 반환."""
+    monkeypatch.setattr(envcheck.shutil, "which", lambda name: None)
+
+    calls = []
+    monkeypatch.setattr(envcheck.subprocess, "run",
+                        lambda *a, **k: calls.append((a, k)))
+
+    rc = envcheck.pull_model("qwen2.5-coder:7b", ram_gb=64.0, num_ctx=16384)
+    out = capsys.readouterr().out
+
+    assert rc != 0
+    assert calls == []
+    assert "PATH" in out
+
+
+def test_pull_model_subprocess_failure_shows_offline_guidance(monkeypatch, capsys):
+    """ollama pull이 비-0을 반환하면(네트워크/폐쇄망 등) 오프라인 대안을 안내한다."""
+    monkeypatch.setattr(envcheck.shutil, "which", lambda name: "/usr/local/bin/ollama")
+    monkeypatch.setattr(envcheck.subprocess, "run",
+                        lambda cmd, check=False: _FakeCompletedProcess(1))
+
+    rc = envcheck.pull_model("qwen2.5-coder:7b", ram_gb=64.0, num_ctx=16384)
+    out = capsys.readouterr().out
+
+    assert rc == 1
+    assert "ollama create" in out
+    assert "USAGE.md" in out
+
+
+def test_pull_model_subprocess_oserror_absorbed(monkeypatch, capsys):
+    """subprocess 예외(OSError 등)는 흡수하고 크래시하지 않는다."""
+    monkeypatch.setattr(envcheck.shutil, "which", lambda name: "/usr/local/bin/ollama")
+
+    def fake_run(cmd, check=False):
+        raise OSError("boom")
+
+    monkeypatch.setattr(envcheck.subprocess, "run", fake_run)
+
+    rc = envcheck.pull_model("qwen2.5-coder:7b", ram_gb=64.0, num_ctx=16384)
+    out = capsys.readouterr().out
+
+    assert rc != 0
+    assert "오류" in out
+
+
+def test_pull_not_specified_never_calls_pull_model(monkeypatch):
+    """[회귀] --pull 미지정 시 pull_model이 절대 호출되지 않는다(기본 동작 불변)."""
+    called = []
+    monkeypatch.setattr(envcheck, "pull_model",
+                        lambda *a, **k: called.append((a, k)))
+
+    envcheck.main([])
+
+    assert called == []

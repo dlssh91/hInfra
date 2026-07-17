@@ -1,7 +1,9 @@
 # 작업 재개 노트 (RESUME)
 
 > ═══ 재개 안내 (pull 후 "진행해줘"/"개발진행해"라고 하면 여기부터) ═══
-> **★★ 다음 착수 — 우선순위 순, 각 항목 착수에 필요한 정보를 아래에 전부 기재(재유도 불필요)**:
+> **★★ 다음 착수 = ⓪-i (envcheck `--pull`) 미완 2건부터**: ①`--pull` 구현 **Opus 리뷰**(아직 안 함) →
+> ②이 맥 실설치 테스트(`ollama rm` 용량확보 후 `judge.sh --check-model --pull qwen2.5-coder:3b`). 상세는 아래 ⓪-i.
+> 그 뒤 우선순위: ⓪-e/⓪-f/⓪-g의 실샘플 대기 항목(win 수집기·k8s_worker F8 Unauthorized 면제·WAS web.xml 수집보강), ①Tibero, ②FW B-2.
 >
 > **⓪ ✅ 완료(2026-07-16 맥세션) — 웹UI 계층 워크스페이스 (점검분야→대상→파일) Opus SHIP**
 >   - 사이클 완주: Fable설계(기확정) → Sonnet 구현 → **Opus 리뷰 SHIP**(Critical/High/Medium **0**, Low 4건 비차단).
@@ -142,6 +144,21 @@
 >     (qwen3-coder:7b)를 미설치 30b로 오인→"설치·여유" 거짓양호형 오판 → **exact match만**으로 수정+회귀테스트.
 >     [Medium] 모델 size 단위 1e9 vs RAM 1024³ 불일치 → 1024³ 통일. [Low] Windows 구조체 필드명 오타(무해)·docstring 수치 정정.
 >   - 실측(이 맥 16GB): 30b(미설치)=불가(≈25GB), qwen2.5-coder:3b/qwen3.5=여유, 추천=qwen3.5. **2769 passed / 0 failed.**
+>
+> **⓪-i ⏸ 진행중(2026-07-17 맥세션 중단) — envcheck `--pull` opt-in 설치 + 실설치 테스트**
+>   **다음 착수 = 여기부터.** 상태:
+>   - ✅ **Sonnet 구현 완료(커밋됨)**: `envcheck.py`에 `--pull` 추가(argparse nargs="?" const="__RECOMMENDED__"
+>     default=None → 미지정=기존동작 불변 / `--pull`단독=추천모델 / `--pull MODEL`=지정모델). `pull_model(model,*,ram_gb,
+>     num_ctx)` 신규: shutil.which("ollama") 게이트 → subprocess `ollama pull`(스트리밍·shell미사용·리스트인자) →
+>     실패/OSError 시 오프라인 대안(`ollama create`, USAGE 2단계) 안내. 성공 시 "판정 시 --model 명시" 재강조(자동전환 금지).
+>     tests +7(subprocess/shutil.which monkeypatch만, 실제 pull 미실행). **2776 passed / 0 failed.** 런처 수정 불필요(judge.sh "$@"/judge.bat %2~%9로 --pull 전달됨).
+>   - ⬜ **미완 1 — Opus 리뷰 안 함**: `--pull` 구현은 아직 Opus 검토 전. 재개 시 **Opus 리뷰 먼저**(subprocess 안전·
+>     폐쇄망 안내·기본동작 불변·fit경고 로직 확인) → 미듐+ 나오면 Sonnet 개선 → SHIP 판정.
+>   - ⬜ **미완 2 — 실설치 테스트 안 함**: 사용자가 "이 맥에 실제 설치해보라(단 **기존 모델 삭제=용량관리 목적, 기능 아님**)"
+>     요청. 재개 시: (a) `ollama rm qwen2.5-coder:3b qwen3.5:latest`(용량확보) → (b) `judge.sh --check-model --pull
+>     qwen2.5-coder:3b`로 실제 설치·동작 실증(16GB 맥에 맞는 소형, 코드/설정 추론용). ⚠️Sonnet이 검증 중 실수로
+>     `--pull qwen2.5-coder:7b` 실행할 뻔했으나 중단·미설치 확인(실제 다운로드 0). 실설치는 메인세션이 직접.
+>   - 배경: 이 맥 16GB→production 30b(≈25GB) 불가라 판정 배관 테스트는 소형 프록시로. envcheck ⓪-h가 그 확인 수단.
 >
 > **① DB Tibero — ✅ 배선 완료(2026-07-11 맥세션, 휴면상태) / ⚠️ 활성화 전 실샘플 검증 필수**
 >   - 완료(db5c954, Opus SHIP): `db_tibero.yaml` 신규(5엔진 라벨 일관), db.py 레지스트리 등록+모드C2 tibero 확장,

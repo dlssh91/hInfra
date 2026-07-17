@@ -279,6 +279,58 @@ def format_report(report: dict) -> str:
     return "\n".join(lines)
 
 
+_PULL_RECOMMENDED = "__RECOMMENDED__"
+
+
+def pull_model(model: str, *, ram_gb: Optional[float], num_ctx: int) -> int:
+    """`ollama pull {model}`을 opt-in 실행해 모델을 내려받는다.
+
+    이 함수는 다운로드만 한다 — 판정 모델 선택(main.run --model)에는 아무
+    영향이 없다(자동 전환 절대 금지, 사용자 확정 원칙). 실패해도 크래시하지
+    않는다(비-0 반환 + 안내 문구로 폴백).
+    """
+    if shutil.which("ollama") is None:
+        print("[안내] ollama 실행파일을 PATH에서 찾을 수 없습니다. "
+              "Ollama 설치 여부/PATH 설정을 확인하세요.")
+        return 1
+
+    # fit 경고 — footprint 추정에 필요한 다운로드 크기는 미설치라 알 수 없으므로,
+    # production 모델명이면 PRODUCTION_DOWNLOAD_GB로 구체 추정, 그 외엔 일반 경고.
+    if ram_gb is not None:
+        if model == PRODUCTION_MODEL:
+            footprint = estimate_footprint_gb(PRODUCTION_DOWNLOAD_GB, num_ctx)
+            if fit_verdict(footprint, ram_gb) == "불가":
+                print(
+                    f"[경고] {model} 설치 후 실행 시 footprint≈{footprint:.1f}GB로 "
+                    f"이 PC 총 RAM({ram_gb:.1f}GB) 용량을 초과할 수 있습니다. "
+                    "그래도 명시 지정하셨으므로 설치를 진행합니다.")
+        else:
+            print(
+                f"[경고] {model}의 다운로드 크기는 설치 전이라 알 수 없습니다. "
+                f"설치 후 실행 시 이 PC 총 RAM({ram_gb:.1f}GB) 용량을 초과할 수 있습니다. "
+                "그래도 명시 지정하셨으므로 설치를 진행합니다.")
+
+    print(f"[안내] ollama pull {model} 실행 중... (인터넷 필요, 폐쇄망에서는 실패할 수 있습니다)")
+    try:
+        result = subprocess.run(["ollama", "pull", model], check=False)
+        returncode = result.returncode
+    except OSError as e:
+        print(f"[안내] ollama pull 실행 중 오류: {type(e).__name__}: {e}")
+        returncode = 1
+
+    if returncode != 0:
+        print(
+            f"[안내] {model} 설치 실패(반환코드={returncode}). "
+            "폐쇄망 등으로 인터넷 접속이 안 되면, 담당자에게 모델 파일을 받아 "
+            "`ollama create`로 등록하는 오프라인 절차를 따르세요(USAGE.md 2단계 참조).")
+        return returncode
+
+    print(
+        f"[완료] {model} 설치 완료. 자동으로 판정 모델이 바뀌지 않습니다 — "
+        f"판정 실행 시 --model {model} 로 직접 지정하세요.")
+    return 0
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(
         prog="python3 -m judge_tool.envcheck",
@@ -290,10 +342,28 @@ def main(argv=None) -> None:
     ap.add_argument("--num-ctx", type=int, default=_NUM_CTX,
                     help=f"footprint 추정에 쓸 컨텍스트 길이(기본 {_NUM_CTX}, "
                          "judge.py 판정 경로와 동일)")
+    ap.add_argument("--pull", nargs="?", const=_PULL_RECOMMENDED, default=None,
+                    metavar="MODEL",
+                    help="opt-in 모델 설치(ollama pull). 인자 없이 --pull만 쓰면 "
+                         "리포트의 추천 모델을 설치. --pull MODEL 로 특정 모델을 "
+                         "지정할 수도 있다. 미지정 시(기본) 아무것도 설치하지 않음 "
+                         "— 이 플래그는 확인·추천 동작을 전혀 바꾸지 않는다.")
     args = ap.parse_args(argv)
 
     report = build_report(args.ollama_url, args.model, args.num_ctx)
     print(format_report(report))
+
+    if args.pull is not None:
+        if args.pull == _PULL_RECOMMENDED:
+            target = report.get("recommendation")
+            if target is None:
+                print(
+                    "[안내] 설치할 추천 모델이 없습니다 — "
+                    "--pull 뒤에 모델명을 직접 지정하세요(예: --pull qwen2.5-coder:7b).")
+                return
+        else:
+            target = args.pull
+        pull_model(target, ram_gb=report["ram_gb"], num_ctx=args.num_ctx)
 
 
 if __name__ == "__main__":
