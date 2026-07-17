@@ -41,6 +41,28 @@
 >     크래시 방어, 타 OS no-op) CLI+webui 진입점 배선 · README/USAGE.md Windows 절 병기.
 >   - ⚠️ **judge.bat 실검증은 Windows 환경 필요**(맥에서 구문 검토만) — Windows 보유자가 대화형/--web/
 >     한글경로 인자 3케이스 스모크 권장. 2720 passed / 0 failed 유지.
+>
+> **⓪-d ✅ 완료(2026-07-17 맥세션) — LLM 서빙 품질 재검토(Opus×2) + 서빙 수정 5건 (Fable 구현·자체리뷰)**
+>   - **검토① 서빙(Opus)**: [C-1] num_ctx 미설정(Ollama 기본 4096 무음절단 → 뒷행 위반 소실=거짓양호 창구),
+>     [H-1] 요약경로 format:"json" 강제가 산문계약과 충돌(재요청 경로 사문화), [H-2] raw 증거 꼬리절단 무표식,
+>     [M-1] verdict 정확일치만 허용(recall 손실), [M-3] 기본모델 qwen2.5:14b 드리프트.
+>   - **검토② 기준 정합성(Opus)**: **전반 양호, C/H 0** — 전 프로파일 standard_col 정확, 판단기준 원문 verbatim
+>     전달, polarity 반전 0, 결번/미등록 method 0. [M] network/iss/iss_device 인터뷰성 항목 label A는
+>     needs_review 전건 강제+명시 백로그라 실질 안전. [L] PRCV-022 과보수(보류측), DBM-016 patch_check 무효(cosmetic).
+>   - **수정 반영(judge.py, 전부 안전방향, tests/test_judge_serving.py +30)**: ①`_NUM_CTX=16384` options 명시 +
+>     `_RAW_EVIDENCE_CAP=24000` 상수화(예산계약 주석: 캡 변경 시 num_ctx 재계산 의무) ②`chat_text()` 신설(요약=
+>     format 미강제, chat_text 없는 테스트더블은 getattr 폴백) ③raw 절단 감지 `evidence_truncated` →
+>     reconcile needs_review 강제+근거 표식(verdict 불변) ④`_normalize_verdict` 보수 정규화("양호함"→양호,
+>     "양호하지 않음"→거부·보류 — 방향뒤집힘 흡수금지 테스트 고정) ⑤기본모델 qwen3-coder:30b 통일.
+>     preflight LLM게이트는 chat(JSON) 유지로 무영향. **2750 passed / 102 skipped / 0 failed.**
+>   - **🚨 잔여 백로그(선행조건 = production qwen3-coder:30b 설치, 현재 qwen3.5만)**: (a) 프로파일별
+>     SYSTEM_PROMPT 분리(스펙 2026-06-05 §3-1 미이행 — Oracle 63%/PG Azure 64% 일치율의 구조적 원인) +
+>     known_units 단위주석(§3-2). 착수 시 **LLM 품질 프로토콜 필수**(양극성 cov 전후비교, 위험방향 회귀 0).
+>     (b) network/iss/iss_device 인터뷰·패치 항목 label B/D 승격(실수집 샘플 선행). (c) network 45·iss 25·
+>     iss_device 31·osvirt 32항목 = 결정론 백스톱 없는 순수 LLM verdict + 양극성 샘플 미확보 → **품질 미측정(미커버) 명시 유지**.
+>     (d) num_ctx=16384는 현장 저사양 VRAM에서 부담 가능 — OllamaClient(num_ctx=) 인자로 하향 가능, CLI 플래그는 YAGNI 보류.
+>
+> **① DB Tibero — ✅ 배선 완료(2026-07-11 맥세션, 휴면상태) / ⚠️ 활성화 전 실샘플 검증 필수**
 >   - 완료(db5c954, Opus SHIP): `db_tibero.yaml` 신규(5엔진 라벨 일관), db.py 레지스트리 등록+모드C2 tibero 확장,
 >     DET_SOURCE 21항목, cov 픽스처 12항목(+29 tests). DBM-030은 vendor가 Oracle `AUD$` 테이블명 하드코딩→Tibero
 >     `SYS._DD_AUD` 불일치 구조적 거짓양호 위험이라 oracle(DET)과 달리 **STUB(label B) 안전라우팅**. DBM-034=ABSENT(메서드부재).

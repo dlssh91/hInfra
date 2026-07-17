@@ -63,6 +63,20 @@ SYSTEM_PROMPT = (
 # status 분류는 models.GOOD_STATUSES 를 단일 출처로 사용한다.
 _GOOD = GOOD_STATUSES
 
+# ── 컨텍스트 예산 계약 ──────────────────────────────────────────────────────
+# 프롬프트 총량 ≈ SYSTEM_PROMPT(≈2k tok) + 판단기준/방법(≈1k tok)
+#              + 증거(_RAW_EVIDENCE_CAP=24,000자 ≈ 최악 12k tok) + 응답 여유.
+# Ollama는 num_ctx 미지정 시 기본값(대개 4096 tok)으로 **입력을 무음 절단**
+# 하므로, 증거 뒷부분의 위반 행이 소실되어 거짓양호가 날 수 있다(C-1).
+# _NUM_CTX는 위 총량을 덮도록 설정하며, _RAW_EVIDENCE_CAP을 늘릴 때는
+# 반드시 이 값도 함께 재계산해야 한다.
+_RAW_EVIDENCE_CAP = 24000
+_NUM_CTX = 16384
+
+# raw 증거 절단 마커(build_evidence_text_raw가 부착) — judge_item이 이
+# 마커로 절단 발생을 감지해 evidence_truncated 플래그를 세운다(H-2).
+_TRUNCATION_MARKER = "행 생략)"
+
 
 def build_evidence_text(item: EvidenceItem, max_chars: int = 8000) -> str:
     """증거를 텍스트로 직렬화.
@@ -103,7 +117,8 @@ def build_evidence_text(item: EvidenceItem, max_chars: int = 8000) -> str:
     return "\n".join(lines)
 
 
-def build_evidence_text_raw(item: EvidenceItem, max_chars: int = 24000) -> str:
+def build_evidence_text_raw(item: EvidenceItem,
+                            max_chars: int = _RAW_EVIDENCE_CAP) -> str:
     """원시증거(DB) 직렬화: 사전분류 status가 없으므로 전수 보존이 기본.
 
     context(QUERY/NOTE)를 상단에 두고 모든 행을 직렬화한다. 행이 한 그룹키로
@@ -175,7 +190,7 @@ def build_prompt(criterion: Criterion, item: EvidenceItem,
                        "판단기준의 보안 요구를 의미적으로 충족하는지로 판정하라. "
                        "장비 역할(라우터/스위치 등)에 명백히 해당 없는 기준이면 판단보류.")
     if evidence_mode == "raw":
-        evidence = build_evidence_text_raw(item, max(max_chars, 24000))
+        evidence = build_evidence_text_raw(item, max(max_chars, _RAW_EVIDENCE_CAP))
     else:
         evidence = build_evidence_text(item, max_chars)
     return (
@@ -233,6 +248,32 @@ def _to_float(v, default: float = 0.0) -> float:
 
 
 _VALID_VERDICTS = {"양호", "취약", "판단보류"}
+# verdict 정규화(M-1)에서 허용하는 잔여 접미(공백·구두점 제거 후).
+# "양호함"→양호 같은 무해한 어미만 흡수하고, "양호하지 않음"처럼 의미가
+# 뒤집힐 수 있는 꼬리는 절대 흡수하지 않는다(방향 뒤집힘 = 판정 오염).
+_VERDICT_SUFFIX_OK = frozenset({"", "함", "임", "입니다", "합니다"})
+
+
+def _normalize_verdict(v) -> str | None:
+    """LLM verdict 어휘를 보수적으로 정규화한다. 확신 없으면 None(재시도).
+
+    저성능 모델이 "양호함"/"판단 보류"/"취약." 같은 변형을 내면 정확일치
+    검증에 걸려 정답이 판단보류로 새는 recall 손실이 있었다(M-1).
+    허용: 표준 3어휘 + 내부공백 제거 + 무해 어미(_VERDICT_SUFFIX_OK).
+    그 외(부정형·복합문 등)는 전부 None — 방향이 바뀔 여지는 흡수 금지.
+    """
+    if not isinstance(v, str):
+        return None
+    compact = v.strip().replace(" ", "")
+    if compact in _VALID_VERDICTS:
+        return compact
+    # "판단보류"를 먼저 검사 — "판단"으로 시작하는 다른 어휘와의 혼동 방지.
+    for base in ("판단보류", "양호", "취약"):
+        if compact.startswith(base):
+            rest = compact[len(base):].strip(" .!?()·")
+            if rest in _VERDICT_SUFFIX_OK:
+                return base
+    return None
 # 스크립트 status → 기대 verdict (비교 가능한 것만)
 _STATUS_TO_VERDICT = {"good": "양호", "bad": "취약"}
 _LOW_CONFIDENCE = 0.6
@@ -240,28 +281,44 @@ _LOW_CONFIDENCE = 0.6
 
 class OllamaClient:
     def __init__(self, url: str = "http://localhost:11434",
-                 model: str = "qwen2.5:14b", temperature: float = 0.0,
-                 timeout: int = 120):
+                 model: str = "qwen3-coder:30b", temperature: float = 0.0,
+                 timeout: int = 120, num_ctx: int = _NUM_CTX):
         self.url = url.rstrip("/")
         self.model = model
         self.temperature = temperature
         self.timeout = timeout
+        self.num_ctx = num_ctx
 
     def chat(self, system: str, user: str) -> str:
+        """판정용 호출 — JSON 출력을 Ollama format으로 문법 강제한다."""
+        return self._chat(system, user, format_="json")
+
+    def chat_text(self, system: str, user: str) -> str:
+        """산문용 호출(인터뷰요약 등) — format 미강제.
+
+        format:"json"을 걸면 모델이 산문을 낼 수 없어 SUMMARY_SYSTEM_PROMPT의
+        'JSON 금지' 계약과 정면 충돌한다(H-1). 요약 경로는 반드시 이 메서드를
+        사용해야 산문 출력이 가능하다.
+        """
+        return self._chat(system, user, format_=None)
+
+    def _chat(self, system: str, user: str, format_) -> str:
+        payload = {
+            "model": self.model,
+            "stream": False,
+            # num_ctx 미지정 시 Ollama 기본(대개 4096 tok)이 대형 프롬프트를
+            # 무음 절단해 증거 소실(거짓양호)이 날 수 있다 — 반드시 명시(C-1).
+            "options": {"temperature": self.temperature,
+                        "num_ctx": self.num_ctx},
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        }
+        if format_:
+            payload["format"] = format_
         resp = requests.post(
-            f"{self.url}/api/chat",
-            json={
-                "model": self.model,
-                "stream": False,
-                "format": "json",
-                "options": {"temperature": self.temperature},
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-            },
-            timeout=self.timeout,
-        )
+            f"{self.url}/api/chat", json=payload, timeout=self.timeout)
         resp.raise_for_status()
         return resp.json()["message"]["content"]
 
@@ -415,11 +472,15 @@ def summarize_item(criterion: Criterion, item: EvidenceItem, client,
     # 대형 증거 타임아웃 대비 축소 사다리: 전체 → 8000자 → 3000자.
     # (Oracle DBM-004 실데이터에서 8000자도 타임아웃하는 사례 관측)
     if evidence_mode == "raw":
-        sizes = (24000, 8000, 3000)
+        sizes = (_RAW_EVIDENCE_CAP, 8000, 3000)
         build = build_evidence_text_raw
     else:
         sizes = (8000, 4000, 2000)
         build = build_evidence_text
+
+    # 산문 계약: format:"json" 강제가 없는 chat_text를 우선 사용한다(H-1).
+    # 테스트 더블 등 chat_text가 없는 클라이언트는 chat으로 폴백(하위호환).
+    chat = getattr(client, "chat_text", None) or client.chat
 
     out = None
     truncated = False
@@ -427,7 +488,7 @@ def summarize_item(criterion: Criterion, item: EvidenceItem, client,
     for i, max_chars in enumerate(sizes):
         prompt = _summary_prompt(criterion, build(item, max_chars))
         try:
-            out = client.chat(SUMMARY_SYSTEM_PROMPT, prompt)
+            out = chat(SUMMARY_SYSTEM_PROMPT, prompt)
             truncated = i > 0
             break
         except Exception as e:  # noqa: BLE001
@@ -440,7 +501,7 @@ def summarize_item(criterion: Criterion, item: EvidenceItem, client,
             retry = prompt + ("\n\n[재요청] 직전 응답이 JSON 형식이었다. "
                               "중괄호·대괄호·따옴표 키 없이 한국어 줄글 "
                               "문장으로만 다시 작성하라.")
-            out2 = client.chat(SUMMARY_SYSTEM_PROMPT, retry)
+            out2 = chat(SUMMARY_SYSTEM_PROMPT, retry)
             out = out2 if not _looks_like_json(out2) else _json_to_prose(out2)
         except Exception:  # noqa: BLE001 - 재요청 실패 시 1차 응답 평탄화
             out = _json_to_prose(out)
@@ -466,6 +527,13 @@ def judge_item(criterion: Criterion, item: EvidenceItem, client,
     응답 구조 오류는 호출부(Task 9) 책임으로 전파한다.
     """
     prompt = build_prompt(criterion, item, max_chars, evidence_mode)
+    # H-2: raw 증거가 상한에 걸려 잘렸으면(뒷행 위반 소실 가능) 플래그를
+    # 세워 reconcile이 needs_review를 강제하게 한다. 마커 재검출을 위해
+    # build_prompt와 동일 인자로 증거만 재직렬화한다(순수 문자열 연산).
+    evidence_truncated = False
+    if evidence_mode == "raw":
+        ev = build_evidence_text_raw(item, max(max_chars, _RAW_EVIDENCE_CAP))
+        evidence_truncated = _TRUNCATION_MARKER in ev
     last_err = None
     for _ in range(retries + 1):
         raw = client.chat(SYSTEM_PROMPT, prompt)
@@ -479,10 +547,13 @@ def judge_item(criterion: Criterion, item: EvidenceItem, client,
         if not isinstance(data, dict):
             last_err = ValueError("JSON 객체 아님")
             continue
-        if data.get("verdict") in _VALID_VERDICTS:
+        verdict = _normalize_verdict(data.get("verdict"))
+        if verdict is not None:
+            data["verdict"] = verdict
             data["confidence"] = _to_float(data.get("confidence", 0.0))
             data.setdefault("rationale", "")
             data.setdefault("cited_evidence", [])
+            data["evidence_truncated"] = evidence_truncated
             return data
         last_err = ValueError(f"잘못된 verdict: {data.get('verdict')}")
     # 모든 시도 실패 → 판단보류로 안전 처리.
@@ -490,7 +561,8 @@ def judge_item(criterion: Criterion, item: EvidenceItem, client,
     # 예외 타입명/고정문구만 노출하고 raw 응답은 rationale 에 넣지 않는다.
     err_name = type(last_err).__name__ if last_err is not None else "Unknown"
     return {"verdict": "판단보류", "confidence": 0.0,
-            "rationale": f"LLM 응답 파싱 실패({err_name})", "cited_evidence": []}
+            "rationale": f"LLM 응답 파싱 실패({err_name})", "cited_evidence": [],
+            "evidence_truncated": evidence_truncated}
 
 
 def reconcile(llm: Dict, criterion: Criterion, item: EvidenceItem, *,
@@ -527,6 +599,13 @@ def reconcile(llm: Dict, criterion: Criterion, item: EvidenceItem, *,
         note = f"[자동 판단보류: {reason}]"
         rationale = f"{rationale} {note}".strip()
 
+    # H-2: 증거가 상한 절단된 판정은 LLM이 위반 행을 못 봤을 수 있다 —
+    # verdict는 유지하되 반드시 사람 검토로 보내고 근거에 명시한다.
+    evidence_truncated = bool(llm.get("evidence_truncated"))
+    if evidence_truncated:
+        rationale = (f"{rationale} [주의: 증거 일부가 분량 상한으로 절단되어 "
+                     f"판정에 미반영됐을 수 있음 — 원본 증거 대조 필요]").strip()
+
     needs_review = (
         agreement == "불일치"
         or confidence < _LOW_CONFIDENCE
@@ -536,6 +615,7 @@ def reconcile(llm: Dict, criterion: Criterion, item: EvidenceItem, *,
         # 양호/취약 자동 대조가 불가하므로 사람 검토가 필요하다.
         or expected is None
         or (flag_vulnerable_for_review and verdict == "취약")
+        or evidence_truncated
     )
     return Judgment(
         item_id=criterion.item_id,
