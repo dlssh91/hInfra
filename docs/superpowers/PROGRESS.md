@@ -118,6 +118,18 @@
 >   - **정리**: 생성한 도커(tomcat_wst·my_rds 컨테이너, fsec2 kind 클러스터, pull한 tomcat:9·mysql:8.0 이미지) 전부 삭제.
 >     사용자 기존 컨테이너(bwapp/dvwa/juice-shop 등)·기존 kindest/node 이미지는 무접촉. 2750 passed / 0 failed.
 >
+> **⓪-g 📋 WAS 설정파일 별도수집 갭 실증 (2026-07-17 맥세션) — 상세=reports/2026-07-17-was-config-collection-gap.md**
+>   사용자 지적("WAS는 설정파일 별도수집 필요") 검증. 결론:
+>   - 기준서 판단방법이 WST-031/122/123(web.xml)·035(domain.xml)·121(httpd-vhosts.conf)·044(jeus accounts.xml) 등
+>     WAS 설정파일을 지목하나 **수집기(fsi_unix.sh)는 tomcat conf에서 tomcat-users.xml·server.xml 2개만 수집** → 나머지 미수집.
+>   - **judge_tool 판정 쪽은 코드 변경 불필요** — `parsers/_common.parse_dumps`가 id-generic이라 수집만 되면 판정됨(실증 확인:
+>     web.xml 수집 블록 추가 패치본으로 도커 재수집 → WST-031/122/123 "증거 미수집" 해소, LLM이 web.xml 내용 근거로 판정).
+>   - **정련 발견**: tomcat 기본 web.xml=216KB(mime-mapping 2044개 보일러플레이트)→24KB raw 상한 초과→H-2 절단가드 발동.
+>     보안 지시자(listings/SSI/error-page)는 앞 6KB에 있어 판정 지장 없으나, 수집 시 mime-mapping 필터 권장.
+>   - **조치**: 필드 스크립트팀(외부)에 web.xml 등 수집추가 패치 제안(초안=스크래치 `fsi_unix_webxml_patch.sh`). judge_tool은
+>     수집 보강 후 실샘플 확보 시 web_cov_contract에 tomcat WST-031/122/123 양극성 추가로 실검증완료 승격.
+>   - 프록시 모델: 이 PC(17GB RAM)엔 30b 불가 → 판정 배관 스모크는 **qwen2.5-coder:3b**(~1.9GB)로. 생성 도커 전부 정리.
+>
 > **① DB Tibero — ✅ 배선 완료(2026-07-11 맥세션, 휴면상태) / ⚠️ 활성화 전 실샘플 검증 필수**
 >   - 완료(db5c954, Opus SHIP): `db_tibero.yaml` 신규(5엔진 라벨 일관), db.py 레지스트리 등록+모드C2 tibero 확장,
 >     DET_SOURCE 21항목, cov 픽스처 12항목(+29 tests). DBM-030은 vendor가 Oracle `AUD$` 테이블명 하드코딩→Tibero
